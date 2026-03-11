@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>CogFlow Interpreter Runtime Stub</title>
+  </head>
+  <body>
+    <h1>Interpreter Runtime Stub</h1>
+    <button id="start">Start Demo Run</button>
+    <button id="submit" disabled>Submit Demo Result</button>
+    <pre id="output"></pre>
+
+    <script>
+      let runSessionId = null;
+
+      async function startRun() {
+        const response = await fetch("http://localhost:8000/api/v1/runs/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            study_slug: "attention-battery-pilot",
+            participant_external_id: "participant-001"
+          })
+        });
+
+        const data = await response.json();
+        runSessionId = data.run_session_id;
+        document.getElementById("submit").disabled = !runSessionId;
+        document.getElementById("output").textContent = JSON.stringify(data, null, 2);
+      }
+
+      async function submitResult() {
+        const response = await fetch("http://localhost:8000/api/v1/results/submit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            run_session_id: runSessionId,
+            status: "completed",
+            trial_count: 1,
+            result_summary: { task_type: "rdm", experiment_type: "trial-based" },
+            result_payload: { trials: [{ rt: 512, correct: true }] }
+          })
+        });
+
+        const data = await response.json();
+        document.getElementById("output").textContent = JSON.stringify(data, null, 2);
+      }
+
+      document.getElementById("start").addEventListener("click", () => {
+        startRun().catch((error) => {
+          document.getElementById("output").textContent = String(error);
+        });
+      });
+
+      document.getElementById("submit").addEventListener("click", () => {
+        submitResult().catch((error) => {
+          document.getElementById("output").textContent = String(error);
+        });
+      });
+    </script>
+  </body>
+</html>

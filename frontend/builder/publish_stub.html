@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>CogFlow Builder Publish Stub</title>
+  </head>
+  <body>
+    <h1>Builder Publish Stub</h1>
+    <button id="publish">Publish Demo Config</button>
+    <pre id="output"></pre>
+
+    <script>
+      async function publishDemoConfig() {
+        const payload = {
+          study_slug: "attention-battery-pilot",
+          study_name: "Attention Battery Pilot",
+          config_version_label: "v1",
+          builder_version: "stub-0.1",
+          runtime_mode: "django",
+          config: {
+            task_type: "rdm",
+            experiment_type: "trial-based",
+            trials: [{ coherence: 0.3, duration_ms: 1200 }]
+          }
+        };
+
+        const response = await fetch("http://localhost:8000/api/v1/configs/publish", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await response.json();
+        document.getElementById("output").textContent = JSON.stringify(data, null, 2);
+      }
+
+      document.getElementById("publish").addEventListener("click", () => {
+        publishDemoConfig().catch((error) => {
+          document.getElementById("output").textContent = String(error);
+        });
+      });
+    </script>
+  </body>
+</html>

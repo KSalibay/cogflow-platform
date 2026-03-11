@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>CogFlow Portal Stub</title>
+  </head>
+  <body>
+    <h1>Portal Studies Dashboard (Stub)</h1>
+    <button id="refresh">Refresh Studies</button>
+    <pre id="output"></pre>
+
+    <script>
+      async function loadStudies() {
+        const response = await fetch("http://localhost:8000/api/v1/studies");
+        const data = await response.json();
+        document.getElementById("output").textContent = JSON.stringify(data, null, 2);
+      }
+
+      document.getElementById("refresh").addEventListener("click", () => {
+        loadStudies().catch((error) => {
+          document.getElementById("output").textContent = String(error);
+        });
+      });
+    </script>
+  </body>
+</html>
