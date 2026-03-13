@@ -20,6 +20,7 @@ INSTALLED_APPS = [
     "apps.runs",
     "apps.results",
     "apps.audit",
+    "apps.users",
 ]
 
 MIDDLEWARE = [
@@ -74,5 +75,6 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.AllowAny",
-    ]
+    ],
+    "DEFAULT_SCHEMA_CLASS": "rest_framework.schemas.openapi.AutoSchema",
 }

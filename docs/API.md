@@ -1,176 +1,354 @@
-# CogFlow Platform API
+# CogFlow Platform API (Day 3 Contract Freeze)
 
-## API Philosophy
+This file defines the **current v1 contract** for the Week 1 vertical slice and matches the implementation in `backend/project/api_views.py`.
 
-The first API version should support one complete workflow before expanding breadth:
-- Builder publishes a study configuration
-- Portal lists and manages the study
-- Interpreter starts a run and submits results
+## Local Integration Ports
 
-The API should be versioned from the start. Initial examples below use `/api/v1/`.
+- `cogflow-platform` API: `http://127.0.0.1:8000`
+- `cogflow-builder-app` local UI: typically `http://127.0.0.1:5500` (VS Code Live Server)
+- `cogflow-interpreter-app` local UI: use `http://127.0.0.1:5501` when running side-by-side (or `:5500` when run alone)
 
-## Authentication Model
+Builder and Interpreter call the API on port `8000` (as shown in `frontend/builder/publish_stub.html` and `frontend/interpreter/runtime_stub.html`).
 
-### Researcher-facing access
-- Session auth and/or JWT for logged-in researchers
-- Role-aware access checks on all study and result resources
+## DRF Schema Output
 
-### Runtime access
-- Platform-generated launch token or signed run token for Interpreter sessions
-- Short-lived, purpose-scoped access where practical
+- Live schema endpoint: `GET /api/schema`
+- Name in Django URLs: `openapi-schema`
+- JSON output uses DRF's built-in OpenAPI generator.
 
-## Core Endpoints
+Generate a checked-in schema artifact:
 
-### POST /api/v1/configs/publish
-Publishes a Builder-generated study configuration and creates or updates related study records.
+```bash
+cd /home/kamisalibayeva/GitHub/cogflow-platform
 
-#### Request shape
-```json
-{
-  "study_slug": "attention-battery-pilot",
-  "study_name": "Attention Battery Pilot",
-  "config_version_label": "v1",
-  "builder_version": "current-builder-version",
-  "runtime_mode": "django",
-  "config": {},
-  "assets": [
-    {
-      "logical_name": "mask-sprite.png",
-      "checksum": "sha256:...",
-      "content_type": "image/png"
-    }
-  ]
-}
+docker compose exec -T api python manage.py generateschema --format openapi-json > docs/openapi.json
 ```
 
-#### Response shape
-```json
-{
-  "study_id": "uuid",
-  "config_version_id": "uuid",
-  "study_slug": "attention-battery-pilot",
-  "dashboard_url": "/portal/studies/attention-battery-pilot",
-  "launch_links": {
-    "django": "https://platform.example/studies/attention-battery-pilot/launch"
-  }
-}
+## OpenAPI 3.0 Schema
+
+```yaml
+openapi: 3.0.3
+info:
+  title: CogFlow Platform API
+  version: 1.0.0-day3
+  description: |
+    Day 3 contract-first API for the Week 1 vertical slice.
+    Covers publish, start-run, submit-result, studies list, and health.
+servers:
+  - url: http://127.0.0.1:8000
+    description: Local Docker compose API
+  - url: http://localhost:8000
+    description: Local Docker compose API (alt hostname)
+tags:
+  - name: Ops
+  - name: Studies
+  - name: Builder
+  - name: Interpreter
+paths:
+  /healthz:
+    get:
+      tags: [Ops]
+      summary: Service health check
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                required: [ok]
+
+  /api/v1/studies:
+    get:
+      tags: [Studies]
+      summary: List studies visible in portal
+      responses:
+        '200':
+          description: Studies list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudiesListResponse'
+
+  /api/v1/configs/publish:
+    post:
+      tags: [Builder]
+      summary: Publish a Builder config and upsert study linkage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublishConfigRequest'
+      responses:
+        '201':
+          description: Config accepted and study linkage upserted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublishConfigResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+
+  /api/v1/runs/start:
+    post:
+      tags: [Interpreter]
+      summary: Start a run session for a published study
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartRunRequest'
+      responses:
+        '201':
+          description: Run session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StartRunResponse'
+        '400':
+          description: Validation error or no published config
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ValidationError'
+                  - $ref: '#/components/schemas/ErrorMessage'
+        '404':
+          description: Study not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+
+  /api/v1/results/submit:
+    post:
+      tags: [Interpreter]
+      summary: Submit aggregate and optional per-trial result payloads
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitResultRequest'
+      responses:
+        '200':
+          description: Result stored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmitResultResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '404':
+          description: Run session not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+
+components:
+  schemas:
+    RuntimeMode:
+      type: string
+      enum: [django, jatos, hybrid, home_gear_lsl]
+
+    RunStatus:
+      type: string
+      enum: [completed, failed]
+
+    ErrorMessage:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+
+    ValidationError:
+      type: object
+      additionalProperties: true
+      description: DRF validation error object keyed by field name.
+
+    PublishConfigRequest:
+      type: object
+      required:
+        - study_slug
+        - study_name
+        - config_version_label
+        - config
+      properties:
+        study_slug:
+          type: string
+          pattern: '^[a-zA-Z0-9_-]+$'
+          example: attention-battery-pilot
+        study_name:
+          type: string
+          maxLength: 255
+          example: Attention Battery Pilot
+        config_version_label:
+          type: string
+          maxLength: 50
+          example: v1
+        builder_version:
+          type: string
+          maxLength: 50
+          example: 2026.03.13
+        runtime_mode:
+          $ref: '#/components/schemas/RuntimeMode'
+        config:
+          type: object
+          additionalProperties: true
+
+    PublishConfigResponse:
+      type: object
+      properties:
+        study_id:
+          type: integer
+          example: 12
+        config_version_id:
+          type: integer
+          example: 54
+        study_slug:
+          type: string
+          example: attention-battery-pilot
+        dashboard_url:
+          type: string
+          example: /portal/studies/attention-battery-pilot
+      required: [study_id, config_version_id, study_slug, dashboard_url]
+
+    StartRunRequest:
+      type: object
+      required: [study_slug]
+      properties:
+        study_slug:
+          type: string
+          example: attention-battery-pilot
+        participant_external_id:
+          type: string
+          nullable: true
+          example: participant-001
+
+    StartRunResponse:
+      type: object
+      properties:
+        run_session_id:
+          type: string
+          format: uuid
+        study_slug:
+          type: string
+        config_version_id:
+          type: integer
+        config:
+          type: object
+          additionalProperties: true
+        participant_key:
+          type: string
+          description: Salted SHA-256 pseudonym key.
+      required: [run_session_id, study_slug, config_version_id, config, participant_key]
+
+    TrialPayload:
+      type: object
+      additionalProperties: true
+      description: Arbitrary task-specific trial data.
+
+    SubmitResultRequest:
+      type: object
+      required:
+        - run_session_id
+        - status
+        - trial_count
+        - result_payload
+      properties:
+        run_session_id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/RunStatus'
+        trial_count:
+          type: integer
+          minimum: 0
+          example: 240
+        result_summary:
+          type: object
+          additionalProperties: true
+        result_payload:
+          type: object
+          additionalProperties: true
+        trials:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrialPayload'
+          default: []
+
+    SubmitResultResponse:
+      type: object
+      properties:
+        run_session_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        stored:
+          type: boolean
+          example: true
+        trial_records_stored:
+          type: integer
+          minimum: 0
+          example: 240
+      required: [run_session_id, status, stored, trial_records_stored]
+
+    StudyListItem:
+      type: object
+      properties:
+        study_slug:
+          type: string
+        study_name:
+          type: string
+        runtime_mode:
+          $ref: '#/components/schemas/RuntimeMode'
+        latest_config_version:
+          type: string
+          nullable: true
+        run_count:
+          type: integer
+          minimum: 0
+        last_activity_at:
+          type: string
+          format: date-time
+      required:
+        - study_slug
+        - study_name
+        - runtime_mode
+        - latest_config_version
+        - run_count
+        - last_activity_at
+
+    StudiesListResponse:
+      type: object
+      properties:
+        studies:
+          type: array
+          items:
+            $ref: '#/components/schemas/StudyListItem'
+      required: [studies]
 ```
 
-### GET /api/v1/studies
-Returns researcher-visible studies for the authenticated user.
+## Day 3 Contract Notes
 
-#### Response fields
-- study identity and name
-- runtime mode
-- publication state
-- latest config version
-- run count
-- last activity timestamp
-
-### GET /api/v1/studies/{study_id}
-Returns study details, current config version, and launch metadata.
-
-### POST /api/v1/runs/start
-Creates a RunSession and returns the runtime payload needed by Interpreter.
-
-#### Request shape
-```json
-{
-  "study_id": "uuid",
-  "launch_token": "opaque-or-jwt-token",
-  "participant_external_id": "optional-external-id",
-  "runtime_mode": "django"
-}
-```
-
-#### Response shape
-```json
-{
-  "run_session_id": "uuid",
-  "config": {},
-  "config_version_id": "uuid",
-  "participant_key": "salted-hash-or-run-scoped-key",
-  "result_submit_url": "/api/v1/results/submit"
-}
-```
-
-### POST /api/v1/results/submit
-Accepts completion data from Interpreter.
-
-#### Request shape
-```json
-{
-  "run_session_id": "uuid",
-  "status": "completed",
-  "trial_count": 240,
-  "result_summary": {
-    "task_type": "rdm",
-    "experiment_type": "trial-based"
-  },
-  "result_payload": {}
-}
-```
-
-#### Response shape
-```json
-{
-  "run_session_id": "uuid",
-  "status": "completed",
-  "stored": true,
-  "received_at": "2026-03-12T12:00:00Z"
-}
-```
-
-### GET /api/v1/results/{run_session_id}
-Returns result metadata and, subject to role and policy, protected payload access.
-
-### POST /api/v1/results/{run_session_id}/decrypt
-Requests authorized decrypt access to protected result data.
-This must always generate an audit event.
-
-## Supporting Endpoints
-
-### Assets
-- POST /api/v1/assets/upload-init
-- POST /api/v1/assets/complete
-- GET /api/v1/assets/{asset_id}
-
-### Audit and compliance
-- GET /api/v1/audit-events
-- POST /api/v1/retention/policies
-- POST /api/v1/results/{run_session_id}/delete
-
-### Health and operations
-- GET /healthz
-- GET /readyz
-- GET /metrics
-
-## API Design Constraints
-
-### Idempotency
-Publish and result submit endpoints should support idempotency keys to avoid duplicate studies or result records during retries.
-
-### Backward compatibility
-The initial publish contract should preserve the existing Builder config payload as much as possible. The platform should wrap it, not immediately redesign it.
-
-### Validation
-- Study slug uniqueness
-- Config schema version compatibility
-- Runtime mode enforcement
-- Asset checksum verification
-
-### Security
-- Request authentication required for researcher APIs
-- Signed or scoped runtime tokens for Interpreter launch
-- Payload size limits for result ingestion
-- Audit event generation for protected reads and decrypts
-
-## First Contract Freeze Goal
-
-By the end of Week 2, the team should freeze the following contracts:
-- Publish config request/response
-- Start run request/response
-- Submit result request/response
-- Study list response
-
-Everything else can evolve after the first vertical slice is working.
+- `POST /api/v1/configs/publish` is **upsert-safe** by `study_slug` and `config_version_label`.
+- `POST /api/v1/runs/start` uses `study_slug` (not `study_id`) in v1.
+- `POST /api/v1/results/submit` supports optional `trials[]` for per-trial persistence.
+- The three endpoints above are covered by integration tests in `backend/project/tests/test_day3_api_contract.py`.

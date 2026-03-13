@@ -20,6 +20,58 @@ Expected components:
 - MinIO
 - Optional Redis
 
+### Day 1 Local Stack (Current)
+
+This repository provides a local Docker Compose stack for the Week 1 vertical slice:
+
+- `api` (Django)
+- `db` (PostgreSQL 16)
+- `minio` (S3-compatible object storage)
+- `redis` (optional queue/cache baseline)
+
+Quick start:
+
+```bash
+cp .env.example .env
+docker compose up -d --build
+docker compose ps
+```
+
+Health checks:
+
+```bash
+curl -f http://127.0.0.1:8000/healthz
+curl -f http://127.0.0.1:9000/minio/health/live
+```
+
+Expected local URLs:
+
+- API: `http://127.0.0.1:8000`
+- MinIO API: `http://127.0.0.1:9000`
+- MinIO Console: `http://127.0.0.1:9001`
+
+Notes:
+
+- API container runs migrations on startup before launching Django dev server.
+- Database data persists in Docker volume `pgdata`.
+- Object storage data persists in Docker volume `miniodata`.
+
+### Known Host Issue: Docker iptables Isolation Chain
+
+On some Linux hosts, `docker compose up` can fail with an error similar to:
+
+`Chain 'DOCKER-ISOLATION-STAGE-2' does not exist`
+
+This is a host Docker/networking issue, not a CogFlow compose file issue.
+
+Recommended recovery path:
+
+1. Restart Docker daemon/service.
+2. Re-run `docker compose up -d --build`.
+3. If still failing, reboot host or repair Docker iptables integration according to distro guidance.
+
+Avoid repository-level workarounds for this error; fix the host networking state first.
+
 ### Staging
 Used for integration, end-to-end tests, and pilot validation.
 

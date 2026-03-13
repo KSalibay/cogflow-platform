@@ -20,10 +20,17 @@ This backend provides the first vertical-slice APIs for the new CogFlow Platform
 
 ```powershell
 docker compose up -d --build
-docker compose exec api python manage.py makemigrations
-docker compose exec api python manage.py migrate
 docker compose exec api python manage.py createsuperuser
 ```
+
+Quick checks:
+
+```powershell
+curl http://127.0.0.1:8000/healthz
+docker compose ps
+```
+
+Note: the API container applies migrations on startup in local compose.
 
 ## Vertical Slice Demo Order
 

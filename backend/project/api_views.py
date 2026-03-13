@@ -1,5 +1,3 @@
-import json
-
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import status
@@ -8,15 +6,16 @@ from rest_framework.views import APIView
 
 from apps.audit.models import AuditEvent
 from apps.configs.models import ConfigVersion
-from apps.results.models import ResultEnvelope
 from apps.runs.models import RunSession
 from apps.studies.models import Study
+from apps.results.services import store_result_envelope, store_trial_results
 from project.api_serializers import (
     PublishConfigRequestSerializer,
     StartRunRequestSerializer,
     SubmitResultRequestSerializer,
 )
-from project.security import encrypt_payload, hash_identifier
+from project.constants import RUN_STATUS_COMPLETED
+from project.security import hash_identifier
 
 
 def record_audit(action: str, resource_type: str, resource_id: str, metadata: dict | None = None) -> None:
@@ -151,18 +150,20 @@ class SubmitResultView(APIView):
         if not run_session:
             return Response({"error": "Run session not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        encrypted_payload = encrypt_payload(json.dumps(data["result_payload"]))
-        ResultEnvelope.objects.update_or_create(
+        store_result_envelope(
             run_session=run_session,
-            defaults={
-                "trial_count": data["trial_count"],
-                "summary_json": data.get("result_summary", {}),
-                "encrypted_payload": encrypted_payload,
-            },
+            trial_count=data["trial_count"],
+            summary_json=data.get("result_summary", {}),
+            result_payload=data["result_payload"],
+        )
+
+        trial_records_stored = store_trial_results(
+            run_session=run_session,
+            trials=data.get("trials", []),
         )
 
         run_session.status = data["status"]
-        if data["status"] == "completed":
+        if data["status"] == RUN_STATUS_COMPLETED:
             run_session.completed_at = timezone.now()
         run_session.save(update_fields=["status", "completed_at"])
 
@@ -170,7 +171,11 @@ class SubmitResultView(APIView):
             action="submit_result",
             resource_type="run_session",
             resource_id=run_session.id,
-            metadata={"status": run_session.status, "trial_count": data["trial_count"]},
+            metadata={
+                "status": run_session.status,
+                "trial_count": data["trial_count"],
+                "trial_records_stored": trial_records_stored,
+            },
         )
 
         return Response(
@@ -178,6 +183,7 @@ class SubmitResultView(APIView):
                 "run_session_id": run_session.id,
                 "status": run_session.status,
                 "stored": True,
+                "trial_records_stored": trial_records_stored,
             },
             status=status.HTTP_200_OK,
         )

@@ -1,0 +1,154 @@
+{
+    "openapi": "3.0.2",
+    "info": {
+        "title": "",
+        "version": ""
+    },
+    "paths": {
+        "/healthz": {
+            "get": {
+                "operationId": "listHealths",
+                "description": "",
+                "parameters": [],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                },
+                "tags": [
+                    "healthz"
+                ]
+            }
+        },
+        "/api/v1/studies": {
+            "get": {
+                "operationId": "listStudies",
+                "description": "",
+                "parameters": [],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                },
+                "tags": [
+                    "api"
+                ]
+            }
+        },
+        "/api/v1/configs/publish": {
+            "post": {
+                "operationId": "createPublishConfig",
+                "description": "",
+                "parameters": [],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {}
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {}
+                        },
+                        "multipart/form-data": {
+                            "schema": {}
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        },
+                        "description": ""
+                    }
+                },
+                "tags": [
+                    "api"
+                ]
+            }
+        },
+        "/api/v1/runs/start": {
+            "post": {
+                "operationId": "createStartRun",
+                "description": "",
+                "parameters": [],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {}
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {}
+                        },
+                        "multipart/form-data": {
+                            "schema": {}
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        },
+                        "description": ""
+                    }
+                },
+                "tags": [
+                    "api"
+                ]
+            }
+        },
+        "/api/v1/results/submit": {
+            "post": {
+                "operationId": "createSubmitResult",
+                "description": "",
+                "parameters": [],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {}
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {}
+                        },
+                        "multipart/form-data": {
+                            "schema": {}
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        },
+                        "description": ""
+                    }
+                },
+                "tags": [
+                    "api"
+                ]
+            }
+        }
+    }
+}
