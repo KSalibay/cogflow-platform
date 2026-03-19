@@ -4,6 +4,7 @@ from rest_framework.renderers import JSONOpenAPIRenderer
 from rest_framework.schemas import get_schema_view
 
 from project.api_views import (
+    DecryptResultView,
     HealthView,
     PortalDashboardView,
     PublishConfigView,
@@ -30,4 +31,5 @@ urlpatterns = [
     path("api/v1/configs/publish", PublishConfigView.as_view(), name="configs-publish"),
     path("api/v1/runs/start", StartRunView.as_view(), name="runs-start"),
     path("api/v1/results/submit", SubmitResultView.as_view(), name="results-submit"),
+    path("api/v1/results/decrypt", DecryptResultView.as_view(), name="results-decrypt"),
 ]

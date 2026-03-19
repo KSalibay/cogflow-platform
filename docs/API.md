@@ -160,6 +160,39 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorMessage'
 
+  /api/v1/results/decrypt:
+    post:
+      tags: [Interpreter]
+      summary: Protected decrypt/read endpoint for stored result payloads
+      description: |
+        Requires header `X-CogFlow-Decrypt-Token` matching `DECRYPT_API_TOKEN`.
+        All denied and successful decrypt attempts are recorded in `AuditEvent`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecryptResultRequest'
+      responses:
+        '200':
+          description: Decrypted payload returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DecryptResultResponse'
+        '403':
+          description: Invalid or missing decrypt token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+        '404':
+          description: Run session or result envelope not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+
 components:
   schemas:
     RuntimeMode:
@@ -310,6 +343,40 @@ components:
           example: 240
       required: [run_session_id, status, stored, trial_records_stored]
 
+    DecryptResultRequest:
+      type: object
+      required: [run_session_id]
+      properties:
+        run_session_id:
+          type: string
+          format: uuid
+        include_trials:
+          type: boolean
+          default: false
+
+    DecryptResultResponse:
+      type: object
+      properties:
+        run_session_id:
+          type: string
+          format: uuid
+        study_slug:
+          type: string
+        status:
+          type: string
+        result_payload:
+          type: object
+          additionalProperties: true
+        trials:
+          nullable: true
+          oneOf:
+            - type: array
+              items:
+                type: object
+                additionalProperties: true
+            - type: 'null'
+      required: [run_session_id, study_slug, status, result_payload, trials]
+
     StudyListItem:
       type: object
       properties:
@@ -359,4 +426,5 @@ components:
 - `POST /api/v1/configs/publish` is **upsert-safe** by `study_slug` and `config_version_label`.
 - `POST /api/v1/runs/start` uses `study_slug` (not `study_id`) in v1.
 - `POST /api/v1/results/submit` supports optional `trials[]` for per-trial persistence.
-- The three endpoints above are covered by integration tests in `backend/project/tests/test_day3_api_contract.py`.
+- `POST /api/v1/results/decrypt` is deny-by-default and requires `X-CogFlow-Decrypt-Token`.
+- Day 3 and onward endpoints are covered by integration tests in `backend/project/tests/test_day3_api_contract.py` and `backend/project/tests/test_day4_integration.py`.

@@ -1,3 +1,5 @@
+import os
+
 from django.db import transaction
 from django.db.models import Count, Max
 from django.shortcuts import render
@@ -10,8 +12,14 @@ from apps.audit.models import AuditEvent
 from apps.configs.models import ConfigVersion
 from apps.runs.models import RunSession
 from apps.studies.models import Study
-from apps.results.services import store_result_envelope, store_trial_results
+from apps.results.services import (
+    get_decrypted_envelope,
+    get_decrypted_trial,
+    store_result_envelope,
+    store_trial_results,
+)
 from project.api_serializers import (
+    DecryptResultRequestSerializer,
     PublishConfigRequestSerializer,
     StartRunRequestSerializer,
     SubmitResultRequestSerializer,
@@ -20,8 +28,15 @@ from project.constants import RUN_STATUS_COMPLETED
 from project.security import hash_identifier
 
 
-def record_audit(action: str, resource_type: str, resource_id: str, metadata: dict | None = None) -> None:
+def record_audit(
+    action: str,
+    resource_type: str,
+    resource_id: str,
+    metadata: dict | None = None,
+    actor: str = "system",
+) -> None:
     AuditEvent.objects.create(
+        actor=actor,
         action=action,
         resource_type=resource_type,
         resource_id=str(resource_id),
@@ -202,4 +217,83 @@ class SubmitResultView(APIView):
                 "trial_records_stored": trial_records_stored,
             },
             status=status.HTTP_201_CREATED,
+        )
+
+
+class DecryptResultView(APIView):
+    """Protected decrypt/read endpoint for interim Day 6 privacy controls."""
+
+    @transaction.atomic
+    def post(self, request):
+        serializer = DecryptResultRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        actor = (request.headers.get("X-CogFlow-Actor") or "unknown").strip() or "unknown"
+        provided_token = (request.headers.get("X-CogFlow-Decrypt-Token") or "").strip()
+        expected_token = (os.getenv("DECRYPT_API_TOKEN") or "").strip()
+
+        # Deny by default unless a token is explicitly configured and matched.
+        if not expected_token or provided_token != expected_token:
+            record_audit(
+                action="decrypt_result_denied",
+                resource_type="run_session",
+                resource_id=data["run_session_id"],
+                actor=actor,
+                metadata={
+                    "reason": "invalid_or_missing_token",
+                    "include_trials": data.get("include_trials", False),
+                },
+            )
+            return Response({"error": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+        run_session = RunSession.objects.filter(id=data["run_session_id"]).first()
+        if not run_session:
+            record_audit(
+                action="decrypt_result_denied",
+                resource_type="run_session",
+                resource_id=data["run_session_id"],
+                actor=actor,
+                metadata={"reason": "run_session_not_found"},
+            )
+            return Response({"error": "Run session not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        envelope = getattr(run_session, "result_envelope", None)
+        if not envelope:
+            record_audit(
+                action="decrypt_result_denied",
+                resource_type="run_session",
+                resource_id=run_session.id,
+                actor=actor,
+                metadata={"reason": "result_envelope_not_found"},
+            )
+            return Response({"error": "Result envelope not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        result_payload = get_decrypted_envelope(envelope)
+        include_trials = data.get("include_trials", False)
+        trials = []
+        if include_trials:
+            for trial in run_session.trial_results.all().order_by("trial_index"):
+                trials.append(get_decrypted_trial(trial))
+
+        record_audit(
+            action="decrypt_result",
+            resource_type="run_session",
+            resource_id=run_session.id,
+            actor=actor,
+            metadata={
+                "include_trials": include_trials,
+                "trial_records_returned": len(trials),
+            },
+        )
+
+        return Response(
+            {
+                "run_session_id": run_session.id,
+                "study_slug": run_session.study.slug,
+                "status": run_session.status,
+                "result_payload": result_payload,
+                "trials": trials if include_trials else None,
+            },
+            status=status.HTTP_200_OK,
         )

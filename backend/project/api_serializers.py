@@ -33,3 +33,8 @@ class SubmitResultRequestSerializer(serializers.Serializer):
     result_payload = serializers.JSONField()
     # Optional per-trial data; each element is an arbitrary task-specific dict.
     trials = serializers.ListField(child=serializers.JSONField(), required=False, default=list)
+
+
+class DecryptResultRequestSerializer(serializers.Serializer):
+    run_session_id = serializers.UUIDField()
+    include_trials = serializers.BooleanField(required=False, default=False)

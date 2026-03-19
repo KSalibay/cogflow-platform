@@ -10,10 +10,14 @@ Verifies that:
      publish endpoint still succeeds (backward compat).
 """
 
+import os
+from unittest.mock import patch
+
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 
+from apps.audit.models import AuditEvent
 from apps.configs.models import ConfigVersion
 from apps.results.models import ResultEnvelope, TrialResult
 from apps.runs.models import RunSession
@@ -240,3 +244,104 @@ class Day5DashboardVisibilityTests(APITestCase):
         index_resp = self.client.get("/index.html")
         self.assertEqual(index_resp.status_code, status.HTTP_200_OK)
         self.assertIn("Studies Dashboard", index_resp.content.decode("utf-8"))
+
+
+class Day6PrivacyBaselineTests(APITestCase):
+    """Day 6 checks: salted hash IDs, encrypted payload storage, and decrypt audit."""
+
+    def _publish_start_submit(self, slug="day6-privacy", participant_external_id="P-D6-001"):
+        self.client.post(
+            reverse("configs-publish"),
+            data={
+                "study_slug": slug,
+                "study_name": "Day 6 Privacy Study",
+                "config_version_label": "v1",
+                "builder_version": "test",
+                "runtime_mode": "django",
+                "config": {"task_type": "rdm", "experiment_type": "trial-based"},
+            },
+            format="json",
+        )
+
+        start = self.client.post(
+            reverse("runs-start"),
+            data={"study_slug": slug, "participant_external_id": participant_external_id},
+            format="json",
+        )
+        run_session_id = start.data["run_session_id"]
+
+        result_payload = {
+            "format": "cogflow-jatos-result-v1",
+            "trial_count": 1,
+            "trials": [{"trial_index": 0, "rt": 501, "correct": True}],
+        }
+        self.client.post(
+            reverse("results-submit"),
+            data={
+                "run_session_id": run_session_id,
+                "status": "completed",
+                "trial_count": 1,
+                "result_payload": result_payload,
+                "trials": result_payload["trials"],
+            },
+            format="json",
+        )
+
+        run_session = RunSession.objects.get(id=run_session_id)
+        envelope = ResultEnvelope.objects.get(run_session=run_session)
+        return run_session, envelope, result_payload
+
+    def test_participant_identifier_is_hashed_not_plaintext(self):
+        raw_id = "P-D6-RAW-001"
+        run_session, _, _ = self._publish_start_submit(participant_external_id=raw_id)
+        self.assertNotEqual(run_session.participant_key, raw_id)
+        self.assertEqual(len(run_session.participant_key), 64)
+        self.assertNotIn(raw_id, run_session.participant_key)
+
+    def test_result_payload_is_encrypted_at_rest(self):
+        _, envelope, payload = self._publish_start_submit()
+        self.assertTrue(envelope.encrypted_payload)
+        self.assertNotIn('"format": "cogflow-jatos-result-v1"', envelope.encrypted_payload)
+        self.assertNotIn(str(payload), envelope.encrypted_payload)
+
+    def test_unauthorized_decrypt_is_denied_and_audited(self):
+        run_session, _, _ = self._publish_start_submit(slug="day6-denied")
+        resp = self.client.post(
+            reverse("results-decrypt"),
+            data={"run_session_id": run_session.id, "include_trials": True},
+            format="json",
+            HTTP_X_COGFLOW_ACTOR="researcher-denied",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(
+            AuditEvent.objects.filter(
+                action="decrypt_result_denied",
+                resource_type="run_session",
+                resource_id=str(run_session.id),
+                actor="researcher-denied",
+            ).exists()
+        )
+
+    def test_authorized_decrypt_returns_payload_and_audits(self):
+        run_session, _, _ = self._publish_start_submit(slug="day6-allowed")
+        with patch.dict(os.environ, {"DECRYPT_API_TOKEN": "token-day6"}, clear=False):
+            resp = self.client.post(
+                reverse("results-decrypt"),
+                data={"run_session_id": run_session.id, "include_trials": True},
+                format="json",
+                HTTP_X_COGFLOW_DECRYPT_TOKEN="token-day6",
+                HTTP_X_COGFLOW_ACTOR="researcher-allowed",
+            )
+
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(str(resp.data["run_session_id"]), str(run_session.id))
+        self.assertEqual(resp.data["result_payload"]["format"], "cogflow-jatos-result-v1")
+        self.assertEqual(len(resp.data["trials"]), 1)
+        self.assertTrue(
+            AuditEvent.objects.filter(
+                action="decrypt_result",
+                resource_type="run_session",
+                resource_id=str(run_session.id),
+                actor="researcher-allowed",
+            ).exists()
+        )
