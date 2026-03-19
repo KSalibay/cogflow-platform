@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CogFlow Portal - Studies Dashboard (Day 5 Draft)</title>
+    <style>
+      :root {
+        --bg: #f5f7fb;
+        --panel: #ffffff;
+        --ink: #1f2430;
+        --muted: #66738a;
+        --line: #dbe2ee;
+        --accent: #1052dc;
+        --ok: #1f8f4e;
+      }
+
+      body {
+        margin: 0;
+        font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+        background: radial-gradient(circle at top right, #eaf0ff 0%, var(--bg) 45%);
+        color: var(--ink);
+      }
+
+      .shell {
+        max-width: 1100px;
+        margin: 24px auto;
+        padding: 0 16px;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 1.35rem;
+      }
+
+      .subtitle {
+        margin: 4px 0 0;
+        color: var(--muted);
+        font-size: 0.95rem;
+      }
+
+      .btn {
+        border: 1px solid transparent;
+        background: var(--accent);
+        color: #fff;
+        border-radius: 8px;
+        padding: 9px 12px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .btn:disabled {
+        opacity: 0.6;
+        cursor: wait;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        overflow: hidden;
+      }
+
+      .status {
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 0.92rem;
+      }
+
+      .status.ok {
+        color: var(--ok);
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      th,
+      td {
+        text-align: left;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--line);
+        font-size: 0.92rem;
+        vertical-align: top;
+      }
+
+      th {
+        font-size: 0.82rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--muted);
+      }
+
+      .pill {
+        display: inline-block;
+        padding: 2px 7px;
+        border-radius: 999px;
+        font-size: 0.74rem;
+        background: #eef2fb;
+      }
+
+      .mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      }
+
+      @media (max-width: 760px) {
+        .topbar {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+
+        table,
+        thead,
+        tbody,
+        tr,
+        th,
+        td {
+          display: block;
+          width: 100%;
+        }
+
+        thead {
+          display: none;
+        }
+
+        tr {
+          border-bottom: 1px solid var(--line);
+          padding: 4px 0;
+        }
+
+        td {
+          border-bottom: 0;
+          padding: 8px 12px;
+        }
+
+        td::before {
+          content: attr(data-label);
+          display: block;
+          color: var(--muted);
+          font-size: 0.73rem;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          margin-bottom: 3px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <div class="topbar">
+        <div>
+          <h1>Studies Dashboard (Day 5 Draft)</h1>
+          <p class="subtitle">Auto-updating portal view for published studies and recent run metrics.</p>
+        </div>
+        <button id="refreshBtn" class="btn">Refresh</button>
+      </div>
+
+      <section class="panel">
+        <div id="status" class="status">Loading studies...</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Study</th>
+              <th>Runtime</th>
+              <th>Latest Config</th>
+              <th>Run Count</th>
+              <th>Last Result</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </section>
+    </div>
+
+    <script>
+      const API_BASE = "";
+
+      function formatIso(isoText) {
+        if (!isoText) return "-";
+        const dt = new Date(isoText);
+        if (Number.isNaN(dt.getTime())) return String(isoText);
+        return dt.toLocaleString();
+      }
+
+      function renderRows(studies) {
+        const tbody = document.getElementById("rows");
+        tbody.innerHTML = "";
+
+        if (!Array.isArray(studies) || studies.length === 0) {
+          tbody.innerHTML = '<tr><td data-label="Info" colspan="5">No studies yet. Publish from Builder to populate this dashboard.</td></tr>';
+          return;
+        }
+
+        for (const s of studies) {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td data-label="Study">
+              <div><strong>${s.study_name || s.study_slug || "(unnamed)"}</strong></div>
+              <div class="mono">${s.study_slug || "-"}</div>
+            </td>
+            <td data-label="Runtime"><span class="pill">${s.runtime_mode || "-"}</span></td>
+            <td data-label="Latest Config" class="mono">${s.latest_config_version || "-"}</td>
+            <td data-label="Run Count">${typeof s.run_count === "number" ? s.run_count : "-"}</td>
+            <td data-label="Last Result">${formatIso(s.last_result_at)}</td>
+          `;
+          tbody.appendChild(tr);
+        }
+      }
+
+      async function loadStudies() {
+        const statusEl = document.getElementById("status");
+        const refreshBtn = document.getElementById("refreshBtn");
+        refreshBtn.disabled = true;
+        statusEl.className = "status";
+        statusEl.textContent = "Refreshing studies...";
+
+        try {
+          const response = await fetch(`${API_BASE}/api/v1/studies`);
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const data = await response.json();
+          renderRows(data.studies || []);
+          statusEl.className = "status ok";
+          statusEl.textContent = `Loaded ${(data.studies || []).length} study entries at ${new Date().toLocaleTimeString()}.`;
+        } catch (error) {
+          statusEl.className = "status";
+          statusEl.textContent = `Failed to load studies: ${error && error.message ? error.message : String(error)}`;
+        } finally {
+          refreshBtn.disabled = false;
+        }
+      }
+
+      document.getElementById("refreshBtn").addEventListener("click", loadStudies);
+      loadStudies();
+    </script>
+  </body>
+</html>

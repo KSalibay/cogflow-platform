@@ -231,3 +231,12 @@ class Day5DashboardVisibilityTests(APITestCase):
         self.assertIsNotNone(row)
         self.assertGreaterEqual(row["run_count"], 1)
         self.assertIsNotNone(row["last_result_at"])
+
+    def test_portal_dashboard_html_is_served(self):
+        root_resp = self.client.get("/")
+        self.assertEqual(root_resp.status_code, status.HTTP_200_OK)
+        self.assertIn("text/html", root_resp["Content-Type"])
+
+        index_resp = self.client.get("/index.html")
+        self.assertEqual(index_resp.status_code, status.HTTP_200_OK)
+        self.assertIn("Studies Dashboard", index_resp.content.decode("utf-8"))

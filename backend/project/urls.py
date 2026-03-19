@@ -5,6 +5,7 @@ from rest_framework.schemas import get_schema_view
 
 from project.api_views import (
     HealthView,
+    PortalDashboardView,
     PublishConfigView,
     StartRunView,
     SubmitResultView,
@@ -20,6 +21,9 @@ schema_view = get_schema_view(
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("", PortalDashboardView.as_view(), name="portal-home"),
+    path("index.html", PortalDashboardView.as_view(), name="portal-index"),
+    path("portal/", PortalDashboardView.as_view(), name="portal-dashboard"),
     path("healthz", HealthView.as_view(), name="healthz"),
     path("api/schema", schema_view, name="openapi-schema"),
     path("api/v1/studies", StudiesListView.as_view(), name="studies-list"),

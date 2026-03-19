@@ -1,5 +1,6 @@
 from django.db import transaction
 from django.db.models import Count, Max
+from django.shortcuts import render
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.response import Response
@@ -31,6 +32,13 @@ def record_audit(action: str, resource_type: str, resource_id: str, metadata: di
 class HealthView(APIView):
     def get(self, request):
         return Response({"ok": True})
+
+
+class PortalDashboardView(APIView):
+    """Serve the portal dashboard draft as a Django template."""
+
+    def get(self, request):
+        return render(request, "portal/index.html")
 
 
 class StudiesListView(APIView):
