@@ -38,3 +38,16 @@ class SubmitResultRequestSerializer(serializers.Serializer):
 class DecryptResultRequestSerializer(serializers.Serializer):
     run_session_id = serializers.UUIDField()
     include_trials = serializers.BooleanField(required=False, default=False)
+
+
+class AuthLoginRequestSerializer(serializers.Serializer):
+    username = serializers.CharField(max_length=150)
+    password = serializers.CharField(max_length=128)
+
+
+class TotpSetupRequestSerializer(serializers.Serializer):
+    regenerate = serializers.BooleanField(required=False, default=False)
+
+
+class TotpVerifyRequestSerializer(serializers.Serializer):
+    code = serializers.CharField(max_length=12)

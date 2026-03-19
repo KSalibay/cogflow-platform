@@ -4,6 +4,8 @@ from rest_framework.renderers import JSONOpenAPIRenderer
 from rest_framework.schemas import get_schema_view
 
 from project.api_views import (
+    AuthLoginView,
+    AuthLogoutView,
     DecryptResultView,
     HealthView,
     PortalDashboardView,
@@ -11,6 +13,8 @@ from project.api_views import (
     StartRunView,
     SubmitResultView,
     StudiesListView,
+    TotpSetupView,
+    TotpVerifyView,
 )
 
 schema_view = get_schema_view(
@@ -27,6 +31,10 @@ urlpatterns = [
     path("portal/", PortalDashboardView.as_view(), name="portal-dashboard"),
     path("healthz", HealthView.as_view(), name="healthz"),
     path("api/schema", schema_view, name="openapi-schema"),
+    path("api/v1/auth/login", AuthLoginView.as_view(), name="auth-login"),
+    path("api/v1/auth/logout", AuthLogoutView.as_view(), name="auth-logout"),
+    path("api/v1/auth/mfa/setup", TotpSetupView.as_view(), name="auth-mfa-setup"),
+    path("api/v1/auth/mfa/verify", TotpVerifyView.as_view(), name="auth-mfa-verify"),
     path("api/v1/studies", StudiesListView.as_view(), name="studies-list"),
     path("api/v1/configs/publish", PublishConfigView.as_view(), name="configs-publish"),
     path("api/v1/runs/start", StartRunView.as_view(), name="runs-start"),

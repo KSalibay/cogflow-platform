@@ -41,6 +41,7 @@ servers:
     description: Local Docker compose API (alt hostname)
 tags:
   - name: Ops
+  - name: Auth
   - name: Studies
   - name: Builder
   - name: Interpreter
@@ -73,6 +74,92 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/StudiesListResponse'
+
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      summary: Session login for platform users
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthLoginRequest'
+      responses:
+        '200':
+          description: Login succeeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthLoginResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+
+  /api/v1/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout current session
+      responses:
+        '200':
+          description: Logout succeeded
+
+  /api/v1/auth/mfa/setup:
+    post:
+      tags: [Auth]
+      summary: Generate TOTP setup secret and provisioning URI for authenticated user
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TotpSetupRequest'
+      responses:
+        '200':
+          description: Setup data returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TotpSetupResponse'
+        '401':
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+
+  /api/v1/auth/mfa/verify:
+    post:
+      tags: [Auth]
+      summary: Verify TOTP code and mark MFA verified in current session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TotpVerifyRequest'
+      responses:
+        '200':
+          description: TOTP verification succeeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TotpVerifyResponse'
+        '401':
+          description: Invalid code or not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+        '400':
+          description: TOTP not set up
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
 
   /api/v1/configs/publish:
     post:
@@ -165,7 +252,9 @@ paths:
       tags: [Interpreter]
       summary: Protected decrypt/read endpoint for stored result payloads
       description: |
-        Requires header `X-CogFlow-Decrypt-Token` matching `DECRYPT_API_TOKEN`.
+        Requires authenticated user session and successful TOTP verification.
+        Decrypt access is denied unless MFA is enabled and verified within the
+        configured `MFA_REAUTH_SECONDS` window.
         All denied and successful decrypt attempts are recorded in `AuditEvent`.
       requestBody:
         required: true
@@ -181,7 +270,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/DecryptResultResponse'
         '403':
-          description: Invalid or missing decrypt token
+          description: MFA verification required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+        '401':
+          description: Authentication required
           content:
             application/json:
               schema:
@@ -214,6 +309,67 @@ components:
       type: object
       additionalProperties: true
       description: DRF validation error object keyed by field name.
+
+    AuthLoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+
+    AuthLoginResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        username:
+          type: string
+        mfa_enabled:
+          type: boolean
+      required: [ok, username, mfa_enabled]
+
+    TotpSetupRequest:
+      type: object
+      properties:
+        regenerate:
+          type: boolean
+          default: false
+
+    TotpSetupResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        username:
+          type: string
+        totp_secret:
+          type: string
+        otpauth_uri:
+          type: string
+      required: [ok, username, totp_secret, otpauth_uri]
+
+    TotpVerifyRequest:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+
+    TotpVerifyResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        username:
+          type: string
+        mfa_enabled:
+          type: boolean
+        mfa_verified_at:
+          type: string
+          format: date-time
+      required: [ok, username, mfa_enabled, mfa_verified_at]
 
     PublishConfigRequest:
       type: object
@@ -426,5 +582,5 @@ components:
 - `POST /api/v1/configs/publish` is **upsert-safe** by `study_slug` and `config_version_label`.
 - `POST /api/v1/runs/start` uses `study_slug` (not `study_id`) in v1.
 - `POST /api/v1/results/submit` supports optional `trials[]` for per-trial persistence.
-- `POST /api/v1/results/decrypt` is deny-by-default and requires `X-CogFlow-Decrypt-Token`.
+- `POST /api/v1/results/decrypt` requires user session auth + TOTP MFA verification.
 - Day 3 and onward endpoints are covered by integration tests in `backend/project/tests/test_day3_api_contract.py` and `backend/project/tests/test_day4_integration.py`.

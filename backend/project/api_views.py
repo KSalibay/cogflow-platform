@@ -1,5 +1,8 @@
 import os
+from datetime import timedelta
 
+import pyotp
+from django.contrib.auth import authenticate, login, logout
 from django.db import transaction
 from django.db.models import Count, Max
 from django.shortcuts import render
@@ -19,10 +22,13 @@ from apps.results.services import (
     store_trial_results,
 )
 from project.api_serializers import (
+    AuthLoginRequestSerializer,
     DecryptResultRequestSerializer,
     PublishConfigRequestSerializer,
     StartRunRequestSerializer,
     SubmitResultRequestSerializer,
+    TotpSetupRequestSerializer,
+    TotpVerifyRequestSerializer,
 )
 from project.constants import RUN_STATUS_COMPLETED
 from project.security import hash_identifier
@@ -47,6 +53,175 @@ def record_audit(
 class HealthView(APIView):
     def get(self, request):
         return Response({"ok": True})
+
+
+def _get_actor_from_request(request) -> str:
+    if getattr(request, "user", None) and request.user.is_authenticated:
+        return request.user.username
+    return (request.headers.get("X-CogFlow-Actor") or "unknown").strip() or "unknown"
+
+
+def _mark_mfa_verified(request) -> str:
+    now_iso = timezone.now().isoformat()
+    request.session["mfa_verified_at"] = now_iso
+    request.session.modified = True
+    return now_iso
+
+
+def _is_mfa_session_fresh(request) -> bool:
+    stamp = request.session.get("mfa_verified_at")
+    if not stamp:
+        return False
+    try:
+        ts = timezone.datetime.fromisoformat(stamp)
+    except Exception:
+        return False
+    if timezone.is_naive(ts):
+        ts = timezone.make_aware(ts)
+    max_age_seconds = int(os.getenv("MFA_REAUTH_SECONDS", "900"))
+    return timezone.now() - ts <= timedelta(seconds=max_age_seconds)
+
+
+class AuthLoginView(APIView):
+    """Session login endpoint for portal user flows."""
+
+    @transaction.atomic
+    def post(self, request):
+        serializer = AuthLoginRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        user = authenticate(request, username=data["username"], password=data["password"])
+        if not user:
+            return Response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        login(request, user)
+        # Require fresh MFA verification for sensitive actions after each login.
+        request.session.pop("mfa_verified_at", None)
+        request.session["mfa_totp_enabled"] = bool(request.session.get("mfa_totp_enabled", False))
+
+        record_audit(
+            action="auth_login",
+            resource_type="user",
+            resource_id=user.id,
+            actor=user.username,
+            metadata={"mfa_enabled": bool(request.session.get("mfa_totp_enabled", False))},
+        )
+
+        return Response(
+            {
+                "ok": True,
+                "username": user.username,
+                "mfa_enabled": bool(request.session.get("mfa_totp_enabled", False)),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class AuthLogoutView(APIView):
+    @transaction.atomic
+    def post(self, request):
+        if request.user.is_authenticated:
+            record_audit(
+                action="auth_logout",
+                resource_type="user",
+                resource_id=request.user.id,
+                actor=request.user.username,
+            )
+        logout(request)
+        return Response({"ok": True}, status=status.HTTP_200_OK)
+
+
+class TotpSetupView(APIView):
+    """Generate or return TOTP setup material for the logged-in user."""
+
+    @transaction.atomic
+    def post(self, request):
+        if not request.user.is_authenticated:
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        serializer = TotpSetupRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        regenerate = data.get("regenerate", False)
+
+        secret = request.session.get("mfa_totp_secret")
+        if not secret or regenerate:
+            secret = pyotp.random_base32()
+            request.session["mfa_totp_secret"] = secret
+            request.session["mfa_totp_enabled"] = False
+            request.session.pop("mfa_verified_at", None)
+            request.session.modified = True
+
+        issuer = os.getenv("MFA_TOTP_ISSUER", "CogFlow Platform")
+        otpauth_uri = pyotp.TOTP(secret).provisioning_uri(name=request.user.username, issuer_name=issuer)
+
+        record_audit(
+            action="mfa_totp_setup",
+            resource_type="user",
+            resource_id=request.user.id,
+            actor=request.user.username,
+            metadata={"regenerate": regenerate},
+        )
+
+        return Response(
+            {
+                "ok": True,
+                "username": request.user.username,
+                "totp_secret": secret,
+                "otpauth_uri": otpauth_uri,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class TotpVerifyView(APIView):
+    """Verify a TOTP code and mark MFA as active for this session."""
+
+    @transaction.atomic
+    def post(self, request):
+        if not request.user.is_authenticated:
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        serializer = TotpVerifyRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        code = serializer.validated_data["code"].strip()
+
+        secret = request.session.get("mfa_totp_secret")
+        if not secret:
+            return Response({"error": "TOTP not set up"}, status=status.HTTP_400_BAD_REQUEST)
+
+        totp = pyotp.TOTP(secret)
+        if not totp.verify(code, valid_window=1):
+            record_audit(
+                action="mfa_totp_verify_failed",
+                resource_type="user",
+                resource_id=request.user.id,
+                actor=request.user.username,
+            )
+            return Response({"error": "Invalid TOTP code"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        request.session["mfa_totp_enabled"] = True
+        request.session.modified = True
+        stamp = _mark_mfa_verified(request)
+
+        record_audit(
+            action="mfa_totp_verify",
+            resource_type="user",
+            resource_id=request.user.id,
+            actor=request.user.username,
+        )
+
+        return Response(
+            {
+                "ok": True,
+                "username": request.user.username,
+                "mfa_enabled": True,
+                "mfa_verified_at": stamp,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class PortalDashboardView(APIView):
@@ -229,23 +404,34 @@ class DecryptResultView(APIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        actor = (request.headers.get("X-CogFlow-Actor") or "unknown").strip() or "unknown"
-        provided_token = (request.headers.get("X-CogFlow-Decrypt-Token") or "").strip()
-        expected_token = (os.getenv("DECRYPT_API_TOKEN") or "").strip()
+        actor = _get_actor_from_request(request)
 
-        # Deny by default unless a token is explicitly configured and matched.
-        if not expected_token or provided_token != expected_token:
+        if not request.user.is_authenticated:
             record_audit(
                 action="decrypt_result_denied",
                 resource_type="run_session",
                 resource_id=data["run_session_id"],
                 actor=actor,
                 metadata={
-                    "reason": "invalid_or_missing_token",
+                    "reason": "unauthenticated",
                     "include_trials": data.get("include_trials", False),
                 },
             )
-            return Response({"error": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        mfa_enabled = bool(request.session.get("mfa_totp_enabled", False))
+        if not mfa_enabled or not _is_mfa_session_fresh(request):
+            record_audit(
+                action="decrypt_result_denied",
+                resource_type="run_session",
+                resource_id=data["run_session_id"],
+                actor=actor,
+                metadata={
+                    "reason": "mfa_required",
+                    "mfa_enabled": mfa_enabled,
+                },
+            )
+            return Response({"error": "MFA verification required"}, status=status.HTTP_403_FORBIDDEN)
 
         run_session = RunSession.objects.filter(id=data["run_session_id"]).first()
         if not run_session:

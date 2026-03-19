@@ -10,9 +10,8 @@ Verifies that:
      publish endpoint still succeeds (backward compat).
 """
 
-import os
-from unittest.mock import patch
-
+import pyotp
+from django.contrib.auth.models import User
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -249,6 +248,29 @@ class Day5DashboardVisibilityTests(APITestCase):
 class Day6PrivacyBaselineTests(APITestCase):
     """Day 6 checks: salted hash IDs, encrypted payload storage, and decrypt audit."""
 
+    def _create_user_and_complete_mfa(self, username="day6_user"):
+        user = User.objects.create_user(username=username, password="pass-1234")
+
+        login_resp = self.client.post(
+            reverse("auth-login"),
+            data={"username": username, "password": "pass-1234"},
+            format="json",
+        )
+        self.assertEqual(login_resp.status_code, status.HTTP_200_OK)
+
+        setup_resp = self.client.post(reverse("auth-mfa-setup"), data={}, format="json")
+        self.assertEqual(setup_resp.status_code, status.HTTP_200_OK)
+        secret = setup_resp.data["totp_secret"]
+
+        code = pyotp.TOTP(secret).now()
+        verify_resp = self.client.post(
+            reverse("auth-mfa-verify"),
+            data={"code": code},
+            format="json",
+        )
+        self.assertEqual(verify_resp.status_code, status.HTTP_200_OK)
+        return user
+
     def _publish_start_submit(self, slug="day6-privacy", participant_external_id="P-D6-001"):
         self.client.post(
             reverse("configs-publish"),
@@ -312,7 +334,7 @@ class Day6PrivacyBaselineTests(APITestCase):
             format="json",
             HTTP_X_COGFLOW_ACTOR="researcher-denied",
         )
-        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
         self.assertTrue(
             AuditEvent.objects.filter(
                 action="decrypt_result_denied",
@@ -324,14 +346,12 @@ class Day6PrivacyBaselineTests(APITestCase):
 
     def test_authorized_decrypt_returns_payload_and_audits(self):
         run_session, _, _ = self._publish_start_submit(slug="day6-allowed")
-        with patch.dict(os.environ, {"DECRYPT_API_TOKEN": "token-day6"}, clear=False):
-            resp = self.client.post(
-                reverse("results-decrypt"),
-                data={"run_session_id": run_session.id, "include_trials": True},
-                format="json",
-                HTTP_X_COGFLOW_DECRYPT_TOKEN="token-day6",
-                HTTP_X_COGFLOW_ACTOR="researcher-allowed",
-            )
+        self._create_user_and_complete_mfa(username="researcher_allowed")
+        resp = self.client.post(
+            reverse("results-decrypt"),
+            data={"run_session_id": run_session.id, "include_trials": True},
+            format="json",
+        )
 
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.assertEqual(str(resp.data["run_session_id"]), str(run_session.id))
@@ -342,6 +362,33 @@ class Day6PrivacyBaselineTests(APITestCase):
                 action="decrypt_result",
                 resource_type="run_session",
                 resource_id=str(run_session.id),
-                actor="researcher-allowed",
+                actor="researcher_allowed",
+            ).exists()
+        )
+
+    def test_decrypt_requires_fresh_mfa_in_current_session(self):
+        run_session, _, _ = self._publish_start_submit(slug="day6-fresh-mfa")
+
+        user = User.objects.create_user(username="no_mfa_yet", password="pass-1234")
+        login_resp = self.client.post(
+            reverse("auth-login"),
+            data={"username": "no_mfa_yet", "password": "pass-1234"},
+            format="json",
+        )
+        self.assertEqual(login_resp.status_code, status.HTTP_200_OK)
+
+        # User is authenticated but has not completed TOTP verification in this session.
+        resp = self.client.post(
+            reverse("results-decrypt"),
+            data={"run_session_id": run_session.id},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(
+            AuditEvent.objects.filter(
+                action="decrypt_result_denied",
+                resource_type="run_session",
+                resource_id=str(run_session.id),
+                actor=user.username,
             ).exists()
         )

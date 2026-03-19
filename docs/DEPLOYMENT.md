@@ -262,3 +262,20 @@ Expected pass signal:
 - Script prints `[PASS] Day 5 vertical slice demo succeeded`
 - `/api/v1/studies` entry for the selected slug has `run_count > 0`
 - `/api/v1/studies` entry has non-null `last_result_at`
+
+## Day 6 — User-Based TOTP MFA (Decrypt Protection)
+
+Sensitive decrypt/read access now requires:
+1. Authenticated user session (`POST /api/v1/auth/login`)
+2. TOTP setup (`POST /api/v1/auth/mfa/setup`)
+3. TOTP verification (`POST /api/v1/auth/mfa/verify`)
+4. Decrypt request within `MFA_REAUTH_SECONDS` window
+
+Environment controls:
+- `MFA_TOTP_ISSUER` (default: `CogFlow Platform`)
+- `MFA_REAUTH_SECONDS` (default: `900`)
+
+Security behavior:
+- `POST /api/v1/results/decrypt` returns `401` when unauthenticated
+- returns `403` when session has no fresh MFA verification
+- logs both denied and successful decrypt attempts to `AuditEvent`
