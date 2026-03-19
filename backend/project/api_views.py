@@ -15,6 +15,7 @@ from apps.audit.models import AuditEvent
 from apps.configs.models import ConfigVersion
 from apps.runs.models import RunSession
 from apps.studies.models import Study
+from apps.users.services import get_or_create_profile
 from apps.results.services import (
     get_decrypted_envelope,
     get_decrypted_trial,
@@ -31,7 +32,7 @@ from project.api_serializers import (
     TotpVerifyRequestSerializer,
 )
 from project.constants import RUN_STATUS_COMPLETED
-from project.security import hash_identifier
+from project.security import decrypt_payload, encrypt_payload, hash_identifier
 
 
 def record_audit(
@@ -98,21 +99,21 @@ class AuthLoginView(APIView):
         login(request, user)
         # Require fresh MFA verification for sensitive actions after each login.
         request.session.pop("mfa_verified_at", None)
-        request.session["mfa_totp_enabled"] = bool(request.session.get("mfa_totp_enabled", False))
+        profile = get_or_create_profile(user)
 
         record_audit(
             action="auth_login",
             resource_type="user",
             resource_id=user.id,
             actor=user.username,
-            metadata={"mfa_enabled": bool(request.session.get("mfa_totp_enabled", False))},
+            metadata={"mfa_enabled": profile.mfa_enabled},
         )
 
         return Response(
             {
                 "ok": True,
                 "username": user.username,
-                "mfa_enabled": bool(request.session.get("mfa_totp_enabled", False)),
+                "mfa_enabled": profile.mfa_enabled,
             },
             status=status.HTTP_200_OK,
         )
@@ -144,13 +145,18 @@ class TotpSetupView(APIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
+        profile = get_or_create_profile(request.user)
         regenerate = data.get("regenerate", False)
 
-        secret = request.session.get("mfa_totp_secret")
-        if not secret or regenerate:
+        secret = None
+        if profile.mfa_totp_secret_encrypted and not regenerate:
+            secret = decrypt_payload(profile.mfa_totp_secret_encrypted)
+        else:
             secret = pyotp.random_base32()
-            request.session["mfa_totp_secret"] = secret
-            request.session["mfa_totp_enabled"] = False
+            profile.mfa_totp_secret_encrypted = encrypt_payload(secret)
+            profile.mfa_enabled = False
+            profile.mfa_last_verified_at = None
+            profile.save(update_fields=["mfa_totp_secret_encrypted", "mfa_enabled", "mfa_last_verified_at"])
             request.session.pop("mfa_verified_at", None)
             request.session.modified = True
 
@@ -188,10 +194,11 @@ class TotpVerifyView(APIView):
         serializer.is_valid(raise_exception=True)
         code = serializer.validated_data["code"].strip()
 
-        secret = request.session.get("mfa_totp_secret")
-        if not secret:
+        profile = get_or_create_profile(request.user)
+        if not profile.mfa_totp_secret_encrypted:
             return Response({"error": "TOTP not set up"}, status=status.HTTP_400_BAD_REQUEST)
 
+        secret = decrypt_payload(profile.mfa_totp_secret_encrypted)
         totp = pyotp.TOTP(secret)
         if not totp.verify(code, valid_window=1):
             record_audit(
@@ -202,8 +209,9 @@ class TotpVerifyView(APIView):
             )
             return Response({"error": "Invalid TOTP code"}, status=status.HTTP_401_UNAUTHORIZED)
 
-        request.session["mfa_totp_enabled"] = True
-        request.session.modified = True
+        profile.mfa_enabled = True
+        profile.mfa_last_verified_at = timezone.now()
+        profile.save(update_fields=["mfa_enabled", "mfa_last_verified_at"])
         stamp = _mark_mfa_verified(request)
 
         record_audit(
@@ -217,7 +225,7 @@ class TotpVerifyView(APIView):
             {
                 "ok": True,
                 "username": request.user.username,
-                "mfa_enabled": True,
+                "mfa_enabled": profile.mfa_enabled,
                 "mfa_verified_at": stamp,
             },
             status=status.HTTP_200_OK,
@@ -226,6 +234,8 @@ class TotpVerifyView(APIView):
 
 class PortalDashboardView(APIView):
     """Serve the portal dashboard draft as a Django template."""
+
+    schema = None
 
     def get(self, request):
         return render(request, "portal/index.html")
@@ -419,7 +429,8 @@ class DecryptResultView(APIView):
             )
             return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
 
-        mfa_enabled = bool(request.session.get("mfa_totp_enabled", False))
+        profile = get_or_create_profile(request.user)
+        mfa_enabled = bool(profile.mfa_enabled)
         if not mfa_enabled or not _is_mfa_session_fresh(request):
             record_audit(
                 action="decrypt_result_denied",

@@ -392,3 +392,70 @@ class Day6PrivacyBaselineTests(APITestCase):
                 actor=user.username,
             ).exists()
         )
+
+    def test_totp_enrollment_persists_per_user_across_sessions(self):
+        user = User.objects.create_user(username="persist_mfa", password="pass-1234")
+
+        login1 = self.client.post(
+            reverse("auth-login"),
+            data={"username": "persist_mfa", "password": "pass-1234"},
+            format="json",
+        )
+        self.assertEqual(login1.status_code, status.HTTP_200_OK)
+        self.assertFalse(login1.data["mfa_enabled"])
+
+        setup1 = self.client.post(reverse("auth-mfa-setup"), data={}, format="json")
+        self.assertEqual(setup1.status_code, status.HTTP_200_OK)
+        secret_1 = setup1.data["totp_secret"]
+
+        code_1 = pyotp.TOTP(secret_1).now()
+        verify1 = self.client.post(
+            reverse("auth-mfa-verify"),
+            data={"code": code_1},
+            format="json",
+        )
+        self.assertEqual(verify1.status_code, status.HTTP_200_OK)
+        self.assertTrue(verify1.data["mfa_enabled"])
+
+        self.client.post(reverse("auth-logout"), data={}, format="json")
+
+        login2 = self.client.post(
+            reverse("auth-login"),
+            data={"username": "persist_mfa", "password": "pass-1234"},
+            format="json",
+        )
+        self.assertEqual(login2.status_code, status.HTTP_200_OK)
+        self.assertTrue(login2.data["mfa_enabled"])
+
+        # Setup should return the same persisted secret when regenerate=false.
+        setup2 = self.client.post(reverse("auth-mfa-setup"), data={}, format="json")
+        self.assertEqual(setup2.status_code, status.HTTP_200_OK)
+        self.assertEqual(setup2.data["totp_secret"], secret_1)
+
+        # But decrypt still requires fresh MFA verification after login.
+        run_session, _, _ = self._publish_start_submit(slug="day6-persist-mfa")
+        decrypt_before_verify = self.client.post(
+            reverse("results-decrypt"),
+            data={"run_session_id": run_session.id},
+            format="json",
+        )
+        self.assertEqual(decrypt_before_verify.status_code, status.HTTP_403_FORBIDDEN)
+
+        code_2 = pyotp.TOTP(secret_1).now()
+        verify2 = self.client.post(
+            reverse("auth-mfa-verify"),
+            data={"code": code_2},
+            format="json",
+        )
+        self.assertEqual(verify2.status_code, status.HTTP_200_OK)
+
+        decrypt_after_verify = self.client.post(
+            reverse("results-decrypt"),
+            data={"run_session_id": run_session.id},
+            format="json",
+        )
+        self.assertEqual(decrypt_after_verify.status_code, status.HTTP_200_OK)
+
+        user.refresh_from_db()
+        self.assertTrue(user.profile.mfa_enabled)
+        self.assertTrue(bool(user.profile.mfa_totp_secret_encrypted))
