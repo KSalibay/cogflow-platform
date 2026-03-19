@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>CogFlow Interpreter (JATOS)</title>
+
+  <link rel="icon" href="data:," />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- jsPsych v8 -->
+  <link href="https://unpkg.com/jspsych@8.2.3/css/jspsych.css" rel="stylesheet" />
+
+  <style>
+    :root {
+      --psy-font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+
+      /* CogFlow palette */
+      --cf-ash-grey: #BAC7BE;
+      --cf-lilac-ash: #AE8CA3;
+      --cf-olive-wood: #7B6B43;
+      --cf-twilight-indigo: #3A405A;
+      --cf-space-indigo: #30334A;
+      --cf-deep-walnut: #3F3221;
+
+      /* Default theme (dark) */
+      --psy-bg: var(--cf-space-indigo);
+      --psy-fg: rgba(186, 199, 190, 0.90);
+      --psy-fg-strong: rgba(186, 199, 190, 0.96);
+      --psy-muted: rgba(186, 199, 190, 0.78);
+      --psy-border: rgba(186, 199, 190, 0.18);
+      --psy-surface: rgba(58, 64, 90, 0.55);
+      --psy-shadow: 0 14px 50px rgba(15, 18, 30, 0.55);
+      --psy-accent: var(--cf-lilac-ash);
+
+      /* Some tasks (e.g., canvas-based) may prefer a fixed dark stage */
+      --psy-task-bg: var(--cf-space-indigo);
+    }
+
+    html[data-psy-theme="light"] {
+      --psy-bg: #f6f7f7;
+      --psy-fg: rgba(35, 39, 66, 0.92);
+      --psy-fg-strong: rgba(35, 39, 66, 0.98);
+      --psy-muted: rgba(35, 39, 66, 0.72);
+      --psy-border: rgba(35, 39, 66, 0.16);
+      --psy-surface: rgba(186, 199, 190, 0.45);
+      --psy-shadow: 0 14px 50px rgba(35, 39, 66, 0.18);
+      --psy-accent: var(--cf-twilight-indigo);
+
+      /* Keep some tasks dark by default even in light UI mode */
+      --psy-task-bg: var(--cf-space-indigo);
+    }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: var(--psy-bg);
+      color: var(--psy-fg);
+      font-family: var(--psy-font-sans);
+    }
+
+    body {
+      /* Avoid 100vh "address bar overlap" issues on mobile browsers */
+      min-height: 100vh;
+      min-height: 100svh;
+      min-height: 100dvh;
+    }
+
+    #jspsych-target {
+      width: 100%;
+      min-height: 100vh;
+      min-height: 100svh;
+      min-height: 100dvh;
+      display: block;
+      position: relative;
+    }
+
+    /* Ensure jsPsych's internal wrappers don't clip full-viewport plugins */
+    .jspsych-display-element {
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+      min-height: 100vh;
+      min-height: 100svh;
+      min-height: 100dvh;
+      overflow: visible;
+
+      /* Override jspsych.css default (often justify-content:flex-start) */
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: center !important;
+      justify-content: center !important;
+
+      /* Keep centered content clear of notches/URL bar overlays */
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+      box-sizing: border-box;
+    }
+
+    #jspsych-content {
+      width: 100%;
+      height: 100%;
+      max-width: none;
+      margin: 0;
+
+      /* Center typical stimulus blocks even when the plugin's wrapper has no height */
+      display: grid !important;
+      place-items: center !important;
+      min-height: 100vh;
+      min-height: 100svh;
+      min-height: 100dvh;
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+      box-sizing: border-box;
+    }
+
+    #jspsych-content > * {
+      width: 100%;
+    }
+
+    .jspsych-content-wrapper {
+      width: 100%;
+      height: 100%;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+    }
+
+    /* Generic centered stage for instruction-like screens (used by several CogFlow plugins) */
+    .psy-wrap {
+      width: 100%;
+      min-height: 100vh;
+      min-height: 100svh;
+      min-height: 100dvh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--psy-bg);
+      color: var(--psy-fg);
+    }
+    .psy-stage {
+      width: 100%;
+      padding: clamp(18px, 3vw, 32px);
+      box-sizing: border-box;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .psy-text {
+      width: min(900px, 100%);
+      text-align: left;
+      line-height: 1.5;
+      font-size: 16px;
+    }
+    .psy-muted {
+      opacity: 0.78;
+    }
+    .psy-btn-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 16px;
+    }
+    .psy-btn {
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid var(--psy-border);
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+    }
+    .psy-btn-primary {
+      background: var(--psy-accent);
+      border-color: rgba(0, 0, 0, 0.0);
+      color: var(--cf-ash-grey);
+    }
+  </style>
+</head>
+<body>
+  <div id="jspsych-target"></div>
+
+  <!-- Ensure JATOS API is available (some deployments don't auto-inject it into component HTML). -->
+  <script>
+    (function loadJatosApi() {
+      try {
+        if (typeof window.jatos !== 'undefined' && window.jatos) return;
+      } catch {
+        // ignore
+      }
+
+      const tryLoad = (src, onDone) => {
+        const s = document.createElement('script');
+        s.src = src;
+        s.async = true;
+        s.onload = () => onDone(true);
+        s.onerror = () => onDone(false);
+        document.head.appendChild(s);
+      };
+
+      const candidates = [
+        '/assets/javascripts/jatos.js',
+        '/jatos.js',
+        '/jatos/assets/javascripts/jatos.js',
+        '/jatos/jatos.js'
+      ];
+
+      const loadNext = (i) => {
+        if (i >= candidates.length) return;
+        const src = candidates[i];
+        tryLoad(src, (ok) => {
+          try {
+            console.log('[Interpreter] JATOS API load', ok ? 'OK' : 'FAIL', src);
+          } catch {
+            // ignore
+          }
+          if (ok) return;
+          loadNext(i + 1);
+        });
+      };
+
+      loadNext(0);
+    })();
+  </script>
+
+  <!-- jsPsych core + plugins (browser/UMD builds) -->
+  <script src="https://unpkg.com/jspsych@8.2.3/dist/index.browser.min.js"></script>
+  <script src="https://unpkg.com/@jspsych/plugin-html-keyboard-response@2.1.0/dist/index.browser.min.js"></script>
+  <script src="https://unpkg.com/@jspsych/plugin-html-button-response@2/dist/index.browser.min.js"></script>
+
+  <!-- Interpreter runtime -->
+  <script>
+    // Demo default: Token Store (Cloudflare Worker) base URL.
+    // For distribution: change this value (or remove to rely on JATOS component properties).
+    window.COGFLOW_TOKEN_STORE_BASE_URL = 'https://cool-star-379d.kami-salibayeva.workers.dev';
+
+    // Optional: component-internal token-store settings (no URL params; no Component Properties required).
+    // Paste values from the Builder export clipboard here:
+    //   window.COGFLOW_TOKEN_STORE_CONFIG_ID = '...';
+    //   window.COGFLOW_TOKEN_STORE_READ_TOKEN = '...';
+    // window.COGFLOW_TOKEN_STORE_CONFIG_ID = '';
+    // window.COGFLOW_TOKEN_STORE_READ_TOKEN = '';
+
+    // Default for JATOS: do NOT use the legacy URL param mechanism (?id=...).
+    // Provide token-store settings via Component Properties, or paste a full config JSON below.
+    window.COGFLOW_DISABLE_URL_ID = true;
+  </script>
+
+  <!-- Optional: paste a full config JSON here to run without any URL params or Component Properties. -->
+  <script id="cogflow_component_config_json" type="application/json"></script>
+
+  <script>
+    (function loadInterpreterScripts() {
+      const p = (window.location && typeof window.location.pathname === 'string') ? window.location.pathname : '';
+      const parts = p.split('/').filter(Boolean);
+      const publixIdx = parts.indexOf('publix');
+      const studyId = (publixIdx >= 0 && parts.length > publixIdx + 1) ? parts[publixIdx + 1] : '';
+      const componentId = (publixIdx >= 0 && parts.length > publixIdx + 2) ? parts[publixIdx + 2] : '';
+
+      const scripts = [
+        'src/drtEngine.js?v=20260223-3',
+        'src/rdmEngine.js?v=20260207',
+        'src/jspsych-rdm.js?v=20260207',
+        'src/jspsych-rdm-continuous.js?v=20260207',
+        'src/jspsych-survey-response.js?v=20260207',
+        'src/jspsych-flanker.js?v=20260207',
+        'src/jspsych-sart.js?v=20260207',
+        'src/jspsych-continuous-image-presentation.js?v=20260307-1',
+        'src/jspsych-gabor.js?v=20260224b',
+        'src/jspsych-stroop.js?v=20260305-1',
+        'src/jspsych-simon.js?v=20260218',
+        'src/jspsych-task-switching.js?v=20260306-3',
+        'src/jspsych-pvt.js?v=20260219',
+        'src/jspsych-nback.js?v=20260222',
+        'src/jspsych-nback-continuous.js?v=20260222',
+        'src/jspsych-visual-angle-calibration.js?v=20260210',
+        'src/jspsych-soc-dashboard.js?v=20260224a',
+        'src/eyeTrackingWebgazer.js?v=20260207',
+        'src/configLoader.js?v=20260207',
+        'src/timelineCompiler.js?v=20260305-2',
+        'src/main.js?v=20260309-1'
+      ];
+
+      const candidates = [];
+      // Common layout for study assets: /publix/<study>/<component>/interpreter/...
+      if (studyId && componentId) candidates.push(`/publix/${studyId}/${componentId}/interpreter/`);
+      if (studyId) candidates.push(`/publix/${studyId}/interpreter/`);
+      // Fallback layouts (older or custom setups)
+      if (studyId && componentId) candidates.push(`/publix/${studyId}/${componentId}/`);
+      if (studyId) candidates.push(`/publix/${studyId}/`);
+
+      const probe = scripts[scripts.length - 1]; // main.js
+
+      const pickBase = async () => {
+        for (const base of candidates) {
+          const url = new URL(base + probe, window.location.origin).toString();
+          try {
+            const res = await fetch(url, { method: 'GET', cache: 'no-store', credentials: 'same-origin' });
+            try {
+              console.log('[Interpreter] probe', res ? res.status : null, url);
+            } catch {
+              // ignore
+            }
+            if (res && res.ok) return base;
+          } catch {
+            try {
+              console.log('[Interpreter] probe ERROR', url);
+            } catch {
+              // ignore
+            }
+            // ignore
+          }
+        }
+        return '';
+      };
+
+      const loadOne = (url) => {
+        return new Promise((resolve, reject) => {
+          const s = document.createElement('script');
+          s.src = url;
+          s.async = false;
+          s.onload = () => resolve();
+          s.onerror = () => reject(new Error(`Failed to load ${url}`));
+          document.body.appendChild(s);
+        });
+      };
+
+      (async () => {
+        const base = await pickBase();
+        try {
+          console.log('[Interpreter] asset candidates:', candidates);
+          console.log('[Interpreter] asset candidates (json):', JSON.stringify(candidates));
+          console.log('[Interpreter] chosen asset base:', base || '(none)');
+          console.log('[Interpreter] location.pathname:', p);
+        } catch {
+          // ignore
+        }
+
+        if (!base) {
+          console.error('[Interpreter] Could not locate interpreter assets under /publix/...');
+          return;
+        }
+
+        for (const rel of scripts) {
+          const url = new URL(base + rel, window.location.origin).toString();
+          await loadOne(url);
+        }
+      })().catch((e) => {
+        console.error('[Interpreter] Script load failed:', e);
+      });
+    })();
+  </script>
+</body>
+</html>

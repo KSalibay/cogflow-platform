@@ -150,7 +150,7 @@ class SubmitResultView(APIView):
         if not run_session:
             return Response({"error": "Run session not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        store_result_envelope(
+        envelope = store_result_envelope(
             run_session=run_session,
             trial_count=data["trial_count"],
             summary_json=data.get("result_summary", {}),
@@ -181,9 +181,10 @@ class SubmitResultView(APIView):
         return Response(
             {
                 "run_session_id": run_session.id,
+                "result_envelope_id": envelope.id,
                 "status": run_session.status,
                 "stored": True,
                 "trial_records_stored": trial_records_stored,
             },
-            status=status.HTTP_200_OK,
+            status=status.HTTP_201_CREATED,
         )

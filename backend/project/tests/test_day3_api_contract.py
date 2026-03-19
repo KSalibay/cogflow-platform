@@ -79,7 +79,7 @@ class Day3ApiContractTests(APITestCase):
             ],
         }
         submit_response = self.client.post(reverse("results-submit"), data=submit_payload, format="json")
-        self.assertEqual(submit_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(submit_response.status_code, status.HTTP_201_CREATED)
         self.assertTrue(submit_response.data["stored"])
         self.assertEqual(submit_response.data["trial_records_stored"], 2)
 

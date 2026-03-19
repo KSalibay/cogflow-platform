@@ -1,0 +1,1861 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CogFlow Builder — Platform Edition</title>
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         CogFlow Platform configuration.
+         These values are injected by the platform's Django view (or set
+         manually during local development).  COGFLOW_PLATFORM_URL enables
+         the "Platform Publish" button; leave it empty to use local/JATOS mode.
+         ═══════════════════════════════════════════════════════════════════ -->
+    <script>
+        window.COGFLOW_PLATFORM_URL    = '';   // e.g. 'http://localhost:8000'
+        window.COGFLOW_STUDY_SLUG      = '';   // e.g. 'my-rdm-study'
+        window.COGFLOW_STUDY_NAME      = '';   // Human-readable name
+        window.COGFLOW_CONFIG_VERSION  = '';   // e.g. 'v1.0'
+    </script>
+    <link rel="icon" type="image/png" href="img/favico.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+
+    <script>
+        // Apply Accessibility Mode + Theme early to avoid flash of wrong styling
+        (function () {
+            try {
+                const enabled = localStorage.getItem('cogflow_builder_a11y') === '1';
+                if (enabled) document.documentElement.classList.add('cf-a11y');
+            } catch (e) {
+                // Ignore storage errors (privacy mode, etc.)
+            }
+
+            try {
+                const savedTheme = localStorage.getItem('cogflow_builder_theme');
+                const theme = (savedTheme === 'dark' || savedTheme === 'light') ? savedTheme : 'light';
+                document.documentElement.setAttribute('data-cf-theme', theme);
+            } catch (e) {
+                document.documentElement.setAttribute('data-cf-theme', 'light');
+            }
+        })();
+    </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="vendor/bootstrap.min.css" rel="stylesheet">
+
+    <!-- WYSIWYG editor for instructions / HTML components (Quill) -->
+    <link href="vendor/quill.snow.css" rel="stylesheet">
+
+    <!-- App theme + Bootstrap overrides (must load AFTER Bootstrap) -->
+    <link rel="stylesheet" href="css/style.css">
+
+    <!-- Prevent aggressive caching when opened via file:// or a simple static server -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+</head>
+<body>
+    <nav class="navbar navbar-dark bg-primary">
+        <div class="container-fluid">
+            <span class="navbar-brand mb-0 h1">
+                <img src="img/logo_builder_light.png" alt="CogFlow Builder" class="cf-brand-logo">
+            </span>
+            <div class="d-flex">
+                <button class="btn btn-outline-light me-2 cf-theme-toggle" id="pageThemeToggle" title="Toggle Builder theme">
+                    <i class="fas fa-circle-half-stroke"></i> Theme: Light
+                </button>
+                <button class="btn btn-outline-light me-2" id="loadTemplateBtn">
+                    <i class="fas fa-folder-open"></i> Load Template
+                </button>
+                <button class="btn btn-outline-light me-2" id="saveTemplateBtn">
+                    <i class="fas fa-save"></i> Save Template
+                </button>
+                <button class="btn btn-outline-light me-2" id="uploadAssetsFolderBtn" title="Upload a local assets folder to Token Store so you can refer to images by filename in your config">
+                    <i class="fas fa-folder-tree"></i> Upload Assets
+                </button>
+                <button class="btn btn-outline-light me-2" id="saveJsonBtn">
+                    <i class="fas fa-download"></i> Save JSON
+                </button>
+                <button class="btn btn-outline-light me-2" id="importLocalJsonBtn">
+                    <i class="fas fa-file-arrow-up"></i> Import JSON(s)
+                </button>
+                <button class="btn btn-outline-light me-2" id="prepJatosPropsBtn">
+                    <i class="fas fa-clipboard"></i> JATOS Props
+                </button>
+                <button class="btn btn-warning me-2" id="platformPublishBtn" style="display:none" title="Publish config to CogFlow Platform">
+                    <i class="fas fa-server"></i> Platform Publish
+                </button>
+                <button class="btn btn-success" id="exportJsonBtn">
+                    <i class="fas fa-cloud-arrow-up"></i> Export
+                </button>
+
+                <!-- Hidden input: local JSON import for Token Store uploads -->
+                <input id="importLocalJsonInput" type="file" accept=".json,application/json" multiple style="display:none" />
+
+                <!-- Hidden input: local assets folder selection (Chromium supports webkitdirectory) -->
+                <input id="assetsFolderInput" type="file" multiple webkitdirectory directory style="display:none" />
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid">
+        <div class="main-panels-row">
+            <!-- Left Panel: Configuration -->
+            <div class="main-panel">
+                <div class="card h-100">
+                    <div class="card-header bg-light">
+                        <h5 class="mb-0">
+                            <i class="fas fa-cogs"></i> Experiment Configuration
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- Experiment Type Selection -->
+                        <div class="mb-4">
+                            <h6 class="fw-bold">Experiment Type</h6>
+                            <div class="btn-group w-100" role="group" id="experimentTypeGroup">
+                                <input type="radio" class="btn-check" name="experimentType" id="trialBased" value="trial-based" checked>
+                                <label class="btn btn-outline-primary" for="trialBased">Trial-Based</label>
+                                
+                                <input type="radio" class="btn-check" name="experimentType" id="continuous" value="continuous">
+                                <label class="btn btn-outline-primary" for="continuous">Continuous</label>
+                            </div>
+                        </div>
+
+                        <!-- Task Type Selection -->
+                        <div class="mb-4">
+                            <h6 class="fw-bold">Task Type</h6>
+                            <select class="form-select" id="taskType">
+                                <option value="rdm" selected>Random Dot Motion (RDM)</option>
+                                <option value="stroop">Stroop Task</option>
+                                <option value="emotional-stroop">Emotional Stroop Task</option>
+                                <option value="nback">N-Back</option>
+                                <option value="simon">Simon Task</option>
+                                <option value="task-switching">Task Switching</option>
+                                <option value="pvt">Psychomotor Vigilance Task (PVT)</option>
+                                <option value="gabor">Gabor Patch Task</option>
+                                <option value="flanker">Flanker Task</option>
+                                <option value="sart">SART</option>
+                                <option value="continuous-image">Continuous Image Presentation</option>
+                                <option value="soc-dashboard">SOC Dashboard</option>
+                                <option value="custom">Custom Task</option>
+                            </select>
+                            <small class="text-muted">This determines available components in the library</small>
+                        </div>
+
+                        <!-- Experiment Theme -->
+                        <div class="mb-4">
+                            <h6 class="fw-bold">Theme</h6>
+                            <select class="form-select" id="experimentTheme">
+                                <option value="dark" selected>Dark</option>
+                                <option value="light">Light</option>
+                            </select>
+                            <small class="text-muted">Exported as <code>ui_settings.theme</code> for the interpreter</small>
+                        </div>
+
+                        <!-- Data Collection Modalities -->
+                        <div class="mb-4">
+                            <h6 class="fw-bold">Data Collection</h6>
+                            <div class="form-check">
+                                <input class="form-check-input data-collection-checkbox" type="checkbox" value="reaction-time" id="reactionTime" checked>
+                                <label class="form-check-label" for="reactionTime">
+                                    Reaction Time
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input data-collection-checkbox" type="checkbox" value="accuracy" id="accuracy" checked>
+                                <label class="form-check-label" for="accuracy">
+                                    Accuracy
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input data-collection-checkbox" type="checkbox" value="correctness" id="correctness">
+                                <label class="form-check-label" for="correctness">
+                                    Correctness <small class="text-muted">(online)</small>
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input data-collection-checkbox" type="checkbox" value="eye-tracking" id="eyeTracking">
+                                <label class="form-check-label" for="eyeTracking">
+                                    Eye Tracking <small class="text-muted">(WebGazer)</small>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Dynamic Parameter Forms -->
+                        <div id="parameterForms">
+                            <!-- Forms will be dynamically generated here -->
+                        </div>
+
+                        <!-- Add Component Button -->
+                        <div class="d-grid gap-2">
+                            <button class="btn btn-primary" id="addComponentBtn">
+                                <i class="fas fa-plus"></i> Add Component
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Middle Panel: Timeline Builder -->
+            <div class="main-panel">
+                <div class="card h-100">
+                    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="fas fa-sitemap"></i> Experiment Timeline
+                        </h5>
+                        <button class="btn btn-sm btn-outline-secondary" id="clearTimelineBtn">
+                            <i class="fas fa-trash"></i> Clear
+                        </button>
+                    </div>
+                    <div class="card-body p-0">
+                        <div id="timelineBuilder" class="timeline-container">
+                            <!-- Timeline components will be dragged here -->
+                            <div id="timelineComponents" class="timeline-components-container">
+                                <div class="empty-timeline text-center text-muted p-4">
+                                    <i class="fas fa-plus-circle fa-3x mb-3"></i>
+                                    <p>Drag components here to build your experiment timeline</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel: JSON Preview -->
+            <div class="main-panel">
+                <div class="card h-100">
+                    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="fas fa-code"></i> JSON Preview
+                        </h5>
+                        <div>
+                            <button class="btn btn-sm btn-outline-secondary me-2" id="validateJsonBtn">
+                                <i class="fas fa-check-circle"></i> Validate
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" id="copyJsonBtn">
+                                <i class="fas fa-copy"></i> Copy
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <div id="jsonPreview" class="json-preview">
+                            <pre><code id="jsonOutput">{
+  "timeline": [],
+  "data_collection": {
+    "reaction_time": true,
+    "accuracy": true
+  },
+  "experiment_type": "trial-based"
+}</code></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Component Library Modal -->
+        <div class="modal fade" id="componentLibraryModal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <i class="fas fa-puzzle-piece"></i> Component Library
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="row" id="componentLibrary">
+                            <!-- Component cards will be generated here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Parameter Configuration Modal -->
+        <div class="modal fade" id="parameterModal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="parameterModalTitle">
+                            <i class="fas fa-sliders-h"></i> Configure Parameters
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body" id="parameterModalBody">
+                        <!-- Dynamic parameter forms -->
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-info" id="previewComponentBtn">
+                            <i class="fas fa-eye"></i> Preview Component
+                        </button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-primary" id="saveParametersBtn">Save Parameters</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Component Preview Modal -->
+        <div class="modal fade" id="componentPreviewModal" tabindex="-1">
+            <div class="modal-dialog modal-xl">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <i class="fas fa-eye"></i> Component Preview
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <div class="preview-container">
+                                    <canvas id="previewCanvas" width="600" height="600" style="border: 1px solid #ccc; background-color: #000000;"></canvas>
+                                </div>
+                                <div class="preview-controls mt-3">
+                                    <button class="btn btn-success" id="startPreviewBtn">
+                                        <i class="fas fa-play"></i> Start Preview
+                                    </button>
+                                    <button class="btn btn-warning" id="pausePreviewBtn" disabled>
+                                        <i class="fas fa-pause"></i> Pause
+                                    </button>
+                                    <button class="btn btn-danger" id="stopPreviewBtn" disabled>
+                                        <i class="fas fa-stop"></i> Stop
+                                    </button>
+                                    <button class="btn btn-info" id="resetPreviewBtn">
+                                        <i class="fas fa-refresh"></i> Reset
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h6 class="mb-0">Live Parameters</h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <div id="previewParameterInfo">
+                                            <!-- Parameter info will be displayed here -->
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="card mt-3">
+                                    <div class="card-header">
+                                        <h6 class="mb-0">Preview Stats</h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <div id="previewStats">
+                                            <p><strong>Frame Rate:</strong> <span id="frameRate">0</span> FPS</p>
+                                            <p><strong>Dots Visible:</strong> <span id="dotsVisible">0</span></p>
+                                            <p><strong>Coherent Dots:</strong> <span id="coherentDots">0</span></p>
+                                            <p><strong>Time Elapsed:</strong> <span id="timeElapsed">0</span>ms</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="cf-footer">
+        <div class="container-fluid cf-footer-inner">
+            <div class="cf-footer-a11y">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" role="switch" id="accessibilityModeToggle">
+                    <label class="form-check-label" for="accessibilityModeToggle">Accessibility Mode</label>
+                </div>
+            </div>
+            <div class="cf-footer-spacer"></div>
+            <div class="cf-footer-text">
+                <a class="cf-footer-link" href="https://github.com/KSalibay/json-builder-app" target="_blank" rel="noopener noreferrer" aria-label="GitHub repository">
+                    <i class="fa-brands fa-github" aria-hidden="true"></i>
+                </a>
+                University of Newcastle, 2026
+            </div>
+        </div>
+    </footer>
+
+    <script src="vendor/bootstrap.bundle.min.js"></script>
+    <script src="vendor/Sortable.min.js"></script>
+
+    <!-- Quill WYSIWYG editor (used by instructions/html-keyboard-response editor) -->
+    <script src="vendor/quill.min.js"></script>
+
+    <!-- Microsoft Graph export (MSAL + helper). Requires serving via http(s), not file:// -->
+    <script src="vendor/msal-browser.min.js"></script>
+    <script src="src/graphConfig.js?v=20260123-1"></script>
+    <script src="src/GraphSharePointClient.js?v=20260123-1"></script>
+
+    <!-- Demo default: Token Store (Cloudflare Worker) base URL -->
+    <script>
+        // For distribution: change this value (or remove to re-enable prompt).
+        window.COGFLOW_TOKEN_STORE_BASE_URL = 'https://cool-star-379d.kami-salibayeva.workers.dev';
+
+        // Initial deployment mode: disables SharePoint/Graph prompts and uses Token Store by default.
+        // Remove this line (or set to false) to re-enable Graph/SharePoint export setup prompts.
+        window.COGFLOW_INITIAL_DEPLOYMENT = true;
+    </script>
+
+    <!-- Cache-bust local scripts -->
+    <script src="src/JsonBuilder.js?v=20260309-1"></script>
+    <script src="src/modules/DataCollectionModules.js?v=20260114-1"></script>
+    <script src="src/modules/TrialManager.js?v=20260113-10"></script>
+    <script src="src/modules/TimelineBuilder.js?v=20260309-1"></script>
+    <script src="src/modules/SocDashboardPreview.js?v=20260218-1"></script>
+    <script src="src/modules/ComponentPreview.js?v=20260305-4"></script>
+    <script src="src/schemas/RDMTaskSchema.js?v=20260113-10"></script>
+    <script src="src/schemas/JSPsychSchemas.js?v=20260305-1"></script>
+    <script src="src/schemas/UnifiedSchema.js?v=20260113-10"></script>
+
+    <script>
+        function setBuilderTheme(theme) {
+            const t = (theme === 'dark') ? 'dark' : 'light';
+            document.documentElement.setAttribute('data-cf-theme', t);
+            try {
+                localStorage.setItem('cogflow_builder_theme', t);
+            } catch (e) {
+                // Ignore storage errors
+            }
+
+            const btn = document.getElementById('pageThemeToggle');
+            if (btn) {
+                btn.innerHTML = `<i class="fas fa-circle-half-stroke"></i> Theme: ${t === 'dark' ? 'Dark' : 'Light'}`;
+            }
+        }
+
+        function installDebugRemnantCleaner() {
+            const looksLikeDebugRemnant = (el) => {
+                try {
+                    const text = (el && el.textContent ? el.textContent : '').toLowerCase();
+                    if (!text) return false;
+                    return text.includes('study result visibility mode') || /^\s*worker\s*:\s*\d+\s*$/i.test(text);
+                } catch {
+                    return false;
+                }
+            };
+
+            const removeDebugRemnants = () => {
+                const all = Array.from(document.querySelectorAll('body *'));
+                all.forEach((el) => {
+                    if (!looksLikeDebugRemnant(el)) return;
+                    if (el.closest('.navbar, .card, .modal, #componentPreviewModal')) return;
+                    try {
+                        const style = window.getComputedStyle(el);
+                        const isBottomLeft = style && style.position === 'fixed' && style.left !== 'auto' && style.bottom !== 'auto';
+                        const isTiny = style && Number.parseFloat(style.fontSize || '0') <= 12;
+                        if (isBottomLeft || isTiny) el.remove();
+                    } catch {
+                        // ignore
+                    }
+                });
+            };
+
+            removeDebugRemnants();
+            const obs = new MutationObserver(() => removeDebugRemnants());
+            obs.observe(document.body, { childList: true, subtree: true });
+        }
+
+        // Initialize the application
+        document.addEventListener('DOMContentLoaded', function() {
+            const initialTheme = document.documentElement.getAttribute('data-cf-theme') || 'light';
+            setBuilderTheme(initialTheme);
+
+            const pageThemeToggle = document.getElementById('pageThemeToggle');
+            if (pageThemeToggle && pageThemeToggle.dataset.bound !== '1') {
+                pageThemeToggle.dataset.bound = '1';
+                pageThemeToggle.addEventListener('click', () => {
+                    const current = document.documentElement.getAttribute('data-cf-theme') || 'light';
+                    setBuilderTheme(current === 'dark' ? 'light' : 'dark');
+                });
+            }
+
+            installDebugRemnantCleaner();
+
+            const jsonBuilder = new JsonBuilder();
+            jsonBuilder.initialize();
+            
+            // Store globally for access from other functions
+            window.jsonBuilderInstance = jsonBuilder;
+
+            // Platform Publish button — visible only when COGFLOW_PLATFORM_URL is configured.
+            const platformPublishBtn = document.getElementById('platformPublishBtn');
+            if (platformPublishBtn) {
+                if (typeof window.COGFLOW_PLATFORM_URL === 'string' && window.COGFLOW_PLATFORM_URL.trim()) {
+                    platformPublishBtn.style.display = '';
+                }
+                platformPublishBtn.addEventListener('click', () => {
+                    jsonBuilder.publishToPlatform();
+                });
+            }
+            
+            // Initialize ComponentPreview (guard against double-init)
+            if (!window.componentPreview) {
+                window.componentPreview = new ComponentPreview();
+            }
+            
+            // Initialize timeline sortable functionality
+            initializeTimelineSorting();
+            
+            // Initialize RDM-specific UI components
+            initializeRDMInterface();
+        });
+        
+        function initializeTimelineSorting() {
+            const timelineContainer = document.getElementById('timelineComponents');
+            console.log('Initializing sortable for container:', timelineContainer);
+            
+            if (timelineContainer && window.Sortable) {
+                console.log('Creating sortable instance');
+                window.timelineSortable = Sortable.create(timelineContainer, {
+                    animation: 150,
+                    ghostClass: 'sortable-ghost',
+                    chosenClass: 'sortable-chosen',
+                    dragClass: 'sortable-drag',
+                    handle: '.drag-handle',
+                    filter: '.empty-timeline',
+                    preventOnFilter: false,
+                    onStart: function(evt) {
+                        console.log('Drag started:', evt.item);
+                    },
+                    onEnd: function(evt) {
+                        console.log('Drag ended:', evt.item, 'New index:', evt.newIndex);
+                        // Update JSON when order changes
+                        if (window.jsonBuilderInstance) {
+                            window.jsonBuilderInstance.updateJSON();
+                        }
+                    }
+                });
+                console.log('Sortable instance created:', window.timelineSortable);
+            } else {
+                console.warn('Failed to initialize sortable - container:', timelineContainer, 'Sortable:', window.Sortable);
+            }
+        }
+        
+        function initializeRDMInterface() {
+            // Add initial instructions component to timeline
+            addInitialInstructionsComponent();
+        }
+        
+        function addInitialInstructionsComponent() {
+            // Generate dynamic instructions text based on current experiment settings
+            function generateInstructionsText() {
+                const taskType = document.getElementById('taskType')?.value || 'rdm';
+
+                const rawTaskName = document.getElementById('taskName')?.value || '';
+                const taskDefaults = {
+                    rdm: 'Random Dot Motion task',
+                    stroop: 'Stroop task',
+                    flanker: 'Flanker task',
+                    sart: 'SART task',
+                    simon: 'Simon task',
+                    pvt: 'PVT task',
+                    gabor: 'Gabor task',
+                    'soc-dashboard': 'SOC Dashboard'
+                };
+
+                // If the researcher hasn't customized taskName (blank or still default RDM),
+                // infer it from the selected task type.
+                const normalizedRaw = String(rawTaskName).trim();
+                const isDefaultRdmLabel = normalizedRaw === '' || normalizedRaw === taskDefaults.rdm;
+                const taskName = (taskType !== 'rdm' && isDefaultRdmLabel)
+                    ? (taskDefaults[taskType] || 'Experiment task')
+                    : (normalizedRaw || taskDefaults.rdm);
+
+                const formatKey = (key) => {
+                    const cleanKey = String(key || '').trim();
+                    if (!cleanKey) return '';
+                    switch (cleanKey) {
+                        case 'ArrowLeft': return 'Left Arrow';
+                        case 'ArrowRight': return 'Right Arrow';
+                        case 'ArrowUp': return 'Up Arrow';
+                        case 'ArrowDown': return 'Down Arrow';
+                        case ' ': return 'Spacebar';
+                        case 'space': return 'Spacebar';
+                        case 'enter': return 'Enter';
+                        case 'escape': return 'Escape';
+                        default:
+                            return cleanKey.length === 1 ? cleanKey.toUpperCase() : cleanKey;
+                    }
+                };
+
+                const joinKeys = (keys) => {
+                    const parts = String(keys || '')
+                        .split(',')
+                        .map(k => formatKey(k))
+                        .filter(Boolean);
+                    if (parts.length === 0) return '';
+                    if (parts.length === 1) return parts[0];
+                    if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
+                    return `${parts.slice(0, -1).join(', ')}, and ${parts[parts.length - 1]}`;
+                };
+
+                const describeResponse = () => {
+                    if (taskType === 'flanker') {
+                        const leftKey = formatKey(document.getElementById('flankerLeftKey')?.value || 'f');
+                        const rightKey = formatKey(document.getElementById('flankerRightKey')?.value || 'j');
+                        return `using the keyboard (${leftKey} for left, ${rightKey} for right)`;
+                    }
+                    if (taskType === 'sart') {
+                        const goKey = formatKey(document.getElementById('sartGoKey')?.value || 'space');
+                        return `using the keyboard (${goKey})`;
+                    }
+                    if (taskType === 'gabor') {
+                        const mode = document.getElementById('gaborResponseTask')?.value || 'discriminate_tilt';
+                        if (mode === 'detect_target') {
+                            const yesKey = formatKey(document.getElementById('gaborYesKey')?.value || 'f');
+                            const noKey = formatKey(document.getElementById('gaborNoKey')?.value || 'j');
+                            return `using the keyboard (${yesKey} = Yes, ${noKey} = No)`;
+                        }
+                        const leftKey = formatKey(document.getElementById('gaborLeftKey')?.value || 'f');
+                        const rightKey = formatKey(document.getElementById('gaborRightKey')?.value || 'j');
+                        return `using the keyboard (${leftKey} = Left, ${rightKey} = Right)`;
+                    }
+                    if (taskType === 'soc-dashboard') {
+                        const iconsClickable = !!document.getElementById('socIconsClickable')?.checked;
+                        return iconsClickable
+                            ? 'using the mouse (dashboard icons) and the keyboard (subtasks)'
+                            : 'using the keyboard (subtasks)';
+                    }
+
+                    // Default: RDM (or unknown) uses experiment-wide response device.
+                    const device = document.getElementById('defaultResponseDevice')?.value || 'keyboard';
+                    if (device === 'mouse') {
+                        const segments = document.getElementById('mouseApertureSegments')?.value;
+                        const segText = segments ? ` (${segments} response segments)` : '';
+                        return `using the mouse${segText}`;
+                    }
+                    if (device === 'touch') return 'using touch input';
+                    if (device === 'voice') return 'using voice input';
+                    if (device === 'custom') return 'using the specified response method';
+
+                    const responseKeys = document.getElementById('responseKeys')?.value || 'ArrowLeft,ArrowRight';
+                    const keyList = joinKeys(responseKeys);
+                    return keyList ? `using the keyboard (press ${keyList})` : 'using the keyboard';
+                };
+
+                // Exported as HTML; keep it simple and readable.
+                return `<p>This experiment consists of the <strong>${taskName}</strong>. Please respond ${describeResponse()}. Press any key to continue.</p>`;
+            }
+            
+            const timelineContainer = document.getElementById('timelineComponents');
+            if (!timelineContainer) return;
+            
+            // Hide empty state when adding first component
+            const emptyState = timelineContainer.querySelector('.empty-timeline');
+            if (emptyState) {
+                emptyState.style.display = 'none';
+            }
+            
+            const instructionsComponent = document.createElement('div');
+            instructionsComponent.className = 'timeline-component card mb-2';
+            instructionsComponent.dataset.componentType = 'html-keyboard-response';
+            
+            // Store component data
+            const componentData = {
+                type: 'html-keyboard-response',
+                auto_generated: true,
+                stimulus: generateInstructionsText(),
+                choices: 'ALL_KEYS'
+            };
+            
+            instructionsComponent.dataset.componentData = JSON.stringify(componentData);
+            
+            instructionsComponent.innerHTML = `
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="d-flex align-items-center">
+                            <div class="drag-handle me-2" style="cursor: move; color: #ccc;">
+                                <i class="fas fa-grip-vertical"></i>
+                            </div>
+                            <div>
+                                <h6 class="card-title mb-1">
+                                    <i class="fas fa-info-circle text-info"></i> Instructions
+                                </h6>
+                                <small class="text-muted">Welcome screen with task instructions</small>
+                            </div>
+                        </div>
+                        <div class="btn-group" role="group">
+                            <button class="btn btn-sm btn-outline-info" onclick="previewComponent(this)" title="Preview">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="editComponent(this)" title="Edit">
+                                <i class="fas fa-pencil-alt"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="duplicateComponent(this)" title="Duplicate Below">
+                                <i class="fas fa-copy"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="removeComponent(this)" title="Delete">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            timelineContainer.appendChild(instructionsComponent);
+            
+            // Initialize sortable functionality after first component is added
+            if (!window.timelineSortable) {
+                initializeTimelineSorting();
+            }
+        }
+        
+        function updateInstructionsComponents() {
+            // Keep instructions-like timeline cards in sync.
+            // 1) Auto-update stimulus text for auto-generated Instructions cards.
+            // 2) Keep card title/subtitle/icon accurate for Instructions vs Calibration Instructions.
+            //    (Avoid touching generic HTML+Keyboard components, which also use html-keyboard-response.)
+            const htmlKeyboardComponents = document.querySelectorAll('.timeline-component[data-component-type="html-keyboard-response"]');
+            
+            function generateInstructionsText() {
+                const taskType = document.getElementById('taskType')?.value || 'rdm';
+
+                const rawTaskName = document.getElementById('taskName')?.value || '';
+                const taskDefaults = {
+                    rdm: 'Random Dot Motion task',
+                    stroop: 'Stroop task',
+                    flanker: 'Flanker task',
+                    sart: 'SART task',
+                    simon: 'Simon task',
+                    pvt: 'PVT task',
+                    gabor: 'Gabor task',
+                    'soc-dashboard': 'SOC Dashboard'
+                };
+
+                const normalizedRaw = String(rawTaskName).trim();
+                const isDefaultRdmLabel = normalizedRaw === '' || normalizedRaw === taskDefaults.rdm;
+                const taskName = (taskType !== 'rdm' && isDefaultRdmLabel)
+                    ? (taskDefaults[taskType] || 'Experiment task')
+                    : (normalizedRaw || taskDefaults.rdm);
+
+                const formatKey = (key) => {
+                    const cleanKey = String(key || '').trim();
+                    if (!cleanKey) return '';
+                    switch (cleanKey) {
+                        case 'ArrowLeft': return 'Left Arrow';
+                        case 'ArrowRight': return 'Right Arrow';
+                        case 'ArrowUp': return 'Up Arrow';
+                        case 'ArrowDown': return 'Down Arrow';
+                        case ' ': return 'Spacebar';
+                        case 'space': return 'Spacebar';
+                        case 'enter': return 'Enter';
+                        case 'escape': return 'Escape';
+                        default:
+                            return cleanKey.length === 1 ? cleanKey.toUpperCase() : cleanKey;
+                    }
+                };
+
+                const joinKeys = (keys) => {
+                    const parts = String(keys || '')
+                        .split(',')
+                        .map(k => formatKey(k))
+                        .filter(Boolean);
+                    if (parts.length === 0) return '';
+                    if (parts.length === 1) return parts[0];
+                    if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
+                    return `${parts.slice(0, -1).join(', ')}, and ${parts[parts.length - 1]}`;
+                };
+
+                const describeResponse = () => {
+                    if (taskType === 'flanker') {
+                        const leftKey = formatKey(document.getElementById('flankerLeftKey')?.value || 'f');
+                        const rightKey = formatKey(document.getElementById('flankerRightKey')?.value || 'j');
+                        return `using the keyboard (${leftKey} for left, ${rightKey} for right)`;
+                    }
+                    if (taskType === 'sart') {
+                        const goKey = formatKey(document.getElementById('sartGoKey')?.value || 'space');
+                        return `using the keyboard (${goKey})`;
+                    }
+                    if (taskType === 'gabor') {
+                        const mode = document.getElementById('gaborResponseTask')?.value || 'discriminate_tilt';
+                        if (mode === 'detect_target') {
+                            const yesKey = formatKey(document.getElementById('gaborYesKey')?.value || 'f');
+                            const noKey = formatKey(document.getElementById('gaborNoKey')?.value || 'j');
+                            return `using the keyboard (${yesKey} = Yes, ${noKey} = No)`;
+                        }
+                        const leftKey = formatKey(document.getElementById('gaborLeftKey')?.value || 'f');
+                        const rightKey = formatKey(document.getElementById('gaborRightKey')?.value || 'j');
+                        return `using the keyboard (${leftKey} = Left, ${rightKey} = Right)`;
+                    }
+                    if (taskType === 'soc-dashboard') {
+                        const iconsClickable = !!document.getElementById('socIconsClickable')?.checked;
+                        return iconsClickable
+                            ? 'using the mouse (dashboard icons) and the keyboard (subtasks)'
+                            : 'using the keyboard (subtasks)';
+                    }
+
+                    // Default: RDM (or unknown) uses experiment-wide response device.
+                    const device = document.getElementById('defaultResponseDevice')?.value || 'keyboard';
+                    if (device === 'mouse') {
+                        const segments = document.getElementById('mouseApertureSegments')?.value;
+                        const segText = segments ? ` (${segments} response segments)` : '';
+                        return `using the mouse${segText}`;
+                    }
+                    if (device === 'touch') return 'using touch input';
+                    if (device === 'voice') return 'using voice input';
+                    if (device === 'custom') return 'using the specified response method';
+
+                    const responseKeys = document.getElementById('responseKeys')?.value || 'ArrowLeft,ArrowRight';
+                    const keyList = joinKeys(responseKeys);
+                    return keyList ? `using the keyboard (press ${keyList})` : 'using the keyboard';
+                };
+
+                return `<p>This experiment consists of the <strong>${taskName}</strong>. Please respond ${describeResponse()}. Press any key to continue.</p>`;
+            }
+            
+            const newInstructionsText = generateInstructionsText();
+            
+            htmlKeyboardComponents.forEach(component => {
+                try {
+                    const data = JSON.parse(component.dataset.componentData || '{}');
+                    if (data.type !== 'html-keyboard-response') return;
+
+                    const pluginType = data?.data?.plugin_type;
+                    const builderId = component?.dataset?.builderComponentId;
+                    const isCalibrationPreface = (pluginType === 'eye-tracking-calibration-instructions') || (builderId === 'eye-tracking-calibration-instructions');
+
+                    // Determine whether this is an "instructions-like" card that should have the
+                    // special title/subtitle. We use explicit builder ids when present, then
+                    // fall back to the legacy instructions card shape (no name field).
+                    const hasExplicitInstructionsId = (builderId === 'instructions' || builderId === 'eye-tracking-calibration-instructions');
+                    const looksLikeLegacyInstructions = (!data.name && (data.auto_generated === true || typeof data.stimulus === 'string'));
+                    const shouldTreatAsInstructionsLike = hasExplicitInstructionsId || isCalibrationPreface || looksLikeLegacyInstructions;
+
+                    if (shouldTreatAsInstructionsLike) {
+                        // Persist a stable identity on the DOM element.
+                        if (isCalibrationPreface) {
+                            component.dataset.builderComponentId = 'eye-tracking-calibration-instructions';
+                        } else if (!component.dataset.builderComponentId) {
+                            component.dataset.builderComponentId = 'instructions';
+                        }
+
+                        const titleEl = component.querySelector('.card-title');
+                        const subtitleEl = component.querySelector('small.text-muted');
+                        if (titleEl) {
+                            titleEl.innerHTML = isCalibrationPreface
+                                ? '<i class="fas fa-eye text-info"></i> Calibration Instructions'
+                                : '<i class="fas fa-info-circle text-info"></i> Instructions';
+                        }
+                        if (subtitleEl) {
+                            subtitleEl.textContent = isCalibrationPreface
+                                ? 'Preface shown before eye-tracking calibration'
+                                : 'Welcome screen with task instructions';
+                        }
+                    }
+
+                    // Only auto-update components that explicitly opt in.
+                    // This prevents overwriting user-authored instruction text.
+                    if (data.auto_generated === true && typeof data.stimulus === 'string') {
+                        data.stimulus = newInstructionsText;
+                        component.dataset.componentData = JSON.stringify(data);
+                    }
+                } catch (e) {
+                    console.warn('Could not parse component data:', e);
+                }
+            });
+        }
+        
+        function previewComponent(button) {
+            // Get the component data from the closest timeline component
+            const component = button.closest('.timeline-component');
+            if (!component) {
+                console.warn('No component found for preview');
+                return;
+            }
+            
+            let componentData;
+            try {
+                componentData = JSON.parse(component.dataset.componentData || '{}');
+
+                // Legacy cleanup: groups are implicit; drop obsolete flag if present
+                delete componentData.enable_groups;
+
+                console.log('Parsed component data for preview:', componentData);
+                console.log('Component type detected:', componentData?.type);
+            } catch (e) {
+                console.warn('Could not parse component data for preview:', e);
+                componentData = {};
+            }
+
+            // For RDM-derived components, merge experiment-wide defaults so timeline previews
+            // reflect the defaults panel unless the component explicitly overrides.
+            // (This includes aperture outline defaults.)
+            try {
+                const t = (componentData?.type || '').toString();
+                const isRdm = t.includes('rdm') || t === 'psychophysics-rdm' || t === 'rdk';
+                const isRdmBlock = (t === 'block') && ((componentData?.block_component_type || componentData?.component_type || '').toString().startsWith('rdm-'));
+                if (isRdm || isRdmBlock) {
+                    const defaults = window.jsonBuilderInstance?.getCurrentRDMParameters?.() || {};
+                    componentData = { ...defaults, ...componentData };
+                }
+            } catch (e) {
+                console.warn('Could not apply experiment defaults to preview:', e);
+            }
+            
+            // Show preview using the ComponentPreview system
+            if (window.componentPreview) {
+                window.componentPreview.showPreview(componentData);
+            } else {
+                console.warn('ComponentPreview not available');
+            }
+        }
+        
+        function addSampleRDMTrial() {
+            // Create a sample RDM trial for testing
+            const timelineContainer = document.getElementById('timelineComponents');
+            if (!timelineContainer) return;
+            
+            const sampleTrial = document.createElement('div');
+            sampleTrial.className = 'timeline-component card mb-2';
+            sampleTrial.innerHTML = `
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="d-flex align-items-center">
+                            <div class="drag-handle me-2" style="cursor: move; color: #ccc;">
+                                <i class="fas fa-grip-vertical"></i>
+                            </div>
+                            <div>
+                                <h6 class="card-title mb-1">RDM Trial</h6>
+                                <small class="text-muted">Coherence: 0.50, Direction: 0°</small>
+                            </div>
+                        </div>
+                        <div class="btn-group" role="group">
+                            <button class="btn btn-sm btn-outline-info" onclick="previewComponent(this)" title="Preview">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="editComponent(this)" title="Edit">
+                                <i class="fas fa-pencil-alt"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="removeComponent(this)" title="Delete">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            timelineContainer.appendChild(sampleTrial);
+        }
+        
+        function editComponent(button) {
+            // Get the component element and its data
+            const component = button.closest('.timeline-component');
+            if (!component) {
+                console.warn('No component found for editing');
+                return;
+            }
+            
+            // Parse component data
+            let componentData;
+            try {
+                componentData = JSON.parse(component.dataset.componentData || '{}');
+
+                // Legacy cleanup (in case older saved components still carry it)
+                delete componentData.enable_groups;
+
+                console.log('Editing component data:', componentData);
+            } catch (e) {
+                console.warn('Could not parse component data:', e);
+                return;
+            }
+            
+            // Simple, direct editing based on component type like Figma prototype
+            if (componentData.type === 'html-keyboard-response') {
+                showInstructionsEditor(component, componentData);
+            } else {
+                // Use TimelineBuilder system for other components
+                if (window.jsonBuilderInstance && window.jsonBuilderInstance.timelineBuilder) {
+                    window.jsonBuilderInstance.setEditingComponent(component);
+                    
+                    const componentObj = {
+                        type: componentData.type || 'unknown',
+                        name: componentData.type || 'Component',
+                        parameters: { ...componentData }
+                    };
+                    
+                    delete componentObj.parameters.type;
+                    
+                    // Drop obsolete flag (no UI toggle, no validator toggle, no persistence)
+                    delete componentObj.parameters.enable_groups;
+                    
+                    const timelineComponents = document.querySelectorAll('.timeline-component');
+                    const index = Array.from(timelineComponents).indexOf(component);
+                    
+                    window.jsonBuilderInstance.timelineBuilder.showParameterModal(componentObj, index);
+                } else {
+                    console.warn('TimelineBuilder not available');
+                }
+            }
+        }
+        
+        function showInstructionsEditor(component, componentData) {
+            // Enhanced instructions editor with timing and response parameters
+            const modal = document.getElementById('parameterModal');
+            const modalTitle = document.getElementById('parameterModalTitle');
+            const modalBody = document.getElementById('parameterModalBody');
+            
+            // Store reference for saving
+            window.editingInstructionsComponent = component;
+            
+            const pluginType = componentData?.data?.plugin_type;
+            const isCalibrationPreface = pluginType === 'eye-tracking-calibration-instructions' || component?.dataset?.builderComponentId === 'eye-tracking-calibration-instructions';
+            modalTitle.innerHTML = isCalibrationPreface
+                ? '<i class="fas fa-eye"></i> Edit Calibration Instructions'
+                : '<i class="fas fa-info-circle"></i> Edit Instructions';
+            
+            // Get current values from component data
+            const currentStimulus = componentData.stimulus || '';
+            const currentChoices = componentData.choices || 'ALL_KEYS';
+            const currentPrompt = componentData.prompt || '';
+            const currentStimulusDuration = componentData.stimulus_duration || null;
+            const currentTrialDuration = componentData.trial_duration || null;
+            const currentResponseEnds = componentData.response_ends_trial !== undefined ? componentData.response_ends_trial : true;
+
+            function escapeHtml(s) {
+                return String(s)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            }
+
+            function coerceToHtml(raw) {
+                const s = (raw === null || raw === undefined) ? '' : String(raw);
+                const trimmed = s.trim();
+                // If it already looks like HTML, keep it as-is.
+                if (/[<][a-z!/]/i.test(trimmed)) return s;
+                // Treat as plain text: split paragraphs on blank lines and preserve newlines.
+                const paras = s.split(/\n\s*\n/g).map(p => p.replace(/\n/g, '<br>'));
+                return paras.map(p => `<p>${escapeHtml(p)}</p>`).join('');
+            }
+            
+            modalBody.innerHTML = `
+                <div class="space-y-4">
+                    <div class="mb-3">
+                        <label for="instructionsText" class="form-label">Instructions Text</label>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <div class="form-text mb-0">This content is exported as HTML and rendered by the interpreter.</div>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="toggleInstructionsHtmlBtn">Edit HTML</button>
+                        </div>
+                        <div id="instructionsEditorWrap" class="border rounded" style="background:#fff;">
+                            <div id="instructionsEditorToolbar"></div>
+                            <div id="instructionsEditor" style="min-height:220px;"></div>
+                        </div>
+                        <textarea id="instructionsText" class="form-control d-none" rows="8" placeholder="Enter HTML for participants..."></textarea>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="promptText" class="form-label">Prompt Text (Optional)</label>
+                        <input type="text" id="promptText" class="form-control" 
+                               placeholder="Additional text shown below instructions..." value="${currentPrompt}">
+                        <div class="form-text">Optional prompt text displayed below the main instructions.</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="instructionsResponseKeys" class="form-label">Response Keys</label>
+                        <select id="instructionsResponseKeys" class="form-select">
+                            <option value="ALL_KEYS" ${currentChoices === 'ALL_KEYS' ? 'selected' : ''}>Any Key</option>
+                            <option value="space" ${currentChoices === 'space' ? 'selected' : ''}>Spacebar Only</option>
+                            <option value="enter" ${currentChoices === 'enter' ? 'selected' : ''}>Enter Key Only</option>
+                            <option value="f,j" ${currentChoices === 'f,j' ? 'selected' : ''}>F and J Keys</option>
+                            <option value="ArrowLeft,ArrowRight" ${currentChoices === 'ArrowLeft,ArrowRight' ? 'selected' : ''}>Left and Right Arrows</option>
+                        </select>
+                        <div class="form-text">Which keys participants can press to continue.</div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="stimulusDuration" class="form-label">Stimulus Duration (ms)</label>
+                                <input type="number" id="stimulusDuration" class="form-control" 
+                                       placeholder="Leave empty for unlimited" value="${currentStimulusDuration || ''}" 
+                                       min="100" max="30000">
+                                <div class="form-text">How long to show instructions (blank = unlimited).</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="trialDuration" class="form-label">Trial Duration (ms)</label>
+                                <input type="number" id="trialDuration" class="form-control" 
+                                       placeholder="Leave empty for unlimited" value="${currentTrialDuration || ''}" 
+                                       min="500" max="60000">
+                                <div class="form-text">Maximum time allowed for response (blank = unlimited).</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="responseEnds" ${currentResponseEnds ? 'checked' : ''}>
+                            <label class="form-check-label" for="responseEnds">
+                                Response Ends Trial
+                            </label>
+                        </div>
+                        <div class="form-text">Whether pressing a key immediately ends the trial.</div>
+                    </div>
+                </div>
+            `;
+
+            // Initialize Quill editor (WYSIWYG). Fall back to textarea if Quill isn't available.
+            try {
+                window._instructionsEditorState = window._instructionsEditorState || {};
+                window._instructionsEditorState.mode = 'wysiwyg';
+                window._instructionsEditorState.quill = null;
+
+                const toolbar = document.getElementById('instructionsEditorToolbar');
+                const editor = document.getElementById('instructionsEditor');
+                const htmlBtn = document.getElementById('toggleInstructionsHtmlBtn');
+                const htmlArea = document.getElementById('instructionsText');
+                const wysWrap = document.getElementById('instructionsEditorWrap');
+
+                if (window.Quill && toolbar && editor) {
+                    toolbar.innerHTML = `
+                        <span class="ql-formats">
+                            <select class="ql-header">
+                                <option selected></option>
+                                <option value="1"></option>
+                                <option value="2"></option>
+                            </select>
+                            <button class="ql-bold"></button>
+                            <button class="ql-italic"></button>
+                            <button class="ql-underline"></button>
+                        </span>
+                        <span class="ql-formats">
+                            <select class="ql-align">
+                                <option selected></option>
+                                <option value="center"></option>
+                                <option value="right"></option>
+                            </select>
+                        </span>
+                        <span class="ql-formats">
+                            <button class="ql-list" value="ordered"></button>
+                            <button class="ql-list" value="bullet"></button>
+                            <button class="ql-blockquote"></button>
+                        </span>
+                        <span class="ql-formats">
+                            <button class="ql-link"></button>
+                            <button class="ql-clean"></button>
+                        </span>
+                    `;
+
+                    const quill = new Quill(editor, {
+                        theme: 'snow',
+                        modules: {
+                            toolbar: toolbar
+                        }
+                    });
+
+                    // Populate from existing stimulus (plain text -> HTML)
+                    const initialHtml = coerceToHtml(currentStimulus);
+                    quill.clipboard.dangerouslyPasteHTML(initialHtml);
+
+                    window._instructionsEditorState.quill = quill;
+
+                    const syncHtmlAreaFromQuill = () => {
+                        try {
+                            if (!window._instructionsEditorState?.quill) return;
+                            htmlArea.value = window._instructionsEditorState.quill.root.innerHTML;
+                        } catch (e) {
+                            console.warn('Could not sync HTML textarea from Quill:', e);
+                        }
+                    };
+
+                    if (htmlBtn && htmlArea && wysWrap) {
+                        htmlBtn.addEventListener('click', () => {
+                            const mode = window._instructionsEditorState.mode || 'wysiwyg';
+                            if (mode === 'wysiwyg') {
+                                // Switch to HTML
+                                syncHtmlAreaFromQuill();
+                                window._instructionsEditorState.mode = 'html';
+                                wysWrap.classList.add('d-none');
+                                htmlArea.classList.remove('d-none');
+                                htmlBtn.textContent = 'Edit WYSIWYG';
+                            } else {
+                                // Switch to WYSIWYG
+                                const html = htmlArea.value || '';
+                                try { quill.clipboard.dangerouslyPasteHTML(html); } catch { /* ignore */ }
+                                window._instructionsEditorState.mode = 'wysiwyg';
+                                htmlArea.classList.add('d-none');
+                                wysWrap.classList.remove('d-none');
+                                htmlBtn.textContent = 'Edit HTML';
+                            }
+                        });
+                    }
+
+                    // Keep the HTML textarea updated when hidden, so save() is simple.
+                    quill.on('text-change', () => {
+                        if ((window._instructionsEditorState.mode || 'wysiwyg') === 'wysiwyg') {
+                            syncHtmlAreaFromQuill();
+                        }
+                    });
+
+                    // Initialize textarea value for good measure.
+                    syncHtmlAreaFromQuill();
+                } else {
+                    // No Quill: show raw textarea and treat current content as HTML.
+                    if (wysWrap) wysWrap.classList.add('d-none');
+                    if (htmlBtn) htmlBtn.classList.add('d-none');
+                    if (htmlArea) {
+                        htmlArea.classList.remove('d-none');
+                        htmlArea.value = coerceToHtml(currentStimulus);
+                    }
+                }
+
+                // Cleanup editor state on modal close
+                try {
+                    const cleanup = () => {
+                        try { window._instructionsEditorState = null; } catch { /* ignore */ }
+                        try { modal.removeEventListener('hidden.bs.modal', cleanup); } catch { /* ignore */ }
+                    };
+                    modal.addEventListener('hidden.bs.modal', cleanup);
+                } catch {
+                    // ignore
+                }
+            } catch (e) {
+                console.warn('Instructions WYSIWYG init failed; falling back to textarea:', e);
+                try {
+                    const htmlArea = document.getElementById('instructionsText');
+                    const wysWrap = document.getElementById('instructionsEditorWrap');
+                    const htmlBtn = document.getElementById('toggleInstructionsHtmlBtn');
+                    if (wysWrap) wysWrap.classList.add('d-none');
+                    if (htmlBtn) htmlBtn.classList.add('d-none');
+                    if (htmlArea) {
+                        htmlArea.classList.remove('d-none');
+                        htmlArea.value = currentStimulus || '';
+                    }
+                } catch {
+                    // ignore
+                }
+            }
+            
+            // Setup save handler
+            const saveBtn = document.getElementById('saveParametersBtn');
+            if (saveBtn) {
+                // Preserve the existing handler so we can restore it when closing.
+                // The default is set by JsonBuilder.initializeEventListeners().
+                const prevOnclick = saveBtn.onclick;
+                saveBtn.onclick = saveInstructionsComponent;
+
+                // Restore handlers/state after closing the modal so other component
+                // editors (e.g., survey-response) can save normally.
+                try {
+                    const restore = () => {
+                        try { saveBtn.onclick = prevOnclick; } catch { /* ignore */ }
+                        try { window.editingInstructionsComponent = null; } catch { /* ignore */ }
+                        try { modal.removeEventListener('hidden.bs.modal', restore); } catch { /* ignore */ }
+                    };
+                    modal.addEventListener('hidden.bs.modal', restore);
+                } catch {
+                    // ignore
+                }
+            }
+            
+            // Show modal
+            const bootstrapModal = new bootstrap.Modal(modal);
+            bootstrapModal.show();
+            
+            console.log('Loaded instructions editor with:', { stimulus: currentStimulus, choices: currentChoices });
+        }
+        
+        function saveInstructionsComponent() {
+            if (!window.editingInstructionsComponent) return;
+            
+            // Instructions stimulus is stored as HTML.
+            const instructionsTextEl = document.getElementById('instructionsText');
+            let instructionsHtml = instructionsTextEl ? instructionsTextEl.value : '';
+
+            // If Quill is active and we're in WYSIWYG mode, read from it.
+            try {
+                const st = window._instructionsEditorState;
+                if (st && st.quill && (st.mode || 'wysiwyg') === 'wysiwyg') {
+                    instructionsHtml = st.quill.root.innerHTML;
+                }
+            } catch {
+                // ignore
+            }
+
+            const responseKeys = document.getElementById('instructionsResponseKeys').value;
+            const promptText = document.getElementById('promptText').value;
+            const stimulusDuration = document.getElementById('stimulusDuration').value;
+            const trialDuration = document.getElementById('trialDuration').value;
+            const responseEnds = document.getElementById('responseEnds').checked;
+            
+            // Update component data (preserve any additional fields)
+            let existing = {};
+            try {
+                existing = JSON.parse(window.editingInstructionsComponent.dataset.componentData || '{}') || {};
+            } catch (e) {
+                existing = {};
+            }
+
+            const updatedData = {
+                ...existing,
+                type: 'html-keyboard-response',
+                // Once edited by a human, stop auto-updating it.
+                auto_generated: false,
+                stimulus: instructionsHtml,
+                choices: responseKeys,
+                prompt: promptText,
+                stimulus_duration: stimulusDuration ? parseInt(stimulusDuration) : null,
+                trial_duration: trialDuration ? parseInt(trialDuration) : null,
+                response_ends_trial: responseEnds
+            };
+            
+            // Save to DOM element
+            window.editingInstructionsComponent.dataset.componentData = JSON.stringify(updatedData);
+            
+            // Update JSON
+            if (window.jsonBuilderInstance) {
+                window.jsonBuilderInstance.updateJSON();
+            }
+            
+            // Close modal
+            const modal = document.getElementById('parameterModal');
+            const bootstrapModal = bootstrap.Modal.getInstance(modal);
+            if (bootstrapModal) {
+                bootstrapModal.hide();
+            }
+            
+            console.log('Saved instructions component:', updatedData);
+        }
+
+        function duplicateComponent(button) {
+            const component = button.closest('.timeline-component');
+            if (!component) {
+                console.warn('No component found for duplication');
+                return;
+            }
+
+            const timelineContainer = document.getElementById('timelineComponents');
+            if (!timelineContainer) {
+                console.warn('Timeline container not found');
+                return;
+            }
+
+            const cloned = component.cloneNode(true);
+
+            // Keep data payload independent and valid JSON string in the duplicate.
+            try {
+                const parsed = JSON.parse(component.dataset.componentData || '{}');
+                cloned.dataset.componentData = JSON.stringify(parsed);
+            } catch {
+                cloned.dataset.componentData = component.dataset.componentData || '{}';
+            }
+
+            component.insertAdjacentElement('afterend', cloned);
+
+            const emptyState = timelineContainer.querySelector('.empty-timeline');
+            if (emptyState) {
+                emptyState.style.display = 'none';
+            }
+
+            if (window.jsonBuilderInstance) {
+                window.jsonBuilderInstance.updateJSON();
+            }
+        }
+        
+        function removeComponent(button) {
+            const component = button.closest('.timeline-component');
+            const timelineContainer = document.getElementById('timelineComponents');
+
+            // Cleanup any cached local assets associated with this component.
+            try {
+                const compId = component?.dataset?.builderComponentId;
+                if (compId && window.PsychJsonAssetCache && typeof window.PsychJsonAssetCache.deleteComponent === 'function') {
+                    window.PsychJsonAssetCache.deleteComponent(compId);
+                }
+            } catch {
+                // ignore
+            }
+            
+            component.remove();
+            
+            // Show empty state if no components remain
+            if (timelineContainer) {
+                const remainingComponents = timelineContainer.querySelectorAll('.timeline-component');
+                const emptyState = timelineContainer.querySelector('.empty-timeline');
+                
+                if (remainingComponents.length === 0 && emptyState) {
+                    emptyState.style.display = 'block';
+                }
+            }
+            
+            // Update JSON
+            if (window.jsonBuilderInstance) {
+                window.jsonBuilderInstance.updateJSON();
+            }
+        }
+
+        // In-memory asset cache for locally selected media (images for now).
+        // Keeps File objects + object URLs alive until the associated component is removed.
+        (function initPsychJsonAssetCache() {
+            if (window.PsychJsonAssetCache) return;
+
+            const cache = new Map(); // componentId -> Map(field -> entry)
+
+            const safeRevoke = (url) => {
+                try {
+                    if (typeof url === 'string' && url.startsWith('blob:')) {
+                        URL.revokeObjectURL(url);
+                    }
+                } catch {
+                    // ignore
+                }
+            };
+
+            window.PsychJsonAssetCache = {
+                put(componentId, field, file) {
+                    if (!componentId || !field || !file) return null;
+                    const cid = String(componentId);
+                    const f = String(field);
+
+                    let byField = cache.get(cid);
+                    if (!byField) {
+                        byField = new Map();
+                        cache.set(cid, byField);
+                    }
+
+                    const existing = byField.get(f);
+                    if (existing && existing.objectUrl) safeRevoke(existing.objectUrl);
+
+                    const objectUrl = URL.createObjectURL(file);
+                    const entry = {
+                        file,
+                        objectUrl,
+                        filename: (file && file.name) ? String(file.name) : null,
+                        mime: (file && file.type) ? String(file.type) : null
+                    };
+                    byField.set(f, entry);
+                    return entry;
+                },
+
+                get(componentId, field) {
+                    const cid = String(componentId || '');
+                    const f = String(field || '');
+                    const byField = cache.get(cid);
+                    if (!byField) return null;
+                    return byField.get(f) || null;
+                },
+
+                deleteEntry(componentId, field) {
+                    const cid = String(componentId || '');
+                    const f = String(field || '');
+                    const byField = cache.get(cid);
+                    if (!byField) return;
+                    const entry = byField.get(f);
+                    if (entry && entry.objectUrl) safeRevoke(entry.objectUrl);
+                    byField.delete(f);
+                    if (byField.size === 0) cache.delete(cid);
+                },
+
+                deleteComponent(componentId) {
+                    const cid = String(componentId || '');
+                    const byField = cache.get(cid);
+                    if (!byField) return;
+                    for (const entry of byField.values()) {
+                        if (entry && entry.objectUrl) safeRevoke(entry.objectUrl);
+                    }
+                    cache.delete(cid);
+                },
+
+                clearAll() {
+                    for (const cid of Array.from(cache.keys())) {
+                        this.deleteComponent(cid);
+                    }
+                    cache.clear();
+                },
+
+                listAllRefs() {
+                    const refs = [];
+                    for (const [cid, byField] of cache.entries()) {
+                        for (const field of byField.keys()) {
+                            refs.push(`asset://${cid}/${field}`);
+                        }
+                    }
+                    return refs;
+                }
+            };
+
+            // Rebrand aliasing: prefer the CogFlow name, but keep legacy stable.
+            window.CogFlowAssetCache = window.PsychJsonAssetCache;
+        })();
+        
+        function editRDMTrial(button) {
+            // Extract trial information and populate modal
+            const trialCard = button.closest('.timeline-component');
+            const titleElement = trialCard.querySelector('.card-title');
+            const detailsElement = trialCard.querySelector('.text-muted');
+            
+            console.log('Editing RDM trial:', titleElement.textContent);
+            
+            // Set the component being edited in the JSON builder instance
+            if (window.jsonBuilderInstance) {
+                window.jsonBuilderInstance.setEditingComponent(trialCard);
+            }
+            
+            // Populate modal with RDM-specific parameters
+            populateRDMModal(trialCard);
+            
+            // Open parameter editing modal
+            const modal = new bootstrap.Modal(document.getElementById('parameterModal'));
+            modal.show();
+        }
+        
+        function populateRDMModal(trialCard) {
+            const modalTitle = document.getElementById('parameterModalTitle');
+            const modalBody = document.getElementById('parameterModalBody');
+            
+            // Set modal title
+            modalTitle.innerHTML = '<i class="fas fa-cogs"></i> RDM Trial Parameters';
+            
+            // Create RDM parameter form
+            modalBody.innerHTML = `
+                <div class="row">
+                    <div class="col-12">
+                        <h6 class="fw-bold border-bottom pb-2 mb-3">Display Parameters</h6>
+                        
+                        <!-- Canvas Settings -->
+                        <div class="row mb-3">
+                            <div class="col-6">
+                                <label for="modalCanvasWidth" class="form-label">Canvas Width</label>
+                                <input type="number" class="form-control" id="modalCanvasWidth" value="600" min="400" max="1920">
+                            </div>
+                            <div class="col-6">
+                                <label for="modalCanvasHeight" class="form-label">Canvas Height</label>
+                                <input type="number" class="form-control" id="modalCanvasHeight" value="600" min="300" max="1080">
+                            </div>
+                        </div>
+                        
+                        <!-- Aperture Settings -->
+                        <div class="row mb-3">
+                            <div class="col-6">
+                                <label for="modalApertureShape" class="form-label">Aperture Shape</label>
+                                <select class="form-select" id="modalApertureShape">
+                                    <option value="circle" selected>Circle</option>
+                                    <option value="rectangle">Rectangle</option>
+                                    <option value="ellipse">Ellipse</option>
+                                </select>
+                            </div>
+                            <div class="col-6">
+                                <label for="modalApertureDiameter" class="form-label">Aperture Diameter (px)</label>
+                                <input type="number" class="form-control" id="modalApertureDiameter" value="350" min="50" max="800">
+                            </div>
+                        </div>
+                        
+                        <h6 class="fw-bold border-bottom pb-2 mb-3 mt-4">Dot Configuration</h6>
+                        
+                        <!-- Basic Dot Parameters -->
+                        <div class="row mb-3">
+                            <div class="col-4">
+                                <label for="modalTotalDots" class="form-label">Total Dots</label>
+                                <input type="number" class="form-control" id="modalTotalDots" value="150" min="10" max="1000">
+                            </div>
+                            <div class="col-4">
+                                <label for="modalDotSize" class="form-label">Dot Size (px)</label>
+                                <input type="number" class="form-control" id="modalDotSize" value="4" min="1" max="20">
+                            </div>
+                            <div class="col-4">
+                                <label for="modalDotLifetime" class="form-label">Lifetime (frames)</label>
+                                <input type="number" class="form-control" id="modalDotLifetime" value="5" min="1" max="30">
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="modalDotColor" class="form-label">Dot Color</label>
+                            <input type="color" class="form-control form-control-color" id="modalDotColor" value="#FFFFFF">
+                        </div>
+                        
+                        <!-- Dot Groups -->
+                        <div id="modalDotGroupsContainer" class="border rounded p-3 bg-light mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="fw-bold">Dot Groups</span>
+                                <button type="button" class="btn btn-sm btn-primary" id="modalAddDotGroupBtn">
+                                    <i class="fas fa-plus"></i> Add Group
+                                </button>
+                            </div>
+                            <div id="modalDotGroupsList">
+                                <!-- Groups will be added dynamically -->
+                            </div>
+                        </div>
+                        
+                        <h6 class="fw-bold border-bottom pb-2 mb-3 mt-4">Motion Configuration</h6>
+                        
+                        <!-- Motion Parameters -->
+                        <div class="row mb-3">
+                            <div class="col-6">
+                                <label for="modalMotionCoherence" class="form-label">Coherence</label>
+                                <input type="range" class="form-range" id="modalMotionCoherence" min="0" max="1" step="0.01" value="0.5">
+                                <small class="text-muted d-block" id="modalCoherenceValue">0.50</small>
+                            </div>
+                            <div class="col-6">
+                                <label for="modalMotionDirection" class="form-label">Direction (°)</label>
+                                <input type="number" class="form-control" id="modalMotionDirection" value="0" min="0" max="360">
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-6">
+                                <label for="modalMotionSpeed" class="form-label">Speed (px/frame)</label>
+                                <input type="number" class="form-control" id="modalMotionSpeed" value="6" min="1" max="20">
+                            </div>
+                            <div class="col-6">
+                                <label for="modalNoiseType" class="form-label">Noise Type</label>
+                                <select class="form-select" id="modalNoiseType">
+                                    <option value="random_direction" selected>Random Direction</option>
+                                    <option value="random_position">Random Position</option>
+                                    <option value="random_walk">Random Walk</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <h6 class="fw-bold border-bottom pb-2 mb-3 mt-4">Timing Configuration</h6>
+                        
+                        <!-- Timing Parameters -->
+                        <div class="row mb-3">
+                            <div class="col-6">
+                                <label for="modalStimulusDuration" class="form-label">Stimulus Duration (ms)</label>
+                                <input type="number" class="form-control" id="modalStimulusDuration" value="1500" min="100" max="10000">
+                            </div>
+                            <div class="col-6">
+                                <label for="modalResponseDeadline" class="form-label">Response Deadline (ms)</label>
+                                <input type="number" class="form-control" id="modalResponseDeadline" value="2500" min="500" max="15000">
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-6">
+                                <label for="modalInterTrialInterval" class="form-label">Inter-Trial Interval (ms)</label>
+                                <input type="number" class="form-control" id="modalInterTrialInterval" value="1200" min="200" max="5000">
+                            </div>
+                            <div class="col-6">
+                                <label for="modalFixationDuration" class="form-label">Fixation Duration (ms)</label>
+                                <input type="number" class="form-control" id="modalFixationDuration" value="500" min="100" max="2000">
+                            </div>
+                        </div>
+                        
+                        <!-- Fixation -->
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="modalEnableFixation" checked>
+                            <label class="form-check-label" for="modalEnableFixation">
+                                Enable Fixation Cross
+                            </label>
+                        </div>
+                        
+                        <h6 class="fw-bold border-bottom pb-2 mb-3 mt-4">Response Configuration</h6>
+                        
+                        <!-- Response Parameters -->
+                        <div class="mb-3">
+                            <label for="modalResponseKeys" class="form-label">Response Keys</label>
+                            <input type="text" class="form-control" id="modalResponseKeys" value="f,j" placeholder="e.g., f,j or ArrowLeft,ArrowRight">
+                            <small class="text-muted">Comma-separated key names</small>
+                        </div>
+                        
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="modalRequireResponse" checked>
+                            <label class="form-check-label" for="modalRequireResponse">
+                                Require Response
+                            </label>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-6">
+                                <label for="modalCustomResponse" class="form-label">Custom Response</label>
+                                <select class="form-select" id="modalCustomResponse">
+                                    <option value="none" selected>None</option>
+                                    <option value="group_1">Group 1</option>
+                                    <option value="group_2">Group 2</option>
+                                </select>
+                                <small class="text-muted">Set which group the response should target.</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Load existing parameters if they exist
+            loadComponentParametersIntoModal(trialCard);
+            
+            // Initialize modal-specific functionality
+            initializeModalRDMControls();
+        }
+        
+        function loadComponentParametersIntoModal(component) {
+            // Start with experiment-wide defaults
+            const experimentDefaults = window.jsonBuilderInstance?.getCurrentRDMParameters() || {};
+            console.log('Experiment defaults:', experimentDefaults);
+            
+            // Check if component has saved parameters
+            const storedData = component.dataset.componentData;
+            let parameters = { ...experimentDefaults }; // Start with experiment defaults
+            
+            if (storedData) {
+                try {
+                    const componentParams = JSON.parse(storedData);
+
+                    // Legacy cleanup before merge
+                    delete componentParams.enable_groups;
+
+                    // Override defaults with component-specific parameters
+                    parameters = { ...parameters, ...componentParams };
+                    console.log('Component overrides:', componentParams);
+                } catch (e) {
+                    console.warn('Could not load component parameters:', e);
+                }
+            }
+            
+            // Legacy cleanup after merge (belt + suspenders)
+            delete parameters.enable_groups;
+            
+            console.log('Final parameters to load:', parameters);
+            
+            // Load parameters into modal form fields
+            const setValue = (id, value) => {
+                const element = document.getElementById(id);
+                if (element && value !== undefined) {
+                    console.log(`Setting ${id} = ${value}`);
+                    element.value = value;
+                    
+                    // Trigger input event for sliders to update display values
+                    if (element.type === 'range') {
+                        element.dispatchEvent(new Event('input'));
+                    }
+                } else if (!element) {
+                    console.warn(`Element with id "${id}" not found`);
+                }
+            };
+            
+            setValue('modalCanvasWidth', parameters.canvas_width);
+            setValue('modalCanvasHeight', parameters.canvas_height);
+            setValue('modalBackgroundColor', parameters.background_color);
+            setValue('modalDotSize', parameters.dot_size);
+            setValue('modalDotColor', parameters.dot_color);
+            setValue('modalTotalDots', parameters.total_dots);
+            setValue('modalMotionCoherence', parameters.coherence);
+            setValue('modalMotionDirection', parameters.coherent_direction);
+            setValue('modalMotionSpeed', parameters.speed);
+            setValue('modalDotLifetime', parameters.lifetime_frames);
+        }
+        
+        function initializeModalRDMControls() {
+            // Coherence slider interaction
+            const coherenceSlider = document.getElementById('modalMotionCoherence');
+            const coherenceValue = document.getElementById('modalCoherenceValue');
+            
+            if (coherenceSlider && coherenceValue) {
+                coherenceSlider.addEventListener('input', function() {
+                    coherenceValue.textContent = parseFloat(this.value).toFixed(2);
+                });
+            }
+            
+            // Dot groups functionality for modal
+            const groupsContainer = document.getElementById('modalDotGroupsContainer');
+            const addGroupBtn = document.getElementById('modalAddDotGroupBtn');
+            
+            if (addGroupBtn) {
+                addGroupBtn.addEventListener('click', addModalDotGroup);
+            }
+
+            // Ensure groups UI is visible by default (no toggle)
+            if (groupsContainer) {
+                groupsContainer.style.display = 'block';
+            }
+        }
+        
+        function addModalDotGroup() {
+            const groupsList = document.getElementById('modalDotGroupsList');
+            const groupNumber = groupsList.children.length + 1;
+            
+            const groupElement = document.createElement('div');
+            groupElement.className = 'dot-group-item border rounded p-2 mb-2 bg-white';
+            groupElement.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="mb-0 text-primary">Group ${groupNumber}</h6>
+                    <button type="button" class="btn btn-sm btn-outline-danger remove-modal-group-btn">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+                
+                <div class="row">
+                    <div class="col-6">
+                        <label class="form-label small">Percentage</label>
+                        <input type="number" class="form-control form-control-sm modal-group-percentage" min="0" max="100" step="1" value="50">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small">Color</label>
+                        <input type="color" class="form-control form-control-color form-control-sm modal-group-color" value="${getGroupColor(groupNumber)}">
+                    </div>
+                </div>
+                
+                <div class="row mt-2">
+                    <div class="col-4">
+                        <label class="form-label small">Size (px)</label>
+                        <input type="number" class="form-control form-control-sm modal-group-size" min="1" max="20" value="4">
+                    </div>
+                    <div class="col-4">
+                        <label class="form-label small">Coherence</label>
+                        <input type="number" class="form-control form-control-sm modal-group-coherence" min="0" max="1" step="0.01" value="${groupNumber === 1 ? '0.2' : '0.8'}">
+                    </div>
+                    <div class="col-4">
+                        <label class="form-label small">Direction (°)</label>
+                        <input type="number" class="form-control form-control-sm modal-group-direction" min="0" max="360" value="${groupNumber === 1 ? '0' : '180'}">
+                    </div>
+                </div>
+                
+                <div class="row mt-2">
+                    <div class="col-6">
+                        <label class="form-label small">Distribution</label>
+                        <select class="form-select form-select-sm modal-group-distribution">
+                            <option value="random" selected>Random</option>
+                            <option value="clustered">Clustered</option>
+                            <option value="uniform">Uniform</option>
+                        </select>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small">Z-Order</label>
+                        <input type="number" class="form-control form-control-sm modal-group-z-order" min="0" max="10" value="0">
+                    </div>
+                </div>
+            `;
+            
+            // Add remove functionality
+            const removeBtn = groupElement.querySelector('.remove-modal-group-btn');
+            removeBtn.addEventListener('click', function() {
+                groupElement.remove();
+                updateModalGroupNumbers();
+            });
+            
+            groupsList.appendChild(groupElement);
+            updateModalGroupNumbers();
+        }
+        
+        function updateModalGroupNumbers() {
+            const groups = document.querySelectorAll('#modalDotGroupsList .dot-group-item');
+            groups.forEach((group, index) => {
+                group.querySelector('h6').textContent = `Group ${index + 1}`;
+            });
+        }
+        
+        function getGroupColor(groupNumber) {
+            const colors = ['#FF0066', '#0066FF', '#00FF66', '#FFFF00', '#FF6600', '#6600FF'];
+            return colors[(groupNumber - 1) % colors.length];
+        }
+        
+        function removeRDMTrial(button) {
+            if (confirm('Are you sure you want to remove this trial?')) {
+                const component = button.closest('.timeline-component');
+                component.remove();
+                
+                // Update JSON after removal
+                if (window.jsonBuilderInstance) {
+                    window.jsonBuilderInstance.updateJSON();
+                }
+            }
+        }
+    </script>
+</body>
+</html>

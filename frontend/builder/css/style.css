@@ -1,0 +1,1412 @@
+/* Main Application Styles */
+
+:root {
+    /* CogFlow palette */
+    --cf-ash-grey: #BAC7BE;
+    --cf-lilac-ash: #AE8CA3;
+    --cf-olive-wood: #7B6B43;
+    --cf-twilight-indigo: #3A405A;
+    --cf-space-indigo: #30334A;
+    --cf-deep-walnut: #3F3221;
+
+    /* Derived shades (for interactive accents) */
+    --cf-dusty-grape: #5F6995;
+    --cf-deep-teal: #657B6C;
+
+    /* Semantic tokens (Builder UI) */
+    /* Slight Ash Grey tint to reduce "generic Bootstrap" feel */
+    --cf-bg: #E3E9E5;
+    --cf-surface: #ffffff;
+    --cf-surface-muted: #F1F4F2;
+
+    /* Darker / more saturated Space Indigo for typography */
+    --cf-text: #232742;
+    --cf-muted: rgba(35, 39, 66, 0.68);
+    --cf-border: rgba(48, 51, 74, 0.18);
+    --cf-shadow-sm: 0 1px 2px rgba(17, 24, 39, 0.08);
+    --cf-shadow-md: 0 10px 30px rgba(17, 24, 39, 0.12);
+
+    /* Bootstrap 5 CSS-variable overrides */
+    --bs-body-font-family: 'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+    --bs-body-bg: var(--cf-bg);
+    --bs-body-color: var(--cf-text);
+
+    --bs-primary: var(--cf-twilight-indigo);
+    --bs-primary-rgb: 58, 64, 90;
+    --bs-secondary: var(--cf-lilac-ash);
+    --bs-secondary-rgb: 174, 140, 163;
+    --bs-success: var(--cf-olive-wood);
+    --bs-success-rgb: 123, 107, 67;
+    --bs-dark: var(--cf-space-indigo);
+    --bs-dark-rgb: 48, 51, 74;
+
+    /* Rounded corners to feel less "default Bootstrap" */
+    --bs-border-radius: 0.75rem;
+    --bs-border-radius-sm: 0.6rem;
+    --bs-border-radius-lg: 0.9rem;
+    --bs-border-radius-xl: 1.1rem;
+
+    /* Focus ring tuned to palette */
+    --bs-focus-ring-color: rgba(174, 140, 163, 0.35);
+    --bs-link-color: var(--cf-twilight-indigo);
+    --bs-link-hover-color: #2f3551;
+}
+
+/* Manual page theme selection (independent from OS settings) */
+html[data-cf-theme="light"] {
+    color-scheme: light;
+}
+
+html[data-cf-theme="dark"] {
+    color-scheme: dark;
+
+    /* Keep the original CogFlow palette identity with dark-toned counterparts */
+    --cf-bg: #262c41;
+    --cf-surface: #2f3550;
+    --cf-surface-muted: #3a405a;
+    --cf-text: #dfe8e1;
+    --cf-muted: rgba(223, 232, 225, 0.78);
+    --cf-border: rgba(186, 199, 190, 0.28);
+
+    --bs-body-bg: var(--cf-bg);
+    --bs-body-color: var(--cf-text);
+    --bs-link-color: #d9b6cc;
+    --bs-link-hover-color: #e8cddd;
+}
+
+html, body {
+    height: 100%;
+}
+
+/* Accessibility mode (high contrast + Atkinson Hyperlegible) */
+html.cf-a11y {
+    --bs-body-font-family: 'Atkinson Hyperlegible', 'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+
+    /* Higher-contrast semantic tokens */
+    --cf-bg: #F3F6F4;
+    --cf-surface: #ffffff;
+    --cf-surface-muted: #EAF0EC;
+    --cf-text: #12182F;
+    --cf-muted: rgba(18, 24, 47, 0.78);
+    --cf-border: rgba(18, 24, 47, 0.22);
+
+    /* Stronger focus ring */
+    --bs-focus-ring-color: rgba(95, 105, 149, 0.45);
+}
+
+body {
+    font-family: var(--bs-body-font-family);
+    background-color: var(--bs-body-bg);
+    font-size: 0.875rem; /* Reduced from default 16px to 14px */
+    min-width: 1200px; /* Prevent layout collapse */
+    margin: 0;
+
+    /* App shell: prevent whole-page scroll; keep scroll inside panels */
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.navbar {
+    flex: 0 0 auto;
+}
+
+/* Slightly tighter navbar to save vertical space */
+.navbar {
+    padding-top: 0.55rem;
+    padding-bottom: 0.55rem;
+}
+
+/* Move brand/logo slightly right */
+.navbar .navbar-brand {
+    margin-left: 24px;
+}
+
+.cf-brand-logo {
+    height: 40px;
+    width: auto;
+    vertical-align: middle;
+    margin-right: 10px;
+    transform: translateY(-1px);
+}
+
+/* Slightly larger navbar buttons to match thicker header */
+.navbar .btn {
+    font-size: 0.85rem;
+    padding: 0.35rem 0.65rem;
+}
+
+.cf-theme-toggle {
+    min-width: 126px;
+}
+
+.cf-brand-text {
+    vertical-align: middle;
+}
+
+/* Slightly softer overall surfaces */
+.card {
+    border-color: var(--cf-border);
+    box-shadow: var(--cf-shadow-sm);
+}
+
+.card-header {
+    border-bottom-color: var(--cf-border);
+}
+
+.modal-content {
+    border-color: var(--cf-border);
+    box-shadow: var(--cf-shadow-md);
+}
+
+/* Make "light" headers less stark */
+.bg-light {
+    background-color: var(--cf-surface-muted) !important;
+}
+
+/* Buttons: slightly pill-ier + tighter borders */
+.btn {
+    border-radius: var(--bs-border-radius-lg);
+}
+
+/* Typography on colored surfaces (buttons, navbar) */
+.btn-primary,
+.btn-success {
+    --bs-btn-color: var(--cf-ash-grey);
+    --bs-btn-hover-color: var(--cf-ash-grey);
+    --bs-btn-active-color: var(--cf-ash-grey);
+}
+
+.btn-primary {
+    --bs-btn-bg: var(--cf-twilight-indigo);
+    --bs-btn-border-color: var(--cf-twilight-indigo);
+    --bs-btn-hover-bg: #2f3551;
+    --bs-btn-hover-border-color: #2f3551;
+}
+
+.btn-success {
+    --bs-btn-bg: var(--cf-olive-wood);
+    --bs-btn-border-color: var(--cf-olive-wood);
+    --bs-btn-hover-bg: #6a5d3b;
+    --bs-btn-hover-border-color: #6a5d3b;
+}
+
+/* Navbar: use Ash Grey text instead of pure white */
+.navbar.bg-primary {
+    --bs-navbar-color: rgba(186, 199, 190, 0.92);
+    --bs-navbar-hover-color: rgba(186, 199, 190, 0.98);
+    --bs-navbar-brand-color: rgba(186, 199, 190, 0.98);
+    --bs-navbar-brand-hover-color: rgba(186, 199, 190, 1);
+}
+
+/* Navbar outline buttons: use Ash Grey (not pure white) */
+.navbar.bg-primary .btn-outline-light {
+    --bs-btn-color: rgba(186, 199, 190, 0.92);
+    --bs-btn-border-color: rgba(186, 199, 190, 0.60);
+    --bs-btn-hover-color: rgba(186, 199, 190, 0.98);
+    --bs-btn-hover-bg: rgba(186, 199, 190, 0.10);
+    --bs-btn-hover-border-color: rgba(186, 199, 190, 0.75);
+}
+
+.btn-outline-secondary {
+    --bs-btn-color: var(--cf-space-indigo);
+    --bs-btn-border-color: rgba(48, 51, 74, 0.35);
+    --bs-btn-hover-bg: rgba(48, 51, 74, 0.08);
+    --bs-btn-hover-border-color: rgba(48, 51, 74, 0.40);
+}
+
+/* Collapsible parameter groups (Bootstrap collapse wrapper) */
+.cf-collapse-header {
+    gap: 10px;
+}
+
+.cf-collapse-toggle {
+    color: rgba(35, 39, 66, 0.92);
+    font-weight: 650;
+    line-height: 1.2;
+}
+
+.cf-collapse-toggle:hover {
+    color: var(--cf-twilight-indigo);
+}
+
+.cf-collapse-chevron {
+    display: inline-flex;
+    margin-left: 10px;
+    opacity: 0.75;
+    transition: transform 120ms ease;
+}
+
+.cf-collapse-toggle[aria-expanded="true"] .cf-collapse-chevron {
+    transform: rotate(180deg);
+}
+
+.cf-collapse-body {
+    margin-top: 8px;
+}
+
+/* Inputs: calmer border + palette focus */
+.form-control,
+.form-select {
+    border-color: rgba(48, 51, 74, 0.22);
+}
+.form-control:focus,
+.form-select:focus {
+    border-color: rgba(174, 140, 163, 0.85);
+    box-shadow: 0 0 0 0.2rem rgba(174, 140, 163, 0.28);
+}
+
+/* Container overrides */
+.container-fluid {
+    max-width: 100% !important;
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
+    margin: 0 !important;
+    width: 100% !important;
+
+    /* Fill remaining viewport under navbar */
+    flex: 1 1 auto;
+    overflow: hidden;
+    min-height: 0;
+}
+
+/* Footer should not cause page scroll */
+.cf-footer {
+    flex: 0 0 auto;
+    background: var(--cf-space-indigo);
+    color: rgba(186, 199, 190, 0.92);
+    border-top: 1px solid rgba(186, 199, 190, 0.18);
+}
+
+.cf-footer-inner {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    padding-top: 6px !important;
+    padding-bottom: 6px !important;
+}
+
+.cf-footer-a11y {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.cf-footer-a11y .form-check {
+    margin-bottom: 0;
+}
+
+.cf-footer-a11y .form-check-label {
+    font-size: 0.75rem;
+    opacity: 0.95;
+    user-select: none;
+}
+
+.cf-footer-spacer {
+    flex: 1 1 auto;
+}
+
+.cf-footer-text {
+    font-size: 0.75rem;
+    opacity: 0.92;
+    white-space: nowrap;
+}
+
+.cf-footer-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    margin-right: 8px;
+    text-decoration: none;
+    color: rgba(186, 199, 190, 0.92);
+    opacity: 0.95;
+}
+
+.cf-footer-link:hover {
+    color: rgba(186, 199, 190, 1);
+    opacity: 1;
+}
+
+.cf-footer-link:focus-visible {
+    outline: 2px solid rgba(95, 105, 149, 0.75);
+    outline-offset: 2px;
+    border-radius: 6px;
+}
+
+/* Bootstrap Override - Three Equal Columns Layout */
+.main-panels-row {
+    display: grid !important;
+    /* Nudge the left panel slightly wider (~10-20px on typical viewports) */
+    grid-template-columns: 1.05fr 1fr 1fr !important;
+    grid-template-rows: 1fr !important;
+    gap: 0.5rem !important;
+    margin: 0 !important;
+    padding: 0.5rem !important;
+    width: 100% !important;
+    height: 100% !important;
+    box-sizing: border-box !important;
+    
+    /* Override ALL possible Bootstrap styles */
+    flex-direction: unset !important;
+    flex-wrap: unset !important;
+    align-items: unset !important;
+    justify-content: unset !important;
+}
+
+.main-panel {
+    /* Reset all inherited styles and force grid item behavior */
+    position: relative !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    
+    /* Ensure proper grid item behavior */
+    grid-column: auto !important;
+    grid-row: auto !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+}
+
+/* Compact card styling */
+.main-panel .card {
+    margin: 0 !important;
+    height: 100% !important;
+    font-size: 0.8rem;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.main-panel .card-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.5rem;
+
+    /* Allow children (timeline/json) to stretch to full height */
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+
+    /* Avoid layout shift when scrollbars appear */
+    scrollbar-gutter: stable;
+}
+
+.main-panel .card-header {
+    padding: 0.5rem 0.75rem; /* Reduced header padding */
+}
+
+.main-panel .card-header h5 {
+    font-size: 0.9rem; /* Smaller header text */
+    margin-bottom: 0;
+}
+
+.main-panel .card-body {
+    padding: 0.5rem; /* Reduced body padding */
+    overflow-y: auto;
+}
+
+/* Compact form controls */
+.form-control, .form-select {
+    font-size: 0.8rem;
+    padding: 0.25rem 0.5rem;
+}
+
+.form-check-label, .form-label {
+    font-size: 0.8rem;
+}
+
+.btn {
+    font-size: 0.8rem;
+    padding: 0.25rem 0.5rem;
+}
+
+/* Responsive Grid Layout */
+@media (min-width: 992px) {
+    .main-panels-row {
+        grid-template-columns: 1.05fr 1fr 1fr !important;
+    }
+}
+
+@media (min-width: 768px) and (max-width: 991.98px) {
+    .main-panels-row {
+        grid-template-columns: 1.05fr 1fr 1fr !important;
+    }
+    /* Make content more compact for medium screens */
+    body {
+        font-size: 0.8rem;
+    }
+    .form-control, .form-select {
+        font-size: 0.75rem;
+        padding: 0.2rem 0.4rem;
+    }
+}
+
+/* Stack vertically only on mobile */
+@media (max-width: 767.98px) {
+    .main-panels-row {
+        grid-template-columns: 1fr !important;
+        grid-template-rows: auto auto auto !important;
+        height: auto !important;
+    }
+    .main-panel .card {
+        height: 50vh !important;
+        margin-bottom: 1rem !important;
+    }
+}
+
+/* Timeline Builder Styles */
+.timeline-container {
+    min-height: 300px; /* Reduced height */
+    max-height: 60vh; /* Reduced max height */
+    overflow-y: auto;
+    border: 2px dashed rgba(58, 64, 90, 0.30);
+    background-color: var(--cf-surface);
+}
+
+/* Compact parameter forms */
+.parameter-group {
+    margin-bottom: 1rem;
+    border: 1px solid rgba(48, 51, 74, 0.12);
+    border-radius: 0.375rem;
+    padding: 0.5rem;
+}
+
+.group-title {
+    font-weight: 600;
+    font-size: 0.85rem;
+    margin-bottom: 0.5rem;
+    color: rgba(48, 51, 74, 0.92);
+}
+
+.parameter-row {
+    margin-bottom: 0.5rem;
+}
+
+.parameter-label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    margin-bottom: 0.25rem;
+    display: block;
+}
+
+.parameter-input {
+    margin-bottom: 0.25rem;
+}
+
+.parameter-help {
+    font-size: 0.7rem;
+    color: var(--cf-muted);
+    margin-top: 0.125rem;
+}
+
+/* Compact data collection checkboxes */
+.form-check {
+    padding-left: 1rem;
+    margin-bottom: 0.25rem;
+}
+
+.form-check-input {
+    font-size: 0.8rem;
+}
+
+.form-check-label {
+    font-size: 0.75rem;
+}
+
+/* Parameter modal: align switch rows with other input fields (small left indent) */
+#parameterModal .parameter-row .form-check.form-switch {
+    padding-left: 1.75rem;
+    margin-left: 0.35rem;
+}
+
+/* Compact sections */
+.mb-4 {
+    margin-bottom: 0.75rem !important;
+}
+
+.card-body h6 {
+    font-size: 0.85rem;
+    margin-bottom: 0.5rem;
+}
+
+/* JSON preview compact styling */
+.json-preview {
+    height: auto;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    background-color: var(--cf-surface-muted);
+    border: 1px solid rgba(48, 51, 74, 0.14);
+    font-size: 0.75rem; /* Smaller JSON text */
+}
+
+.json-preview pre {
+    margin: 0;
+}
+
+/* Timeline should also stretch within its card-body */
+.timeline-container {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+#jsonOutput {
+    font-size: 0.7rem; /* Even smaller for JSON content */
+    line-height: 1.2;
+    margin: 0;
+    padding: 0.5rem;
+}
+
+/* Component Preview Styles */
+.preview-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+#previewCanvas {
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.preview-controls {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.preview-controls .btn {
+    min-width: 100px;
+}
+
+#previewParameterInfo {
+    font-size: 0.85rem;
+}
+
+#previewParameterInfo p {
+    margin-bottom: 0.5rem;
+}
+
+#previewStats p {
+    margin-bottom: 0.5rem;
+    font-size: 0.85rem;
+}
+
+.parameter-group .group-title.d-flex {
+    font-weight: bold;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #dee2e6;
+}
+
+/* Compact button groups */
+.btn-group .btn {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+}
+
+/* Small text helpers */
+.text-muted {
+    font-size: 0.7rem;
+}
+
+/* Compact timeline components */
+.timeline-component {
+    margin: 0.25rem;
+    padding: 0.5rem;
+    font-size: 0.8rem;
+}
+
+.component-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.component-type-badge {
+    font-size: 0.65rem;
+    padding: 1px 6px;
+}
+
+.component-actions .btn {
+    font-size: 0.65rem;
+    padding: 1px 4px;
+}
+
+.component-preview {
+    font-size: 0.7rem;
+    padding: 0.25rem;
+    margin-top: 0.25rem;
+}
+
+.timeline-container.drag-over {
+    border-color: #007bff;
+    background-color: #f0f8ff;
+}
+
+.empty-timeline {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+/* Timeline Component Styles */
+.timeline-component {
+    background: #ffffff;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    margin: 8px;
+    padding: 12px;
+    position: relative;
+    cursor: move;
+    transition: all 0.2s ease;
+}
+
+.timeline-component:hover {
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    transform: translateY(-2px);
+}
+
+.timeline-component.selected {
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0,123,255,0.25);
+}
+
+.component-header {
+    display: flex;
+    justify-content: between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.component-title {
+    font-weight: 600;
+    color: #495057;
+    flex-grow: 1;
+}
+
+.component-type-badge {
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    border-radius: 12px;
+    background-color: #e9ecef;
+    color: #6c757d;
+    margin-left: auto;
+    margin-right: 8px;
+}
+
+.component-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.component-actions .btn {
+    padding: 2px 6px;
+    font-size: 0.75rem;
+}
+
+.component-preview {
+    font-size: 0.875rem;
+    color: #6c757d;
+    background-color: #f8f9fa;
+    padding: 8px;
+    border-radius: 4px;
+    margin-top: 8px;
+    max-height: 100px;
+    overflow-y: auto;
+}
+
+/* JSON Preview Styles */
+.json-preview {
+    height: 70vh;
+    overflow-y: auto;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+}
+
+.json-preview pre {
+    margin: 0;
+    padding: 16px;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.875rem;
+    line-height: 1.4;
+    background: transparent;
+    border: none;
+}
+
+.json-preview code {
+    background: transparent;
+    color: #212529;
+}
+
+/* Syntax highlighting for JSON */
+.json-key {
+    color: #0066cc;
+    font-weight: 600;
+}
+
+.json-string {
+    color: #009900;
+}
+
+.json-number {
+    color: #cc6600;
+}
+
+.json-boolean {
+    color: #993399;
+    font-weight: 600;
+}
+
+.json-null {
+    color: #999999;
+    font-style: italic;
+}
+
+/* Component Library Styles */
+.component-card {
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: #ffffff;
+}
+
+.component-card:hover {
+    border-color: #007bff;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.component-card .icon {
+    font-size: 2rem;
+    color: #007bff;
+    margin-bottom: 8px;
+}
+
+.component-card .title {
+    font-weight: 600;
+    color: #495057;
+    margin-bottom: 4px;
+}
+
+.component-card .description {
+    font-size: 0.875rem;
+    color: #6c757d;
+}
+
+/* Parameter Form Styles */
+.parameter-group {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+}
+
+.parameter-group .group-title {
+    font-weight: 600;
+    color: #495057;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.parameter-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.parameter-row:last-child {
+    margin-bottom: 0;
+}
+
+.parameter-label {
+    font-weight: 500;
+    color: #495057;
+    width: 120px;
+    margin-right: 12px;
+    margin-bottom: 0;
+}
+
+.parameter-input {
+    flex-grow: 1;
+}
+
+.parameter-help {
+    font-size: 0.75rem;
+    color: #6c757d;
+    margin-top: 4px;
+    font-style: italic;
+}
+
+/* Data Collection Module Toggles */
+.data-collection-toggle {
+    background: #ffffff;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 8px;
+    transition: all 0.2s ease;
+}
+
+.data-collection-toggle.active {
+    background: #e7f3ff;
+    border-color: #007bff;
+}
+
+.data-collection-toggle .toggle-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.data-collection-toggle .icon {
+    color: #007bff;
+    margin-right: 8px;
+}
+
+.data-collection-toggle .title {
+    font-weight: 500;
+    color: #495057;
+    flex-grow: 1;
+}
+
+/* Experiment Type Selector */
+.experiment-type-card {
+    border: 2px solid #dee2e6;
+    border-radius: 12px;
+    padding: 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: #ffffff;
+}
+
+.experiment-type-card:hover {
+    border-color: #007bff;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.experiment-type-card.selected {
+    border-color: #007bff;
+    background: #e7f3ff;
+}
+
+.experiment-type-card .icon {
+    font-size: 3rem;
+    color: #007bff;
+    margin-bottom: 16px;
+}
+
+.experiment-type-card .title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #495057;
+    margin-bottom: 8px;
+}
+
+.experiment-type-card .description {
+    color: #6c757d;
+    font-size: 0.875rem;
+}
+
+/* Validation Styles */
+.validation-error {
+    border-color: #dc3545 !important;
+    box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25) !important;
+}
+
+.validation-message {
+    font-size: 0.875rem;
+    margin-top: 4px;
+}
+
+.validation-message.error {
+    color: #dc3545;
+}
+
+.validation-message.success {
+    color: #28a745;
+}
+
+.validation-message.warning {
+    color: #ffc107;
+}
+
+/* Status Indicators */
+.status-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 8px;
+}
+
+.status-indicator.success {
+    background-color: #28a745;
+}
+
+.status-indicator.error {
+    background-color: #dc3545;
+}
+
+.status-indicator.warning {
+    background-color: #ffc107;
+}
+
+.status-indicator.info {
+    background-color: #17a2b8;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .timeline-container {
+        max-height: 300px;
+    }
+    
+    .json-preview {
+        height: 300px;
+    }
+    
+    .parameter-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .parameter-label {
+        width: 100%;
+        margin-bottom: 8px;
+    }
+}
+
+/* Manual dark-theme overrides */
+html[data-cf-theme="dark"] .card {
+    background-color: var(--cf-surface);
+    border-color: var(--cf-border);
+}
+
+html[data-cf-theme="dark"] .bg-light {
+    background-color: var(--cf-surface-muted) !important;
+}
+
+html[data-cf-theme="dark"] .card-header h5,
+html[data-cf-theme="dark"] .fw-bold,
+html[data-cf-theme="dark"] h6 {
+    color: var(--cf-text);
+}
+
+html[data-cf-theme="dark"] .text-muted,
+html[data-cf-theme="dark"] small.text-muted {
+    color: var(--cf-muted) !important;
+}
+
+html[data-cf-theme="dark"] .form-control,
+html[data-cf-theme="dark"] .form-select,
+html[data-cf-theme="dark"] textarea,
+html[data-cf-theme="dark"] input[type="text"],
+html[data-cf-theme="dark"] input[type="number"] {
+    background-color: #404766;
+    color: var(--cf-text);
+    border-color: rgba(186, 199, 190, 0.35);
+}
+
+html[data-cf-theme="dark"] .form-control:focus,
+html[data-cf-theme="dark"] .form-select:focus {
+    border-color: rgba(174, 140, 163, 0.95);
+    box-shadow: 0 0 0 0.2rem rgba(174, 140, 163, 0.28);
+}
+
+html[data-cf-theme="dark"] .timeline-container {
+    background-color: #2b3148;
+    border-color: var(--cf-border);
+}
+
+html[data-cf-theme="dark"] .timeline-component,
+html[data-cf-theme="dark"] .timeline-item {
+    background-color: #3a405a;
+    border-color: rgba(186, 199, 190, 0.30);
+    color: var(--cf-text);
+}
+
+html[data-cf-theme="dark"] .json-preview {
+    background-color: #252a3e;
+    border-color: rgba(186, 199, 190, 0.28);
+}
+
+html[data-cf-theme="dark"] .json-preview code,
+html[data-cf-theme="dark"] pre,
+html[data-cf-theme="dark"] code {
+    color: #dfe8e1;
+}
+
+html[data-cf-theme="dark"] .btn-outline-secondary {
+    --bs-btn-color: var(--cf-text);
+    --bs-btn-border-color: rgba(186, 199, 190, 0.45);
+    --bs-btn-hover-bg: rgba(186, 199, 190, 0.12);
+    --bs-btn-hover-border-color: rgba(186, 199, 190, 0.62);
+}
+
+/* Loading States */
+.loading {
+    position: relative;
+    pointer-events: none;
+}
+
+.loading::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: inherit;
+}
+
+.loading::before {
+    content: '\f110';
+    font-family: 'Font Awesome 6 Free';
+    font-weight: 900;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    animation: fa-spin 2s infinite linear;
+    z-index: 1;
+    color: #007bff;
+    font-size: 1.5rem;
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideIn {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(0); }
+}
+
+.fade-in {
+    animation: fadeIn 0.3s ease-out;
+}
+
+.slide-in {
+    animation: slideIn 0.3s ease-out;
+}
+
+/* RDM-Specific Styling */
+#rdmParameters {
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    padding: 16px;
+    border: 2px solid #e9ecef;
+}
+
+#rdmParameters h6 {
+    color: #495057;
+    border-bottom: 2px solid #dee2e6;
+    padding-bottom: 8px;
+    margin-bottom: 12px;
+}
+
+.rdm-parameter-group {
+    background: white;
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 12px;
+    border: 1px solid #dee2e6;
+}
+
+/* Coherence slider styling */
+.form-range::-webkit-slider-thumb {
+    background: #007bff;
+}
+
+.form-range::-moz-range-thumb {
+    background: #007bff;
+    border: none;
+}
+
+/* Color input styling */
+.form-control-color {
+    width: 100%;
+    height: 38px;
+}
+
+/* Trial component badges */
+.timeline-component .badge {
+    font-size: 0.7em;
+    margin-right: 4px;
+}
+
+/* RDM trial specific styling */
+.rdm-trial-card {
+    border-left: 4px solid #007bff;
+}
+
+.rdm-trial-card .card-body {
+    padding: 12px;
+}
+
+.rdm-trial-details {
+    font-size: 0.85em;
+    color: #6c757d;
+    margin-top: 4px;
+}
+
+/* Parameter input focus states */
+#rdmParameters .form-control:focus,
+#rdmParameters .form-select:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+/* Responsive adjustments for RDM parameters */
+@media (max-width: 768px) {
+    #rdmParameters {
+        padding: 12px;
+    }
+    
+    #rdmParameters .row .col-6 {
+        margin-bottom: 8px;
+    }
+}
+
+/* Dot Groups Styling */
+#dotGroupsContainer {
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    padding: 12px;
+    border: 1px solid #dee2e6;
+}
+
+.dot-group-item {
+    background-color: white;
+    border-left: 4px solid #007bff;
+    transition: all 0.2s ease;
+}
+
+.dot-group-item:hover {
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+
+.dot-group-item .group-number {
+    font-weight: bold;
+    color: #007bff;
+}
+
+.cluster-settings {
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    padding: 8px;
+    border: 1px dashed #dee2e6;
+}
+
+.remove-group-btn {
+    opacity: 0.6;
+    transition: opacity 0.2s ease;
+}
+
+.remove-group-btn:hover {
+    opacity: 1;
+}
+
+/* Group color preview */
+.group-color {
+    border-radius: 6px;
+    height: 38px;
+}
+
+/* Advanced section toggle */
+.fw-bold small.text-muted {
+    font-weight: normal !important;
+    font-size: 0.8em;
+}
+
+/* Template styling */
+template {
+    display: none;
+}
+
+/* Timeline Sortable Styles */
+.timeline-components-container {
+    min-height: 200px;
+    padding: 0.5rem;
+}
+
+.timeline-component {
+    transition: all 0.2s ease;
+}
+
+.sortable-ghost {
+    opacity: 0.5;
+    background-color: #e9ecef;
+    border: 2px dashed #6c757d;
+}
+
+.sortable-chosen {
+    box-shadow: 0 0 10px rgba(0, 123, 255, 0.5);
+}
+
+.sortable-drag {
+    opacity: 0.8;
+    transform: rotate(2deg);
+}
+
+.drag-handle {
+    cursor: move !important;
+    color: #6c757d !important;
+    padding: 0.25rem;
+    opacity: 0.7;
+    transition: opacity 0.2s ease;
+}
+
+.drag-handle:hover {
+    color: #495057 !important;
+    opacity: 1;
+}
+
+.timeline-component:hover .drag-handle {
+    opacity: 1;
+}
+
+/* Timeline component button styling */
+.timeline-component .btn-group {
+    flex-shrink: 0; /* Prevent button group from shrinking */
+}
+
+.timeline-component .btn {
+    min-width: 32px; /* Ensure minimum button width */
+    padding: 0.25rem 0.5rem;
+}
+
+.timeline-component .card-body {
+    padding: 0.75rem;
+    min-height: 60px;
+    display: flex;
+    align-items: center;
+}
+
+/* Timeline cards: full-width row with drag-left, text-middle, actions-right. */
+.timeline-component {
+    width: 100%;
+}
+
+.timeline-component .card-body > .d-flex.justify-content-between.align-items-center {
+    width: 100%;
+    min-width: 0;
+    gap: 0.5rem;
+}
+
+.timeline-component .card-body > .d-flex.justify-content-between.align-items-center > .d-flex.align-items-center {
+    flex: 1 1 auto;
+    min-width: 0;
+    gap: 0.25rem;
+}
+
+.timeline-component .card-body > .d-flex.justify-content-between.align-items-center > .d-flex.align-items-center > div:last-child {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.timeline-component .drag-handle {
+    margin-right: 0.15rem !important;
+    padding: 0.1rem;
+}
+
+/* Keep timeline cards visually aligned even when labels are dynamic/long. */
+.timeline-component .card-title {
+    margin-bottom: 0.15rem !important;
+    line-height: 1.2;
+    max-width: 100%;
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.timeline-component .cf-component-label {
+    display: block;
+    font-size: 0.84rem;
+    line-height: 1.2;
+    min-height: 0.95rem;
+    width: 100%;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Keep gutters stable in inner scroll areas too */
+.timeline-container,
+.json-preview {
+    scrollbar-gutter: stable;
+}
+
+/* Replace Bootstrap's default "electric blue" outline-primary with palette */
+.btn-outline-primary {
+    --bs-btn-color: var(--cf-dusty-grape);
+    --bs-btn-border-color: rgba(95, 105, 149, 0.65);
+    --bs-btn-hover-color: var(--cf-ash-grey);
+    --bs-btn-hover-bg: var(--cf-dusty-grape);
+    --bs-btn-hover-border-color: var(--cf-dusty-grape);
+    --bs-btn-active-color: var(--cf-ash-grey);
+    --bs-btn-active-bg: var(--cf-dusty-grape);
+    --bs-btn-active-border-color: var(--cf-dusty-grape);
+    --bs-btn-disabled-color: rgba(95, 105, 149, 0.60);
+    --bs-btn-disabled-border-color: rgba(95, 105, 149, 0.40);
+}
+
+/* Preview buttons (btn-info) and other "info" accents */
+.btn-info {
+    --bs-btn-bg: var(--cf-deep-teal);
+    --bs-btn-border-color: var(--cf-deep-teal);
+    --bs-btn-hover-bg: #5a6f62;
+    --bs-btn-hover-border-color: #5a6f62;
+    --bs-btn-color: var(--cf-ash-grey);
+    --bs-btn-hover-color: var(--cf-ash-grey);
+    --bs-btn-active-color: var(--cf-ash-grey);
+}
+
+.btn-outline-info {
+    --bs-btn-color: var(--cf-deep-teal);
+    --bs-btn-border-color: rgba(101, 123, 108, 0.65);
+    --bs-btn-hover-color: var(--cf-ash-grey);
+    --bs-btn-hover-bg: var(--cf-deep-teal);
+    --bs-btn-hover-border-color: var(--cf-deep-teal);
+    --bs-btn-active-color: var(--cf-ash-grey);
+    --bs-btn-active-bg: var(--cf-deep-teal);
+    --bs-btn-active-border-color: var(--cf-deep-teal);
+}
+
+/* Checked inputs / switches: avoid Bootstrap blue */
+.form-check-input:checked {
+    background-color: var(--cf-dusty-grape);
+    border-color: var(--cf-dusty-grape);
+}
+
+.form-check-input:focus {
+    border-color: rgba(95, 105, 149, 0.85);
+    box-shadow: 0 0 0 0.2rem rgba(95, 105, 149, 0.28);
+}
+
+/* Footer toggle should also avoid Bootstrap blue */
+.cf-footer .form-check-input:checked {
+    background-color: var(--cf-dusty-grape);
+    border-color: var(--cf-dusty-grape);
+}

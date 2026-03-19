@@ -191,3 +191,54 @@ These do not block initial work but should be settled before broad pilot use:
 - Managed object storage vs self-hosted MinIO beyond local development
 - Celery vs lighter background job framework
 - Ingress controller choice and certificate automation strategy
+
+---
+
+## Day 4 — Platform Integration Feature Flags
+
+The Builder and Interpreter ship with a feature-flag system controlled by
+JavaScript globals injected at page load.  This allows the same source to run
+against JATOS, local-fallback, or the Django platform backend without
+code changes.
+
+### `window.COGFLOW_PLATFORM_URL`
+
+| Value | Effect |
+|-------|--------|
+| Empty string (default) | JATOS / local-download path unchanged |
+| `"http://localhost:8000"` | Enables Platform Publish (Builder) and DjangoRuntimeBackend (Interpreter) |
+
+**Builder** (`frontend/builder/index.html`):
+- When set, the **Platform Publish** button appears in the navbar.
+- Clicking it calls `POST /api/v1/configs/publish` with the current config JSON,
+  study slug, and version label.
+- Results are displayed in the Builder's validation status bar.
+
+**Interpreter** (`frontend/interpreter/index.html`):
+- When set, `DjangoRuntimeBackend` (`src/djangoRuntimeBackend.js`) is used
+  instead of JATOS for result submission.
+- On experiment completion the backend calls:
+  1. `POST /api/v1/runs/start` → receives `run_session_id`
+  2. `POST /api/v1/results/submit` → stores the full trial payload
+
+### Additional globals (optional)
+
+| Global | Purpose |
+|--------|---------|
+| `window.COGFLOW_STUDY_SLUG` | Default study slug for publish and run-start |
+| `window.COGFLOW_STUDY_NAME` | Human-readable study name for publish |
+| `window.COGFLOW_CONFIG_VERSION` | Config version label (e.g. `"v1.0"`) |
+| `window.COGFLOW_PARTICIPANT_ID` | Participant code passed to run-start |
+
+### Local development quick-start
+
+1. Start the Django backend: `cd backend && python manage.py runserver`
+2. Edit `frontend/builder/index.html`:
+   ```js
+   window.COGFLOW_PLATFORM_URL = 'http://localhost:8000';
+   window.COGFLOW_STUDY_SLUG   = 'my-study';
+   ```
+3. Open `frontend/builder/index.html` in a browser — the
+   **Platform Publish** button should appear in the navbar.
+4. Edit `frontend/interpreter/index.html` similarly and open it to
+   verify the `DjangoRuntimeBackend` path runs end-to-end.

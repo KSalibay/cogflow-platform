@@ -1,0 +1,141 @@
+{
+  "experiment_meta": {
+    "name": "Basic RDM Experiment",
+    "version": "1.0.0", 
+    "description": "Simple Random Dot Motion task with left/right direction discrimination",
+    "author": "Psychology Lab",
+    "created_date": "2025-12-17",
+    "jsPsych_version": "8.0+",
+    "parameter_control_level": "trial_based"
+  },
+
+  "experiment_type": "trial-based",
+  "timeline_type": "trial-based",
+
+  "data_collection": {
+    "reaction_time": {
+      "enabled": true,
+      "precision": "milliseconds"
+    },
+    "accuracy": {
+      "enabled": true,
+      "track_confidence": false
+    },
+    "mouse_tracking": {
+      "enabled": false
+    },
+    "keyboard_tracking": {
+      "enabled": false
+    },
+    "eye_tracking": {
+      "enabled": false
+    }
+  },
+
+  "display_parameters": {
+    "canvas_width": 800,
+    "canvas_height": 600,
+    "background_color": "#404040"
+  },
+
+  "aperture_parameters": {
+    "shape": "circle",
+    "diameter": 350,
+    "center_x": 400,
+    "center_y": 300
+  },
+
+  "dot_parameters": {
+    "total_dots": 150,
+    "dot_size": 4,
+    "dot_color": "#FFFFFF",
+    "lifetime_frames": 5
+  },
+
+  "motion_parameters": {
+    "coherence": 0.5,
+    "direction": 0,
+    "speed": 6,
+    "noise_type": "random_direction"
+  },
+
+  "timing_parameters": {
+    "fixation_duration": 500,
+    "stimulus_duration": 1500,
+    "response_deadline": 2500,
+    "inter_trial_interval": 1200
+  },
+
+  "response_parameters": {
+    "choices": ["f", "j"],
+    "require_response": true,
+    "key_mapping": {
+      "f": "left",
+      "j": "right"
+    }
+  },
+
+  "timeline": [
+    {
+      "type": "rdm-trial",
+      "name": "Practice Trial 1",
+      "parameters": {
+        "motion.coherence": 0.8,
+        "motion.direction": 0,
+        "timing.stimulus_duration": 2000,
+        "dots.dot_color": "#FFFF00"
+      }
+    },
+    {
+      "type": "rdm-trial", 
+      "name": "Practice Trial 2",
+      "parameters": {
+        "motion.coherence": 0.8,
+        "motion.direction": 180,
+        "timing.stimulus_duration": 2000,
+        "dots.dot_color": "#FFFF00"
+      }
+    },
+    {
+      "type": "rdm-trial",
+      "name": "Test Trial - Low Coherence",
+      "parameters": {
+        "motion.coherence": 0.1,
+        "motion.direction": 0,
+        "timing.stimulus_duration": 1500
+      }
+    },
+    {
+      "type": "rdm-trial",
+      "name": "Test Trial - Medium Coherence", 
+      "parameters": {
+        "motion.coherence": 0.5,
+        "motion.direction": 180,
+        "timing.stimulus_duration": 1500
+      }
+    },
+    {
+      "type": "rdm-trial",
+      "name": "Test Trial - High Coherence",
+      "parameters": {
+        "motion.coherence": 0.9,
+        "motion.direction": 0,
+        "timing.stimulus_duration": 1500
+      }
+    }
+  ],
+
+  "validation": {
+    "coherence_range": [0.0, 1.0],
+    "direction_range": [0, 360],
+    "minimum_dots": 10,
+    "maximum_dots": 1000,
+    "aperture_fitting": "check_within_canvas"
+  },
+
+  "export_settings": {
+    "format": "jsPsych_8",
+    "include_practice": true,
+    "randomize_trials": false
+  }
+}
