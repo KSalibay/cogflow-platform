@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.db.models import Count, Max
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.response import Response
@@ -34,8 +35,12 @@ class HealthView(APIView):
 
 class StudiesListView(APIView):
     def get(self, request):
+        studies_qs = Study.objects.annotate(
+            run_count_agg=Count("run_sessions", distinct=True),
+            last_result_at_agg=Max("run_sessions__result_envelope__created_at"),
+        )
         studies = []
-        for study in Study.objects.all()[:100]:
+        for study in studies_qs[:100]:
             last_config = study.config_versions.first()
             studies.append(
                 {
@@ -43,8 +48,10 @@ class StudiesListView(APIView):
                     "study_name": study.name,
                     "runtime_mode": study.runtime_mode,
                     "latest_config_version": last_config.version_label if last_config else None,
-                    "run_count": study.run_sessions.count(),
-                    "last_activity_at": study.updated_at,
+                    "dashboard_url": f"/portal/studies/{study.slug}",
+                    "run_count": study.run_count_agg,
+                    "last_result_at": study.last_result_at_agg,
+                    "last_activity_at": study.last_result_at_agg or study.updated_at,
                 }
             )
         return Response({"studies": studies})

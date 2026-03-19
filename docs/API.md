@@ -141,7 +141,7 @@ paths:
             schema:
               $ref: '#/components/schemas/SubmitResultRequest'
       responses:
-        '200':
+        '201':
           description: Result stored
           content:
             application/json:
@@ -325,16 +325,24 @@ components:
         run_count:
           type: integer
           minimum: 0
+        last_result_at:
+          type: string
+          format: date-time
+          nullable: true
         last_activity_at:
           type: string
           format: date-time
+        dashboard_url:
+          type: string
       required:
         - study_slug
         - study_name
         - runtime_mode
         - latest_config_version
         - run_count
+        - last_result_at
         - last_activity_at
+        - dashboard_url
 
     StudiesListResponse:
       type: object

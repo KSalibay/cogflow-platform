@@ -242,3 +242,23 @@ code changes.
    **Platform Publish** button should appear in the navbar.
 4. Edit `frontend/interpreter/index.html` similarly and open it to
    verify the `DjangoRuntimeBackend` path runs end-to-end.
+
+## Day 5 — Vertical Slice Demo Script
+
+Run a full publish -> start-run -> submit-result -> dashboard-metrics flow with one command:
+
+```bash
+cd /home/kamisalibayeva/GitHub/cogflow-platform
+./scripts/day5_vertical_slice_demo.sh
+```
+
+Optional overrides:
+
+```bash
+BASE_URL=http://localhost:8000 SLUG=my-day5-demo PARTICIPANT_ID=P-007 ./scripts/day5_vertical_slice_demo.sh
+```
+
+Expected pass signal:
+- Script prints `[PASS] Day 5 vertical slice demo succeeded`
+- `/api/v1/studies` entry for the selected slug has `run_count > 0`
+- `/api/v1/studies` entry has non-null `last_result_at`
