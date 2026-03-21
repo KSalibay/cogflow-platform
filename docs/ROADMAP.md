@@ -84,6 +84,26 @@ Exit criteria:
 - Pilot onboarding docs
 - Higher confidence release process
 
+## Deferred Features (Backlog)
+
+### Builder — Researcher-Scoped Templates and Assets
+
+When the Builder is served through the platform (`/builder/`), it should be tied to the authenticated
+researcher session so that:
+
+- Each researcher's saved templates are stored against their user record (not in `localStorage` only)
+- Asset uploads (images, audio) are stored in the researcher's scoped asset folder on the platform backend
+- The Builder pre-loads the researcher's own studies/configs on open, allowing them to resume work
+- The "Platform Publish" flow sets the published study's `owner_user` to the currently logged-in researcher
+
+This requires:
+1. `GET /api/v1/auth/me` response consumed by the Builder on load to determine identity
+2. New `GET/POST /api/v1/builder/templates` endpoints scoped per user
+3. Asset API endpoints scoped to `owner_user` (Phase 3 in the plan)
+4. `BuilderAppView` to inject `window.COGFLOW_RESEARCHER_USERNAME` alongside the platform URL
+
+Not blocking initial pilot — researchers can use the portal to assign ownership manually after publish.
+
 ## Non-Goals for Initial Release
 
 The following are intentionally deferred unless they become hard blockers:

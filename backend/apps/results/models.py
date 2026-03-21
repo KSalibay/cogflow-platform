@@ -20,7 +20,10 @@ class TrialResult(models.Model):
     trial_index = models.PositiveIntegerField()
     block_label = models.CharField(max_length=100, blank=True, default="")
     task_name = models.CharField(max_length=100, blank=True, default="")
-    # Cleartext fields safe for aggregate queries — must not contain PII
+    # Cleartext fields — study design metadata only, safe for aggregate queries.
+    # block_label and task_name identify the condition/block structure, not the
+    # participant's response.  All behavioural fields (rt, response, accuracy)
+    # are intentionally blank here and stored only in encrypted_payload.
     stimulus_key = models.CharField(max_length=200, blank=True, default="")
     response_key = models.CharField(max_length=200, blank=True, default="")
     rt_ms = models.PositiveIntegerField(null=True, blank=True)

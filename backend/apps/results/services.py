@@ -12,12 +12,17 @@ def store_result_envelope(
     summary_json: dict,
     result_payload: dict,
 ) -> ResultEnvelope:
+    # Fold the summary into the encrypted payload so no derived participant
+    # statistics are visible to anyone with raw DB access (including platform
+    # admins).  summary_json column is always written as {} — the real summary
+    # is recovered via DecryptResultView.
+    payload_with_summary = {**result_payload, "_summary": summary_json}
     envelope, _ = ResultEnvelope.objects.update_or_create(
         run_session=run_session,
         defaults={
             "trial_count": trial_count,
-            "summary_json": summary_json,
-            "encrypted_payload": encrypt_payload(json.dumps(result_payload)),
+            "summary_json": {},  # intentionally blank — data is in encrypted_payload
+            "encrypted_payload": encrypt_payload(json.dumps(payload_with_summary)),
             "key_version": ENCRYPTION_KEY_VERSION_1,
             "encryption_alg": ENCRYPTION_ALG_FERNET,
         },
@@ -36,10 +41,13 @@ def store_trial_results(run_session: RunSession, trials: list[dict]) -> int:
             trial_index=trial.get("trial_index", idx),
             block_label=str(trial.get("block_label", trial.get("block", ""))),
             task_name=str(trial.get("task_name", trial.get("task", ""))),
-            stimulus_key=str(trial.get("stimulus_key", trial.get("stimulus", ""))),
-            response_key=str(trial.get("response_key", trial.get("response", ""))),
-            rt_ms=trial.get("rt_ms", trial.get("rt")),
-            correct=trial.get("correct"),
+            # Participant behavioural fields are intentionally blank in the DB.
+            # Full trial data (including rt, response, correct) lives only in
+            # encrypted_payload to prevent DB-level exposure to platform admins.
+            stimulus_key="",
+            response_key="",
+            rt_ms=None,
+            correct=None,
             encrypted_payload=encrypt_payload(json.dumps(trial)),
             key_version=ENCRYPTION_KEY_VERSION_1,
             encryption_alg=ENCRYPTION_ALG_FERNET,

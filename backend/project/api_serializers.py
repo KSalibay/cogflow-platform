@@ -18,8 +18,18 @@ class PublishConfigRequestSerializer(serializers.Serializer):
 
 
 class StartRunRequestSerializer(serializers.Serializer):
-    study_slug = serializers.SlugField()
+    study_slug = serializers.SlugField(required=False)
+    launch_token = serializers.CharField(required=False, allow_blank=True)
     participant_external_id = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+    def validate(self, attrs):
+        study_slug = attrs.get("study_slug")
+        launch_token = (attrs.get("launch_token") or "").strip()
+        if not study_slug and not launch_token:
+            raise serializers.ValidationError("Either study_slug or launch_token is required")
+        if launch_token:
+            attrs["launch_token"] = launch_token
+        return attrs
 
 
 class SubmitResultRequestSerializer(serializers.Serializer):
@@ -51,3 +61,12 @@ class TotpSetupRequestSerializer(serializers.Serializer):
 
 class TotpVerifyRequestSerializer(serializers.Serializer):
     code = serializers.CharField(max_length=12)
+
+
+class CreateParticipantLinkRequestSerializer(serializers.Serializer):
+    participant_external_id = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    expires_in_hours = serializers.IntegerField(required=False, min_value=1, max_value=24 * 30, default=72)
+
+
+class AssignStudyOwnerRequestSerializer(serializers.Serializer):
+    owner_username = serializers.CharField(max_length=150)

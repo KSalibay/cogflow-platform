@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>CogFlow Portal - Studies Dashboard (Day 5 Draft)</title>
+    <title>CogFlow Portal</title>
     <style>
       :root {
         --bg: #f5f7fb;
@@ -13,6 +13,7 @@
         --line: #dbe2ee;
         --accent: #1052dc;
         --ok: #1f8f4e;
+        --warn: #c04a00;
       }
 
       body {
@@ -36,6 +37,12 @@
         margin-bottom: 14px;
       }
 
+      .topbar-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+
       h1 {
         margin: 0;
         font-size: 1.35rem;
@@ -55,6 +62,9 @@
         padding: 9px 12px;
         font-weight: 600;
         cursor: pointer;
+        font-size: 0.9rem;
+        text-decoration: none;
+        display: inline-block;
       }
 
       .btn:disabled {
@@ -62,6 +72,87 @@
         cursor: wait;
       }
 
+      .btn.secondary {
+        background: #eef3ff;
+        color: #214179;
+        border-color: #cad8f7;
+      }
+
+      .btn.small {
+        padding: 6px 9px;
+        font-size: 0.8rem;
+        border-radius: 7px;
+      }
+
+      .btn.danger {
+        background: #fff0ed;
+        color: #8b1a00;
+        border-color: #f5c5b8;
+      }
+
+      .btn.builder {
+        background: #0f7340;
+        color: #fff;
+      }
+
+      /* ── Auth panel ────────────────────────────────────────── */
+      .auth-bar {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 12px 16px;
+        margin-bottom: 12px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .auth-bar .auth-label {
+        font-size: 0.88rem;
+        color: var(--muted);
+        flex-shrink: 0;
+      }
+
+      .auth-bar input[type="text"],
+      .auth-bar input[type="password"] {
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        padding: 6px 10px;
+        font-size: 0.88rem;
+        font-family: inherit;
+        outline: none;
+        background: var(--bg);
+        color: var(--ink);
+        width: 140px;
+      }
+
+      .auth-bar input:focus {
+        border-color: var(--accent);
+        background: #fff;
+      }
+
+      .auth-bar .auth-identity {
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: var(--ok);
+      }
+
+      .auth-bar .auth-role {
+        font-size: 0.8rem;
+        color: var(--muted);
+        background: #eef2fb;
+        border-radius: 999px;
+        padding: 2px 8px;
+        display: inline-block;
+      }
+
+      .auth-bar .auth-error {
+        font-size: 0.8rem;
+        color: var(--warn);
+      }
+
+      /* ── Main panel ─────────────────────────────────────────── */
       .panel {
         background: var(--panel);
         border: 1px solid var(--line);
@@ -157,24 +248,37 @@
   </head>
   <body>
     <div class="shell">
+      <!-- Top bar -->
       <div class="topbar">
         <div>
-          <h1>Studies Dashboard (Day 5 Draft)</h1>
-          <p class="subtitle">Auto-updating portal view for published studies and recent run metrics.</p>
+          <h1>CogFlow Portal</h1>
+          <p class="subtitle">Studies Dashboard — published experiments and run metrics.</p>
         </div>
-        <button id="refreshBtn" class="btn">Refresh</button>
+        <div class="topbar-actions">
+          <a href="/builder/" class="btn builder" target="_blank">Open Builder ↗</a>
+          <a id="dbAdminBtn" href="http://localhost:8080/?pgsql=db&username=cogflow&db=cogflow_platform&ns=public" class="btn" style="background:#6b21a8;display:none" target="_blank">DB Admin ↗</a>
+          <button id="refreshBtn" class="btn secondary">Refresh</button>
+        </div>
       </div>
 
+      <!-- Auth panel -->
+      <div class="auth-bar" id="authBar">
+        <span class="auth-label" id="authStatus">Checking session…</span>
+      </div>
+
+      <!-- Studies panel -->
       <section class="panel">
         <div id="status" class="status">Loading studies...</div>
         <table>
           <thead>
             <tr>
               <th>Study</th>
+              <th>Owner</th>
               <th>Runtime</th>
               <th>Latest Config</th>
               <th>Run Count</th>
               <th>Last Result</th>
+              <th>Researcher Actions</th>
             </tr>
           </thead>
           <tbody id="rows"></tbody>
@@ -185,6 +289,24 @@
     <script>
       const API_BASE = "";
 
+      // ── CSRF + credentials helpers ──────────────────────────
+      function getCsrf() {
+        const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+        return m ? decodeURIComponent(m[1]) : "";
+      }
+
+      function postOpts(body) {
+        return {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json", "X-CSRFToken": getCsrf() },
+          body: JSON.stringify(body),
+        };
+      }
+
+      // ── Auth state ──────────────────────────────────────────
+      let currentUser = null; // {username, role} or null
+
       function formatIso(isoText) {
         if (!isoText) return "-";
         const dt = new Date(isoText);
@@ -192,12 +314,91 @@
         return dt.toLocaleString();
       }
 
+      // ── Auth panel rendering ────────────────────────────────
+      function renderAuthBar(user, errorMsg) {
+        const bar = document.getElementById("authBar");
+        if (user) {
+          bar.innerHTML = `
+            <span class="auth-identity">✓ Signed in as ${user.username}</span>
+            <span class="auth-role">${user.role || "—"}</span>
+            <button class="btn secondary small" id="logoutBtn">Sign Out</button>
+          `;
+          document.getElementById("logoutBtn").addEventListener("click", doLogout);
+        } else {
+          bar.innerHTML = `
+            <label class="auth-label" for="authUsername">Sign in to manage studies:</label>
+            <input type="text"     id="authUsername" placeholder="Username"  autocomplete="username" />
+            <input type="password" id="authPassword" placeholder="Password"  autocomplete="current-password" />
+            <button class="btn small" id="loginBtn">Sign In</button>
+            ${errorMsg ? `<span class="auth-error">${errorMsg}</span>` : ""}
+          `;
+          const loginBtn = document.getElementById("loginBtn");
+          loginBtn.addEventListener("click", doLogin);
+          // allow Enter key in password field
+          document.getElementById("authPassword").addEventListener("keydown", (e) => {
+            if (e.key === "Enter") doLogin();
+          });
+        }
+      }
+
+      async function checkSession() {
+        try {
+          const res = await fetch(`${API_BASE}/api/v1/auth/me`, { credentials: "include" });
+          if (res.ok) {
+            const data = await res.json();
+            currentUser = { username: data.username, role: data.role };
+            renderAuthBar(currentUser, null);
+            document.getElementById('dbAdminBtn').style.display =
+              data.role === 'platform_admin' ? '' : 'none';
+          } else {
+            currentUser = null;
+            renderAuthBar(null, null);
+          }
+        } catch (_) {
+          currentUser = null;
+          renderAuthBar(null, null);
+        }
+      }
+
+      async function doLogin() {
+        const username = (document.getElementById("authUsername")?.value || "").trim();
+        const password = document.getElementById("authPassword")?.value || "";
+        if (!username) return;
+
+        const loginBtn = document.getElementById("loginBtn");
+        if (loginBtn) loginBtn.disabled = true;
+
+        try {
+          const res = await fetch(`${API_BASE}/api/v1/auth/login`, postOpts({ username, password }));
+          const data = await res.json().catch(() => ({}));
+          if (res.ok && data.ok) {
+            currentUser = { username: data.username, role: null };
+            // Refresh session info & studies
+            await checkSession();
+            await loadStudies();
+          } else {
+            renderAuthBar(null, data.error || "Login failed");
+          }
+        } catch (err) {
+          renderAuthBar(null, "Network error");
+        }
+      }
+
+      async function doLogout() {
+        await fetch(`${API_BASE}/api/v1/auth/logout`, postOpts({}));
+        currentUser = null;
+        renderAuthBar(null, null);
+        await loadStudies();
+      }
+
+      // ── Table rendering ─────────────────────────────────────
       function renderRows(studies) {
         const tbody = document.getElementById("rows");
         tbody.innerHTML = "";
 
         if (!Array.isArray(studies) || studies.length === 0) {
-          tbody.innerHTML = '<tr><td data-label="Info" colspan="5">No studies yet. Publish from Builder to populate this dashboard.</td></tr>';
+          tbody.innerHTML =
+            '<tr><td data-label="Info" colspan="7">No studies yet. Use the Builder to create and publish a study.</td></tr>';
           return;
         }
 
@@ -208,12 +409,102 @@
               <div><strong>${s.study_name || s.study_slug || "(unnamed)"}</strong></div>
               <div class="mono">${s.study_slug || "-"}</div>
             </td>
+            <td data-label="Owner">${s.owner_username || "-"}</td>
             <td data-label="Runtime"><span class="pill">${s.runtime_mode || "-"}</span></td>
             <td data-label="Latest Config" class="mono">${s.latest_config_version || "-"}</td>
             <td data-label="Run Count">${typeof s.run_count === "number" ? s.run_count : "-"}</td>
             <td data-label="Last Result">${formatIso(s.last_result_at)}</td>
+            <td data-label="Researcher Actions">
+              <button class="btn secondary small" data-action="generate-link" data-study-slug="${s.study_slug || ""}">Generate Participant Link</button>
+              <button class="btn secondary small" data-action="reassign-owner" data-study-slug="${s.study_slug || ""}">Reassign Owner</button>
+            </td>
           `;
           tbody.appendChild(tr);
+        }
+
+        tbody.querySelectorAll("button[data-action='generate-link']").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            const studySlug = btn.getAttribute("data-study-slug");
+            if (!studySlug) return;
+            const participantId = window.prompt("Participant external ID (optional):", "");
+            await generateLaunchLink(studySlug, participantId || "");
+          });
+        });
+
+        tbody.querySelectorAll("button[data-action='reassign-owner']").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            const studySlug = btn.getAttribute("data-study-slug");
+            if (!studySlug) return;
+            const ownerUsername = window.prompt("New owner username (admin only):", "");
+            if (!ownerUsername || !ownerUsername.trim()) return;
+            await reassignOwner(studySlug, ownerUsername.trim());
+          });
+        });
+      }
+
+      // ── API actions ─────────────────────────────────────────
+      async function generateLaunchLink(studySlug, participantExternalId) {
+        const statusEl = document.getElementById("status");
+        statusEl.className = "status";
+        statusEl.textContent = `Generating participant link for ${studySlug}...`;
+
+        try {
+          const response = await fetch(
+            `${API_BASE}/api/v1/studies/${encodeURIComponent(studySlug)}/participant-links`,
+            postOpts({ participant_external_id: participantExternalId || null, expires_in_hours: 72 }),
+          );
+
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(data.error || `HTTP ${response.status}`);
+          }
+
+          const options = data.launch_options || {};
+          const multi = options.multi_use || {};
+          const single = options.single_use || {};
+
+          const message = [
+            `Study: ${data.study_slug}`,
+            ``,
+            `Multi-use URL:   ${multi.launch_url || data.launch_url || "-"}`,
+            `Multi-use token: ${multi.launch_token || data.launch_token || "-"}`,
+            ``,
+            `Single-use URL:   ${single.launch_url || "-"}`,
+            `Single-use token: ${single.launch_token || "-"}`,
+            ``,
+            `Expires: ${formatIso(data.expires_at)}`,
+          ].join("\n");
+          window.alert(message);
+          statusEl.className = "status ok";
+          statusEl.textContent = `Launch link generated for ${studySlug}.`;
+        } catch (error) {
+          statusEl.className = "status";
+          statusEl.textContent = `Launch-link generation failed: ${error?.message ?? String(error)}`;
+        }
+      }
+
+      async function reassignOwner(studySlug, ownerUsername) {
+        const statusEl = document.getElementById("status");
+        statusEl.className = "status";
+        statusEl.textContent = `Reassigning owner for ${studySlug} to ${ownerUsername}...`;
+
+        try {
+          const response = await fetch(
+            `${API_BASE}/api/v1/studies/${encodeURIComponent(studySlug)}/owner`,
+            postOpts({ owner_username: ownerUsername }),
+          );
+
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(data.error || `HTTP ${response.status}`);
+          }
+
+          statusEl.className = "status ok";
+          statusEl.textContent = `Owner reassigned: ${studySlug} → ${data.owner_username || ownerUsername}`;
+          await loadStudies();
+        } catch (error) {
+          statusEl.className = "status";
+          statusEl.textContent = `Owner reassignment failed: ${error?.message ?? String(error)}`;
         }
       }
 
@@ -225,22 +516,27 @@
         statusEl.textContent = "Refreshing studies...";
 
         try {
-          const response = await fetch(`${API_BASE}/api/v1/studies`);
+          const response = await fetch(`${API_BASE}/api/v1/studies`, { credentials: "include" });
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
           const data = await response.json();
           renderRows(data.studies || []);
           statusEl.className = "status ok";
-          statusEl.textContent = `Loaded ${(data.studies || []).length} study entries at ${new Date().toLocaleTimeString()}.`;
+          statusEl.textContent = `Loaded ${(data.studies || []).length} studies at ${new Date().toLocaleTimeString()}.`;
         } catch (error) {
           statusEl.className = "status";
-          statusEl.textContent = `Failed to load studies: ${error && error.message ? error.message : String(error)}`;
+          statusEl.textContent = `Failed to load studies: ${error?.message ?? String(error)}`;
         } finally {
           refreshBtn.disabled = false;
         }
       }
 
+      // ── Initialise ──────────────────────────────────────────
       document.getElementById("refreshBtn").addEventListener("click", loadStudies);
-      loadStudies();
+
+      (async () => {
+        await checkSession();
+        await loadStudies();
+      })();
     </script>
   </body>
 </html>

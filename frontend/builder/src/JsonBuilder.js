@@ -11199,10 +11199,21 @@ class JsonBuilder {
 
         this.showValidationResult('success', `Publishing to ${platformUrl}…`);
 
+        // Read Django's csrftoken cookie — set automatically when the Builder is served
+        // from the same origin as the platform (e.g. /builder/).
+        const csrfToken = (() => {
+            const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+            return m ? decodeURIComponent(m[1]) : '';
+        })();
+
         try {
             const response = await fetch(`${platformUrl}/api/v1/configs/publish`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+                },
                 body: JSON.stringify(payload),
             });
 

@@ -1,8 +1,11 @@
 import os
+import hashlib
 from datetime import timedelta
 
 import pyotp
 from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.models import User
+from django.core import signing
 from django.db import transaction
 from django.db.models import Count, Max
 from django.shortcuts import render
@@ -23,7 +26,9 @@ from apps.results.services import (
     store_trial_results,
 )
 from project.api_serializers import (
+    AssignStudyOwnerRequestSerializer,
     AuthLoginRequestSerializer,
+    CreateParticipantLinkRequestSerializer,
     DecryptResultRequestSerializer,
     PublishConfigRequestSerializer,
     StartRunRequestSerializer,
@@ -81,6 +86,40 @@ def _is_mfa_session_fresh(request) -> bool:
         ts = timezone.make_aware(ts)
     max_age_seconds = int(os.getenv("MFA_REAUTH_SECONDS", "900"))
     return timezone.now() - ts <= timedelta(seconds=max_age_seconds)
+
+
+def _can_manage_researcher_resources(request, profile) -> bool:
+    if not request.user.is_authenticated:
+        return False
+    return profile.role in {profile.ROLE_ADMIN, profile.ROLE_RESEARCHER}
+
+
+def _get_study_owner_username(study: Study) -> str | None:
+    if study.owner_user_id:
+        return study.owner_user.username
+
+    evt = (
+        AuditEvent.objects.filter(
+            action="publish_config",
+            resource_type="study",
+            resource_id=str(study.id),
+        )
+        .order_by("-id")
+        .first()
+    )
+    return evt.actor if evt else None
+
+
+def _issue_launch_token(payload: dict) -> str:
+    return signing.dumps(payload, salt="participant-launch-v1", compress=True)
+
+
+def _read_launch_token(token: str) -> dict:
+    return signing.loads(token, salt="participant-launch-v1", max_age=60 * 60 * 24 * 30)
+
+
+def _launch_token_digest(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 class AuthLoginView(APIView):
@@ -232,6 +271,53 @@ class TotpVerifyView(APIView):
         )
 
 
+class AuthMeView(APIView):
+    """Return current session user info, or 401 if not authenticated."""
+
+    def get(self, request):
+        if not request.user.is_authenticated:
+            return Response({"authenticated": False}, status=status.HTTP_401_UNAUTHORIZED)
+        profile = get_or_create_profile(request.user)
+        return Response(
+            {
+                "authenticated": True,
+                "username": request.user.username,
+                "role": profile.role,
+                "mfa_enabled": profile.mfa_enabled,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class BuilderAppView(APIView):
+    """Serve the CogFlow Builder frontend with this platform's URL pre-configured."""
+
+    schema = None
+
+    def get(self, request):
+        from django.conf import settings
+        from django.http import HttpResponse
+
+        builder_dir = settings.BASE_DIR / "frontend" / "builder"
+        if not builder_dir.exists():
+            builder_dir = settings.BASE_DIR.parent / "frontend" / "builder"
+
+        index_path = builder_dir / "index.html"
+        if not index_path.exists():
+            return Response(
+                {"error": "Builder not available — frontend assets not mounted."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        platform_url = request.build_absolute_uri("/").rstrip("/")
+        html = index_path.read_text(encoding="utf-8")
+        html = html.replace(
+            "window.COGFLOW_PLATFORM_URL    = '';",
+            f"window.COGFLOW_PLATFORM_URL    = '{platform_url}';",
+        )
+        return HttpResponse(html, content_type="text/html; charset=utf-8")
+
+
 class PortalDashboardView(APIView):
     """Serve the portal dashboard draft as a Django template."""
 
@@ -243,7 +329,13 @@ class PortalDashboardView(APIView):
 
 class StudiesListView(APIView):
     def get(self, request):
-        studies_qs = Study.objects.annotate(
+        studies_qs = Study.objects.all()
+        if request.user.is_authenticated:
+            profile = get_or_create_profile(request.user)
+            if profile.role == profile.ROLE_RESEARCHER:
+                studies_qs = studies_qs.filter(owner_user=request.user)
+
+        studies_qs = studies_qs.annotate(
             run_count_agg=Count("run_sessions", distinct=True),
             last_result_at_agg=Max("run_sessions__result_envelope__created_at"),
         )
@@ -255,6 +347,7 @@ class StudiesListView(APIView):
                     "study_slug": study.slug,
                     "study_name": study.name,
                     "runtime_mode": study.runtime_mode,
+                    "owner_username": _get_study_owner_username(study),
                     "latest_config_version": last_config.version_label if last_config else None,
                     "dashboard_url": f"/portal/studies/{study.slug}",
                     "run_count": study.run_count_agg,
@@ -280,6 +373,14 @@ class PublishConfigView(APIView):
             },
         )
 
+        actor = _get_actor_from_request(request)
+        if request.user.is_authenticated:
+            profile = get_or_create_profile(request.user)
+            if _can_manage_researcher_resources(request, profile):
+                if not study.owner_user_id or study.owner_user_id == request.user.id or profile.role == profile.ROLE_ADMIN:
+                    study.owner_user = request.user
+                    study.save(update_fields=["owner_user"])
+
         config_version, _ = ConfigVersion.objects.update_or_create(
             study=study,
             version_label=data["config_version_label"],
@@ -296,6 +397,7 @@ class PublishConfigView(APIView):
             action="publish_config",
             resource_type="study",
             resource_id=study.id,
+            actor=actor,
             metadata={"version_label": config_version.version_label},
         )
 
@@ -304,9 +406,141 @@ class PublishConfigView(APIView):
                 "study_id": study.id,
                 "config_version_id": config_version.id,
                 "study_slug": study.slug,
+                "owner_username": _get_study_owner_username(study),
                 "dashboard_url": f"/portal/studies/{study.slug}",
             },
             status=status.HTTP_201_CREATED,
+        )
+
+
+class CreateParticipantLinkView(APIView):
+    """Generate signed participant launch links for a researcher-owned study."""
+
+    @transaction.atomic
+    def post(self, request, study_slug: str):
+        if not request.user.is_authenticated:
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        profile = get_or_create_profile(request.user)
+        if not _can_manage_researcher_resources(request, profile):
+            return Response({"error": "Insufficient role permissions"}, status=status.HTTP_403_FORBIDDEN)
+
+        study = Study.objects.filter(slug=study_slug, is_active=True).first()
+        if not study:
+            return Response({"error": "Study not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        owner_username = _get_study_owner_username(study)
+        if profile.role != profile.ROLE_ADMIN and study.owner_user_id and study.owner_user_id != request.user.id:
+            return Response({"error": "Study is not owned by the current researcher"}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = CreateParticipantLinkRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        expires_at = timezone.now() + timedelta(hours=data.get("expires_in_hours", 72))
+        participant_external_id = (data.get("participant_external_id") or "").strip()
+        base_payload = {
+            "study_slug": study.slug,
+            "researcher_username": request.user.username,
+            "participant_external_id": participant_external_id,
+            "expires_at": expires_at.isoformat(),
+        }
+        single_use_token = _issue_launch_token(
+            {
+                **base_payload,
+                "launch_mode": "single_use",
+            }
+        )
+        multi_use_token = _issue_launch_token(
+            {
+                **base_payload,
+                "launch_mode": "multi_use",
+            }
+        )
+
+        record_audit(
+            action="create_participant_link",
+            resource_type="study",
+            resource_id=study.id,
+            actor=request.user.username,
+            metadata={
+                "study_slug": study.slug,
+                "expires_at": expires_at.isoformat(),
+                "single_use_token_digest": _launch_token_digest(single_use_token),
+                "multi_use_token_digest": _launch_token_digest(multi_use_token),
+            },
+        )
+
+        launch_url_multi = f"/interpreter/index.html?launch={multi_use_token}"
+        launch_url_single = f"/interpreter/index.html?launch={single_use_token}"
+        return Response(
+            {
+                "study_slug": study.slug,
+                "launch_token": multi_use_token,
+                "launch_url": launch_url_multi,
+                "launch_options": {
+                    "multi_use": {
+                        "launch_mode": "multi_use",
+                        "launch_token": multi_use_token,
+                        "launch_url": launch_url_multi,
+                    },
+                    "single_use": {
+                        "launch_mode": "single_use",
+                        "launch_token": single_use_token,
+                        "launch_url": launch_url_single,
+                    },
+                },
+                "expires_at": expires_at,
+                "owner_username": owner_username or request.user.username,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class AssignStudyOwnerView(APIView):
+    """Allow platform admins to reassign researcher ownership for a study."""
+
+    @transaction.atomic
+    def post(self, request, study_slug: str):
+        if not request.user.is_authenticated:
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        profile = get_or_create_profile(request.user)
+        if profile.role != profile.ROLE_ADMIN:
+            return Response({"error": "Platform admin role required"}, status=status.HTTP_403_FORBIDDEN)
+
+        study = Study.objects.filter(slug=study_slug, is_active=True).first()
+        if not study:
+            return Response({"error": "Study not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = AssignStudyOwnerRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        target_username = serializer.validated_data["owner_username"].strip()
+
+        new_owner = User.objects.filter(username=target_username).first()
+        if not new_owner:
+            return Response({"error": "Owner user not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        study.owner_user = new_owner
+        study.save(update_fields=["owner_user"])
+
+        record_audit(
+            action="assign_study_owner",
+            resource_type="study",
+            resource_id=study.id,
+            actor=request.user.username,
+            metadata={
+                "study_slug": study.slug,
+                "new_owner_username": new_owner.username,
+            },
+        )
+
+        return Response(
+            {
+                "study_slug": study.slug,
+                "owner_username": new_owner.username,
+            },
+            status=status.HTTP_200_OK,
         )
 
 
@@ -317,7 +551,47 @@ class StartRunView(APIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        study = Study.objects.filter(slug=data["study_slug"], is_active=True).first()
+        study = None
+        owner_username = None
+        launch_mode = None
+        launch_token_digest = None
+
+        launch_token = data.get("launch_token")
+        if launch_token:
+            try:
+                token_payload = _read_launch_token(launch_token)
+            except signing.BadSignature:
+                return Response({"error": "Launch token invalid"}, status=status.HTTP_400_BAD_REQUEST)
+
+            exp_text = token_payload.get("expires_at")
+            try:
+                exp_dt = timezone.datetime.fromisoformat(exp_text)
+                if timezone.is_naive(exp_dt):
+                    exp_dt = timezone.make_aware(exp_dt)
+            except Exception:
+                return Response({"error": "Launch token malformed"}, status=status.HTTP_400_BAD_REQUEST)
+
+            if timezone.now() >= exp_dt:
+                return Response({"error": "Launch token expired"}, status=status.HTTP_410_GONE)
+
+            study_slug = (token_payload.get("study_slug") or "").strip()
+            owner_username = (token_payload.get("researcher_username") or "").strip() or None
+            launch_mode = (token_payload.get("launch_mode") or "multi_use").strip()
+            launch_token_digest = _launch_token_digest(launch_token)
+
+            if launch_mode == "single_use":
+                already_used = AuditEvent.objects.filter(
+                    action="start_run",
+                    resource_type="run_session",
+                    metadata_json__launch_token_digest=launch_token_digest,
+                ).exists()
+                if already_used:
+                    return Response({"error": "Single-use launch token already consumed"}, status=status.HTTP_409_CONFLICT)
+
+            study = Study.objects.filter(slug=study_slug, is_active=True).first()
+        elif data.get("study_slug"):
+            study = Study.objects.filter(slug=data["study_slug"], is_active=True).first()
+
         if not study:
             return Response({"error": "Study not found"}, status=status.HTTP_404_NOT_FOUND)
 
@@ -325,12 +599,23 @@ class StartRunView(APIView):
         if not config_version:
             return Response({"error": "No published config version"}, status=status.HTTP_400_BAD_REQUEST)
 
-        participant_external_id = data.get("participant_external_id") or "anonymous"
+        participant_external_id = (
+            data.get("participant_external_id")
+            or (token_payload.get("participant_external_id") if launch_token else "")
+            or "anonymous"
+        )
         participant_key = hash_identifier(participant_external_id)
+
+        owner_user = study.owner_user
+        if not owner_user and owner_username:
+            owner_user = User.objects.filter(username=owner_username).first()
+
+        owner_name_response = owner_user.username if owner_user else owner_username
 
         run_session = RunSession.objects.create(
             study=study,
             config_version=config_version,
+            owner_user=owner_user,
             participant_key=participant_key,
             status="started",
         )
@@ -339,7 +624,12 @@ class StartRunView(APIView):
             action="start_run",
             resource_type="run_session",
             resource_id=run_session.id,
-            metadata={"study_slug": study.slug},
+            metadata={
+                "study_slug": study.slug,
+                "owner_username": owner_name_response,
+                "launch_mode": launch_mode,
+                "launch_token_digest": launch_token_digest,
+            },
         )
 
         return Response(
@@ -349,6 +639,7 @@ class StartRunView(APIView):
                 "config_version_id": config_version.id,
                 "config": config_version.config_json,
                 "participant_key": participant_key,
+                "owner_username": owner_name_response,
             },
             status=status.HTTP_201_CREATED,
         )

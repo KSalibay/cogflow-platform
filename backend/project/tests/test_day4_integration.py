@@ -21,6 +21,7 @@ from apps.configs.models import ConfigVersion
 from apps.results.models import ResultEnvelope, TrialResult
 from apps.runs.models import RunSession
 from apps.studies.models import Study
+from apps.users.services import get_or_create_profile
 
 
 class Day4PublishTransportTests(APITestCase):
@@ -459,3 +460,238 @@ class Day6PrivacyBaselineTests(APITestCase):
         user.refresh_from_db()
         self.assertTrue(user.profile.mfa_enabled)
         self.assertTrue(bool(user.profile.mfa_totp_secret_encrypted))
+
+
+class Day7PortalMvpLinkPipelineTests(APITestCase):
+    """Portal MVP tests: roles, researcher links, participant launch flow."""
+
+    def setUp(self):
+        super().setUp()
+        self.researcher = User.objects.create_user(username="r_owner", password="pass-1234")
+        self.other_researcher = User.objects.create_user(username="r_other", password="pass-1234")
+        self.admin = User.objects.create_user(username="r_admin", password="pass-1234")
+
+        researcher_profile = get_or_create_profile(self.researcher)
+        other_profile = get_or_create_profile(self.other_researcher)
+        admin_profile = get_or_create_profile(self.admin)
+
+        researcher_profile.role = researcher_profile.ROLE_RESEARCHER
+        researcher_profile.save(update_fields=["role"])
+        other_profile.role = other_profile.ROLE_RESEARCHER
+        other_profile.save(update_fields=["role"])
+        admin_profile.role = admin_profile.ROLE_ADMIN
+        admin_profile.save(update_fields=["role"])
+
+    def _publish_as(self, user, slug="portal-mvp-study"):
+        self.client.force_authenticate(user=user)
+        resp = self.client.post(
+            reverse("configs-publish"),
+            data={
+                "study_slug": slug,
+                "study_name": "Portal MVP Study",
+                "config_version_label": "v1",
+                "builder_version": "test",
+                "runtime_mode": "django",
+                "config": {"task_type": "rdm", "experiment_type": "trial-based"},
+            },
+            format="json",
+        )
+        self.client.force_authenticate(user=None)
+        return resp
+
+    def test_publish_sets_study_owner_from_authenticated_researcher(self):
+        resp = self._publish_as(self.researcher, slug="owner-binding")
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(resp.data["owner_username"], "r_owner")
+        study = Study.objects.get(slug="owner-binding")
+        self.assertEqual(study.owner_user, self.researcher)
+        self.assertTrue(
+            AuditEvent.objects.filter(
+                action="publish_config",
+                resource_type="study",
+                actor="r_owner",
+                metadata_json__version_label="v1",
+            ).exists()
+        )
+
+    def test_researcher_can_generate_participant_launch_link(self):
+        self._publish_as(self.researcher, slug="link-generation")
+
+        self.client.force_authenticate(user=self.researcher)
+        resp = self.client.post(
+            reverse("studies-participant-links", kwargs={"study_slug": "link-generation"}),
+            data={"participant_external_id": "P-LINK-001", "expires_in_hours": 24},
+            format="json",
+        )
+        self.client.force_authenticate(user=None)
+
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        self.assertIn("launch_token", resp.data)
+        self.assertIn("launch_url", resp.data)
+        self.assertIn("launch_options", resp.data)
+        self.assertIn("multi_use", resp.data["launch_options"])
+        self.assertIn("single_use", resp.data["launch_options"])
+        self.assertEqual(resp.data["owner_username"], "r_owner")
+        self.assertTrue(
+            AuditEvent.objects.filter(
+                action="create_participant_link",
+                resource_type="study",
+                actor="r_owner",
+                metadata_json__study_slug="link-generation",
+            ).exists()
+        )
+
+    def test_non_owner_researcher_cannot_generate_links(self):
+        self._publish_as(self.researcher, slug="owner-only-links")
+
+        self.client.force_authenticate(user=self.other_researcher)
+        resp = self.client.post(
+            reverse("studies-participant-links", kwargs={"study_slug": "owner-only-links"}),
+            data={"participant_external_id": "P-BLOCKED"},
+            format="json",
+        )
+        self.client.force_authenticate(user=None)
+
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_start_run_accepts_launch_token_and_persists_owner_association(self):
+        self._publish_as(self.researcher, slug="pipeline-study")
+
+        self.client.force_authenticate(user=self.researcher)
+        link_resp = self.client.post(
+            reverse("studies-participant-links", kwargs={"study_slug": "pipeline-study"}),
+            data={"participant_external_id": "P-PIPE-001"},
+            format="json",
+        )
+        self.client.force_authenticate(user=None)
+        self.assertEqual(link_resp.status_code, status.HTTP_201_CREATED)
+
+        launch_token = link_resp.data["launch_token"]
+        start_resp = self.client.post(
+            reverse("runs-start"),
+            data={"launch_token": launch_token},
+            format="json",
+        )
+        self.assertEqual(start_resp.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(start_resp.data["owner_username"], "r_owner")
+
+        run_session_id = start_resp.data["run_session_id"]
+        submit_resp = self.client.post(
+            reverse("results-submit"),
+            data={
+                "run_session_id": run_session_id,
+                "status": "completed",
+                "trial_count": 1,
+                "result_payload": {
+                    "format": "cogflow-jatos-result-v1",
+                    "trial_count": 1,
+                    "trials": [{"trial_index": 0, "rt": 420, "correct": True}],
+                },
+                "trials": [{"trial_index": 0, "rt": 420, "correct": True}],
+            },
+            format="json",
+        )
+        self.assertEqual(submit_resp.status_code, status.HTTP_201_CREATED)
+
+        run = RunSession.objects.get(id=run_session_id)
+        self.assertEqual(run.study.slug, "pipeline-study")
+        self.assertEqual(run.owner_user, self.researcher)
+
+    def test_single_use_token_allows_only_one_start(self):
+        self._publish_as(self.researcher, slug="single-use-study")
+
+        self.client.force_authenticate(user=self.researcher)
+        link_resp = self.client.post(
+            reverse("studies-participant-links", kwargs={"study_slug": "single-use-study"}),
+            data={"participant_external_id": "P-SINGLE-001"},
+            format="json",
+        )
+        self.client.force_authenticate(user=None)
+        self.assertEqual(link_resp.status_code, status.HTTP_201_CREATED)
+
+        single_token = link_resp.data["launch_options"]["single_use"]["launch_token"]
+
+        first_start = self.client.post(
+            reverse("runs-start"),
+            data={"launch_token": single_token},
+            format="json",
+        )
+        self.assertEqual(first_start.status_code, status.HTTP_201_CREATED)
+
+        second_start = self.client.post(
+            reverse("runs-start"),
+            data={"launch_token": single_token},
+            format="json",
+        )
+        self.assertEqual(second_start.status_code, status.HTTP_409_CONFLICT)
+
+    def test_multi_use_token_can_start_multiple_runs(self):
+        self._publish_as(self.researcher, slug="multi-use-study")
+
+        self.client.force_authenticate(user=self.researcher)
+        link_resp = self.client.post(
+            reverse("studies-participant-links", kwargs={"study_slug": "multi-use-study"}),
+            data={"participant_external_id": "P-MULTI-001"},
+            format="json",
+        )
+        self.client.force_authenticate(user=None)
+        self.assertEqual(link_resp.status_code, status.HTTP_201_CREATED)
+
+        multi_token = link_resp.data["launch_options"]["multi_use"]["launch_token"]
+
+        first_start = self.client.post(
+            reverse("runs-start"),
+            data={"launch_token": multi_token},
+            format="json",
+        )
+        self.assertEqual(first_start.status_code, status.HTTP_201_CREATED)
+
+        second_start = self.client.post(
+            reverse("runs-start"),
+            data={"launch_token": multi_token},
+            format="json",
+        )
+        self.assertEqual(second_start.status_code, status.HTTP_201_CREATED)
+
+    def test_platform_admin_can_reassign_study_owner(self):
+        self._publish_as(self.researcher, slug="owner-reassign")
+
+        self.client.force_authenticate(user=self.admin)
+        assign_resp = self.client.post(
+            reverse("studies-assign-owner", kwargs={"study_slug": "owner-reassign"}),
+            data={"owner_username": "r_other"},
+            format="json",
+        )
+        self.client.force_authenticate(user=None)
+
+        self.assertEqual(assign_resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(assign_resp.data["owner_username"], "r_other")
+
+        study = Study.objects.get(slug="owner-reassign")
+        self.assertEqual(study.owner_user, self.other_researcher)
+
+    def test_non_admin_cannot_reassign_study_owner(self):
+        self._publish_as(self.researcher, slug="owner-reassign-blocked")
+
+        self.client.force_authenticate(user=self.other_researcher)
+        assign_resp = self.client.post(
+            reverse("studies-assign-owner", kwargs={"study_slug": "owner-reassign-blocked"}),
+            data={"owner_username": "r_other"},
+            format="json",
+        )
+        self.client.force_authenticate(user=None)
+
+        self.assertEqual(assign_resp.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_researcher_studies_list_is_scoped_to_owner(self):
+        self._publish_as(self.researcher, slug="scope-a")
+        self._publish_as(self.other_researcher, slug="scope-b")
+
+        self.client.force_authenticate(user=self.researcher)
+        resp = self.client.get(reverse("studies-list"))
+        self.client.force_authenticate(user=None)
+
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        slugs = {row["study_slug"] for row in resp.data["studies"]}
+        self.assertIn("scope-a", slugs)
+        self.assertNotIn("scope-b", slugs)

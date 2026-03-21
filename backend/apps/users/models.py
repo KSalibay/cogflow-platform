@@ -12,11 +12,13 @@ class UserProfile(models.Model):
     ROLE_ADMIN = "platform_admin"
     ROLE_RESEARCHER = "researcher"
     ROLE_ANALYST = "analyst"
+    ROLE_PARTICIPANT = "participant"
 
     ROLE_CHOICES = [
         (ROLE_ADMIN, "Platform Admin"),
         (ROLE_RESEARCHER, "Researcher"),
         (ROLE_ANALYST, "Analyst"),
+        (ROLE_PARTICIPANT, "Participant"),
     ]
 
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
