@@ -17,6 +17,7 @@
   window.DjangoRuntimeBackend = {
     /** Internal: UUID of the current run session returned by /api/v1/runs/start. */
     _runSessionId: null,
+    _runInfo: null,
 
     /**
      * Returns true when window.COGFLOW_PLATFORM_URL is a non-empty string.
@@ -40,24 +41,73 @@
       return (window.COGFLOW_PLATFORM_URL || '').toString().trim().replace(/\/+$/, '');
     },
 
+    /** @returns {string} CSRF token from Django's csrftoken cookie, if present. */
+    _getCsrfToken: function () {
+      try {
+        const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+        return match ? decodeURIComponent(match[1]) : '';
+      } catch (_) {
+        return '';
+      }
+    },
+
+    /** @returns {boolean} True when a run session has already been created. */
+    hasActiveRun: function () {
+      return !!this._runSessionId;
+    },
+
+    /** @returns {object|null} Last successful /api/v1/runs/start response. */
+    getRunInfo: function () {
+      return this._runInfo ? { ...this._runInfo } : null;
+    },
+
     /**
      * POST /api/v1/runs/start — registers a new run session.
      *
-     * @param {string} studySlug  Study identifier (matches a published config).
+     * @param {string|object} studySlugOrOptions  Legacy study slug string or options object.
      * @param {string|null} [participantExternalId]  Optional participant code.
      * @returns {Promise<{run_session_id: string, study_slug: string, started_at: string}>}
      */
-    startRun: async function (studySlug, participantExternalId) {
+    startRun: async function (studySlugOrOptions, participantExternalId) {
+      const options =
+        studySlugOrOptions && typeof studySlugOrOptions === 'object'
+          ? studySlugOrOptions
+          : {
+              studySlug: studySlugOrOptions,
+              participantExternalId: participantExternalId,
+            };
+
+      const launchToken =
+        typeof options.launchToken === 'string' ? options.launchToken.trim() : '';
+      const studySlug =
+        typeof options.studySlug === 'string' ? options.studySlug.trim() : '';
+      const body = {};
+
+      if (launchToken) {
+        body.launch_token = launchToken;
+      }
+      if (studySlug) {
+        body.study_slug = studySlug;
+      }
+      if (Object.prototype.hasOwnProperty.call(options, 'participantExternalId')) {
+        body.participant_external_id = options.participantExternalId || null;
+      }
+      if (!body.launch_token && !body.study_slug) {
+        throw new Error('[DjangoRuntimeBackend] startRun requires launchToken or studySlug');
+      }
+
       const url = this._baseUrl() + '/api/v1/runs/start';
       let resp;
       try {
+        const csrfToken = this._getCsrfToken();
         resp = await fetch(url, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            study_slug: studySlug || 'unknown',
-            participant_external_id: participantExternalId || null,
-          }),
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+          },
+          body: JSON.stringify(body),
         });
       } catch (networkErr) {
         throw new Error(
@@ -75,6 +125,7 @@
 
       const data = await resp.json();
       this._runSessionId = data.run_session_id || null;
+      this._runInfo = data && typeof data === 'object' ? data : null;
       console.log('[DjangoRuntimeBackend] Run started:', this._runSessionId);
       return data;
     },
@@ -100,9 +151,14 @@
 
       let resp;
       try {
+        const csrfToken = this._getCsrfToken();
         resp = await fetch(url, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+          },
           body: JSON.stringify({
             run_session_id: this._runSessionId,
             status: 'completed',

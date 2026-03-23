@@ -243,7 +243,14 @@ class Day5DashboardVisibilityTests(APITestCase):
 
         index_resp = self.client.get("/index.html")
         self.assertEqual(index_resp.status_code, status.HTTP_200_OK)
-        self.assertIn("Studies Dashboard", index_resp.content.decode("utf-8"))
+        self.assertIn("CogFlow Portal", index_resp.content.decode("utf-8"))
+
+    def test_interpreter_launch_html_is_served_with_platform_url(self):
+        resp = self.client.get("/interpreter/index.html?launch=test-token")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        html = resp.content.decode("utf-8")
+        self.assertIn("CogFlow Interpreter", html)
+        self.assertIn("window.COGFLOW_PLATFORM_URL = 'http://testserver';", html)
 
 
 class Day6PrivacyBaselineTests(APITestCase):
@@ -574,6 +581,9 @@ class Day7PortalMvpLinkPipelineTests(APITestCase):
         )
         self.assertEqual(start_resp.status_code, status.HTTP_201_CREATED)
         self.assertEqual(start_resp.data["owner_username"], "r_owner")
+        self.assertEqual(start_resp.data["study_slug"], "pipeline-study")
+        self.assertIn("config", start_resp.data)
+        self.assertEqual(start_resp.data["config"]["task_type"], "rdm")
 
         run_session_id = start_resp.data["run_session_id"]
         submit_resp = self.client.post(
@@ -695,3 +705,164 @@ class Day7PortalMvpLinkPipelineTests(APITestCase):
         slugs = {row["study_slug"] for row in resp.data["studies"]}
         self.assertIn("scope-a", slugs)
         self.assertNotIn("scope-b", slugs)
+
+    def test_owner_can_list_recent_runs_for_study(self):
+        self._publish_as(self.researcher, slug="results-dashboard")
+
+        self.client.force_authenticate(user=self.researcher)
+        link_resp = self.client.post(
+            reverse("studies-participant-links", kwargs={"study_slug": "results-dashboard"}),
+            data={"participant_external_id": "P-RESULT-001"},
+            format="json",
+        )
+        self.client.force_authenticate(user=None)
+        launch_token = link_resp.data["launch_token"]
+
+        start_resp = self.client.post(reverse("runs-start"), data={"launch_token": launch_token}, format="json")
+        self.assertEqual(start_resp.status_code, status.HTTP_201_CREATED)
+        run_session_id = start_resp.data["run_session_id"]
+
+        submit_resp = self.client.post(
+            reverse("results-submit"),
+            data={
+                "run_session_id": run_session_id,
+                "status": "completed",
+                "trial_count": 1,
+                "result_payload": {
+                    "format": "cogflow-jatos-result-v1",
+                    "trial_count": 1,
+                    "trials": [{"trial_index": 0, "rt": 420, "correct": True}],
+                },
+                "trials": [{"trial_index": 0, "rt": 420, "correct": True}],
+            },
+            format="json",
+        )
+        self.assertEqual(submit_resp.status_code, status.HTTP_201_CREATED)
+
+        self.client.force_authenticate(user=self.researcher)
+        runs_resp = self.client.get(reverse("studies-runs", kwargs={"study_slug": "results-dashboard"}))
+        self.client.force_authenticate(user=None)
+
+        self.assertEqual(runs_resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(runs_resp.data["study_slug"], "results-dashboard")
+        self.assertEqual(len(runs_resp.data["runs"]), 1)
+        self.assertTrue(runs_resp.data["runs"][0]["has_result"])
+        self.assertEqual(runs_resp.data["runs"][0]["trial_count"], 1)
+
+    def test_non_owner_cannot_list_runs_for_study(self):
+        self._publish_as(self.researcher, slug="results-private")
+
+        self.client.force_authenticate(user=self.other_researcher)
+        runs_resp = self.client.get(reverse("studies-runs", kwargs={"study_slug": "results-private"}))
+        self.client.force_authenticate(user=None)
+
+        self.assertEqual(runs_resp.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class Day8PlatformAdminUserManagementTests(APITestCase):
+    """Platform admin user management endpoints."""
+
+    def setUp(self):
+        super().setUp()
+        self.admin = User.objects.create_user(username="platform_admin_1", password="pass-1234")
+        self.researcher = User.objects.create_user(username="researcher_1", password="pass-1234")
+
+        admin_profile = get_or_create_profile(self.admin)
+        admin_profile.role = admin_profile.ROLE_ADMIN
+        admin_profile.save(update_fields=["role"])
+
+        researcher_profile = get_or_create_profile(self.researcher)
+        researcher_profile.role = researcher_profile.ROLE_RESEARCHER
+        researcher_profile.save(update_fields=["role"])
+
+    def test_admin_can_list_users(self):
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.get(reverse("admin-users"))
+        self.client.force_authenticate(user=None)
+
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertIn("users", resp.data)
+        usernames = {u["username"] for u in resp.data["users"]}
+        self.assertIn("platform_admin_1", usernames)
+        self.assertIn("researcher_1", usernames)
+
+    def test_non_admin_cannot_list_users(self):
+        self.client.force_authenticate(user=self.researcher)
+        resp = self.client.get(reverse("admin-users"))
+        self.client.force_authenticate(user=None)
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_admin_can_create_user_with_role(self):
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.post(
+            reverse("admin-users"),
+            data={
+                "username": "analyst_new",
+                "password": "pass-1234",
+                "email": "analyst_new@example.com",
+                "role": "analyst",
+                "is_active": True,
+            },
+            format="json",
+        )
+        self.client.force_authenticate(user=None)
+
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        created = User.objects.get(username="analyst_new")
+        self.assertEqual(created.profile.role, "analyst")
+
+    def test_admin_can_update_role_and_delete_user(self):
+        target = User.objects.create_user(username="participant_to_manage", password="pass-1234")
+        target_profile = get_or_create_profile(target)
+        target_profile.role = target_profile.ROLE_PARTICIPANT
+        target_profile.save(update_fields=["role"])
+
+        self.client.force_authenticate(user=self.admin)
+        role_resp = self.client.post(
+            reverse("admin-user-role", kwargs={"user_id": target.id}),
+            data={"role": "researcher"},
+            format="json",
+        )
+        delete_resp = self.client.post(
+            reverse("admin-user-delete", kwargs={"user_id": target.id}),
+            data={},
+            format="json",
+        )
+        self.client.force_authenticate(user=None)
+
+        self.assertEqual(role_resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(delete_resp.status_code, status.HTTP_200_OK)
+        self.assertFalse(User.objects.filter(id=target.id).exists())
+
+    def test_admin_can_deactivate_and_reactivate_user(self):
+        target = User.objects.create_user(username="toggle_me", password="pass-1234")
+
+        self.client.force_authenticate(user=self.admin)
+        deactivate_resp = self.client.post(
+            reverse("admin-user-activation", kwargs={"user_id": target.id}),
+            data={"is_active": False},
+            format="json",
+        )
+        reactivate_resp = self.client.post(
+            reverse("admin-user-activation", kwargs={"user_id": target.id}),
+            data={"is_active": True},
+            format="json",
+        )
+        self.client.force_authenticate(user=None)
+
+        self.assertEqual(deactivate_resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(reactivate_resp.status_code, status.HTTP_200_OK)
+
+        target.refresh_from_db()
+        self.assertTrue(target.is_active)
+
+    def test_admin_cannot_deactivate_self(self):
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.post(
+            reverse("admin-user-activation", kwargs={"user_id": self.admin.id}),
+            data={"is_active": False},
+            format="json",
+        )
+        self.client.force_authenticate(user=None)
+
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)

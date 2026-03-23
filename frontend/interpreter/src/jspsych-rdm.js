@@ -266,6 +266,8 @@ var jsPsychRdm = (function (jspsych) {
 
         // Keep the trial params for analysis/debugging
         data.rdm_parameters = rdm;
+        data.rdm_coherence = Number(rdm.coherence);
+        data.rdm_speed = Number(rdm.speed);
         data.response_parameters = response;
         data.timing_parameters = { fixationDuration, stimulusDuration, responseDeadline };
         data.transition = transition;

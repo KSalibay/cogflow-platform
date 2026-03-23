@@ -159,6 +159,20 @@ body {
     box-shadow: var(--cf-shadow-md);
 }
 
+#publishMetadataModal .form-text {
+    color: var(--cf-muted);
+}
+
+html[data-cf-theme="dark"] #publishMetadataModal .modal-content {
+    background-color: var(--cf-surface);
+    color: var(--cf-text);
+}
+
+html[data-cf-theme="dark"] #publishMetadataModal .modal-header,
+html[data-cf-theme="dark"] #publishMetadataModal .modal-footer {
+    border-color: var(--cf-border);
+}
+
 /* Make "light" headers less stark */
 .bg-light {
     background-color: var(--cf-surface-muted) !important;
@@ -1037,6 +1051,98 @@ html[data-cf-theme="dark"] .timeline-item {
     color: var(--cf-text);
 }
 
+/* Dynamic settings panels (Trial Configuration / Experiment-wide settings)
+   should remain elevated in dark mode, but not glow bright. */
+html[data-cf-theme="dark"] .parameter-group,
+html[data-cf-theme="dark"] .rdm-parameter-group {
+    background-color: #373f5d;
+    border-color: rgba(186, 199, 190, 0.26);
+}
+
+html[data-cf-theme="dark"] .parameter-group .group-title {
+    color: var(--cf-text);
+    border-bottom-color: rgba(186, 199, 190, 0.24);
+}
+
+html[data-cf-theme="dark"] .parameter-label {
+    color: rgba(223, 232, 225, 0.92);
+}
+
+html[data-cf-theme="dark"] .data-collection-toggle {
+    background: #343b57;
+    border-color: rgba(186, 199, 190, 0.22);
+}
+
+html[data-cf-theme="dark"] #rdmParameters {
+    background-color: #3a4463;
+    border-color: rgba(186, 199, 190, 0.24);
+}
+
+html[data-cf-theme="dark"] #rdmParameters h6 {
+    color: var(--cf-text);
+    border-bottom-color: rgba(186, 199, 190, 0.24);
+}
+
+html[data-cf-theme="dark"] .rdm-parameter-group {
+    background: #404a6b;
+    border-color: rgba(186, 199, 190, 0.24);
+}
+
+html[data-cf-theme="dark"] #dotGroupsContainer {
+    background-color: #3a4463;
+    border-color: rgba(186, 199, 190, 0.22);
+}
+
+html[data-cf-theme="dark"] .dot-group-item {
+    background-color: #404a6b;
+    border-left-color: #8793b8;
+}
+
+html[data-cf-theme="dark"] .dot-group-item .group-number {
+    color: #c1cae6;
+}
+
+/* Component Library modal/cards should match dark surfaces (avoid bright white blocks). */
+html[data-cf-theme="dark"] #componentLibraryModal .modal-content {
+    background-color: #2f3550;
+    border-color: rgba(186, 199, 190, 0.24);
+}
+
+html[data-cf-theme="dark"] #componentLibraryModal .modal-header,
+html[data-cf-theme="dark"] #componentLibraryModal .modal-footer {
+    background-color: rgba(48, 57, 84, 0.92);
+    border-color: rgba(186, 199, 190, 0.24);
+}
+
+html[data-cf-theme="dark"] #componentLibraryModal .modal-title,
+html[data-cf-theme="dark"] #componentLibraryModal .btn-close {
+    color: var(--cf-text);
+    filter: invert(0.9);
+}
+
+html[data-cf-theme="dark"] #componentLibraryModal .component-card {
+    background: #3a4463;
+    border-color: rgba(186, 199, 190, 0.26);
+}
+
+html[data-cf-theme="dark"] #componentLibraryModal .component-card:hover {
+    border-color: rgba(174, 140, 163, 0.85);
+    box-shadow: 0 6px 18px rgba(12, 16, 28, 0.45);
+}
+
+html[data-cf-theme="dark"] #componentLibraryModal .component-card .title {
+    color: rgba(223, 232, 225, 0.95);
+}
+
+html[data-cf-theme="dark"] #componentLibraryModal .component-card .description {
+    color: rgba(223, 232, 225, 0.78);
+}
+
+html[data-cf-theme="dark"] .cluster-settings {
+    background-color: #36405f;
+    border-color: rgba(186, 199, 190, 0.24);
+}
+
 html[data-cf-theme="dark"] .json-preview {
     background-color: #252a3e;
     border-color: rgba(186, 199, 190, 0.28);
@@ -1409,4 +1515,50 @@ template {
 .cf-footer .form-check-input:checked {
     background-color: var(--cf-dusty-grape);
     border-color: var(--cf-dusty-grape);
+}
+
+/* Final dark-surface enforcement (keep at end so late light defaults never win) */
+html[data-cf-theme="dark"] #rdmParameters {
+    background-color: #3a4463 !important;
+    border-color: rgba(186, 199, 190, 0.24) !important;
+}
+
+html[data-cf-theme="dark"] #rdmParameters h6 {
+    color: var(--cf-text) !important;
+    border-bottom-color: rgba(186, 199, 190, 0.24) !important;
+}
+
+html[data-cf-theme="dark"] .parameter-group,
+html[data-cf-theme="dark"] .rdm-parameter-group {
+    background: #404a6b !important;
+    border-color: rgba(186, 199, 190, 0.24) !important;
+}
+
+html[data-cf-theme="dark"] .parameter-group > .group-title,
+html[data-cf-theme="dark"] .parameter-group .group-title span,
+html[data-cf-theme="dark"] .rdm-parameter-group > .group-title,
+html[data-cf-theme="dark"] .rdm-parameter-group .group-title span {
+    color: #e6edf8 !important;
+}
+
+html[data-cf-theme="dark"] .parameter-group .group-title .text-muted,
+html[data-cf-theme="dark"] .rdm-parameter-group .group-title .text-muted,
+html[data-cf-theme="dark"] .parameter-group .group-title small,
+html[data-cf-theme="dark"] .rdm-parameter-group .group-title small {
+    color: rgba(214, 224, 245, 0.82) !important;
+}
+
+html[data-cf-theme="dark"] #dotGroupsContainer {
+    background-color: #3a4463 !important;
+    border-color: rgba(186, 199, 190, 0.22) !important;
+}
+
+html[data-cf-theme="dark"] .dot-group-item {
+    background-color: #404a6b !important;
+    border-left-color: #8793b8 !important;
+}
+
+html[data-cf-theme="dark"] .cluster-settings {
+    background-color: #36405f !important;
+    border-color: rgba(186, 199, 190, 0.24) !important;
 }

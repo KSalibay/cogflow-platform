@@ -78,3 +78,7 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_SCHEMA_CLASS": "rest_framework.schemas.openapi.AutoSchema",
 }
+
+# Allow the Builder and Interpreter to be embedded as iframes within the portal
+# (same-origin only — blocks cross-origin framing).
+X_FRAME_OPTIONS = "SAMEORIGIN"

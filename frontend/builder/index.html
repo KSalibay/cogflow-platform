@@ -9,7 +9,7 @@
          CogFlow Platform configuration.
          These values are injected by the platform's Django view (or set
          manually during local development).  COGFLOW_PLATFORM_URL enables
-         the "Platform Publish" button; leave it empty to use local/JATOS mode.
+         the publish button; leave it empty to use local/JATOS mode.
          ═══════════════════════════════════════════════════════════════════ -->
     <script>
         window.COGFLOW_PLATFORM_URL    = '';   // e.g. 'http://localhost:8000'
@@ -34,9 +34,14 @@
             }
 
             try {
+                const params = new URLSearchParams(window.location.search || '');
+                const qTheme = (params.get('theme') || '').trim().toLowerCase();
                 const savedTheme = localStorage.getItem('cogflow_builder_theme');
-                const theme = (savedTheme === 'dark' || savedTheme === 'light') ? savedTheme : 'light';
+                const theme = (qTheme === 'dark' || qTheme === 'light')
+                    ? qTheme
+                    : ((savedTheme === 'dark' || savedTheme === 'light') ? savedTheme : 'light');
                 document.documentElement.setAttribute('data-cf-theme', theme);
+                localStorage.setItem('cogflow_builder_theme', theme);
             } catch (e) {
                 document.documentElement.setAttribute('data-cf-theme', 'light');
             }
@@ -49,7 +54,7 @@
     <link href="vendor/quill.snow.css" rel="stylesheet">
 
     <!-- App theme + Bootstrap overrides (must load AFTER Bootstrap) -->
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/style.css?v=20260324-1">
 
     <!-- Prevent aggressive caching when opened via file:// or a simple static server -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
@@ -63,9 +68,6 @@
                 <img src="img/logo_builder_light.png" alt="CogFlow Builder" class="cf-brand-logo">
             </span>
             <div class="d-flex">
-                <button class="btn btn-outline-light me-2 cf-theme-toggle" id="pageThemeToggle" title="Toggle Builder theme">
-                    <i class="fas fa-circle-half-stroke"></i> Theme: Light
-                </button>
                 <button class="btn btn-outline-light me-2" id="loadTemplateBtn">
                     <i class="fas fa-folder-open"></i> Load Template
                 </button>
@@ -81,14 +83,8 @@
                 <button class="btn btn-outline-light me-2" id="importLocalJsonBtn">
                     <i class="fas fa-file-arrow-up"></i> Import JSON(s)
                 </button>
-                <button class="btn btn-outline-light me-2" id="prepJatosPropsBtn">
-                    <i class="fas fa-clipboard"></i> JATOS Props
-                </button>
                 <button class="btn btn-warning me-2" id="platformPublishBtn" style="display:none" title="Publish config to CogFlow Platform">
-                    <i class="fas fa-server"></i> Platform Publish
-                </button>
-                <button class="btn btn-success" id="exportJsonBtn">
-                    <i class="fas fa-cloud-arrow-up"></i> Export
+                    <i class="fas fa-server"></i> Publish
                 </button>
 
                 <!-- Hidden input: local JSON import for Token Store uploads -->
@@ -134,6 +130,7 @@
                                 <option value="simon">Simon Task</option>
                                 <option value="task-switching">Task Switching</option>
                                 <option value="pvt">Psychomotor Vigilance Task (PVT)</option>
+                                <option value="mot">Multiple Object Tracking (MOT)</option>
                                 <option value="gabor">Gabor Patch Task</option>
                                 <option value="flanker">Flanker Task</option>
                                 <option value="sart">SART</option>
@@ -269,6 +266,43 @@
                         <div class="row" id="componentLibrary">
                             <!-- Component cards will be generated here -->
                         </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Platform Publish Metadata Modal -->
+        <div class="modal fade" id="publishMetadataModal" tabindex="-1" aria-labelledby="publishMetadataTitle" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="publishMetadataTitle">
+                            <i class="fas fa-upload"></i> Publish Study Metadata
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div id="publishMetaError" class="alert alert-danger py-2 d-none" role="alert"></div>
+
+                        <div class="mb-3">
+                            <label for="publishStudyName" class="form-label">Study Name</label>
+                            <input type="text" class="form-control" id="publishStudyName" placeholder="e.g. RDM Attention Pilot" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="publishStudySlug" class="form-label">Study Slug</label>
+                            <input type="text" class="form-control" id="publishStudySlug" placeholder="e.g. rdm-attention-pilot" />
+                            <div class="form-text">Lowercase letters, numbers, and hyphens only.</div>
+                        </div>
+
+                        <div class="mb-1">
+                            <label for="publishConfigVersion" class="form-label">Config Version</label>
+                            <input type="text" class="form-control" id="publishConfigVersion" placeholder="e.g. v2026-03-24" />
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-primary" id="publishMetaConfirmBtn">Continue Publish</button>
                     </div>
                 </div>
             </div>
@@ -420,11 +454,6 @@
             } catch (e) {
                 // Ignore storage errors
             }
-
-            const btn = document.getElementById('pageThemeToggle');
-            if (btn) {
-                btn.innerHTML = `<i class="fas fa-circle-half-stroke"></i> Theme: ${t === 'dark' ? 'Dark' : 'Light'}`;
-            }
         }
 
         function installDebugRemnantCleaner() {
@@ -464,14 +493,21 @@
             const initialTheme = document.documentElement.getAttribute('data-cf-theme') || 'light';
             setBuilderTheme(initialTheme);
 
-            const pageThemeToggle = document.getElementById('pageThemeToggle');
-            if (pageThemeToggle && pageThemeToggle.dataset.bound !== '1') {
-                pageThemeToggle.dataset.bound = '1';
-                pageThemeToggle.addEventListener('click', () => {
-                    const current = document.documentElement.getAttribute('data-cf-theme') || 'light';
-                    setBuilderTheme(current === 'dark' ? 'light' : 'dark');
-                });
+            try {
+                if (window.parent && window.parent !== window) {
+                    window.parent.postMessage({ type: 'cogflow:builder-ready' }, window.location.origin);
+                }
+            } catch {
+                // ignore
             }
+
+            // Parent (Portal) can drive Builder theme while embedded in an iframe.
+            window.addEventListener('message', (e) => {
+                if (!e || e.origin !== window.location.origin) return;
+                if (e.data && e.data.type === 'cogflow:set-theme') {
+                    setBuilderTheme(e.data.theme);
+                }
+            });
 
             installDebugRemnantCleaner();
 
@@ -553,6 +589,7 @@
                     sart: 'SART task',
                     simon: 'Simon task',
                     pvt: 'PVT task',
+                    mot: 'MOT task',
                     gabor: 'Gabor task',
                     'soc-dashboard': 'SOC Dashboard'
                 };
@@ -722,6 +759,7 @@
                     sart: 'SART task',
                     simon: 'Simon task',
                     pvt: 'PVT task',
+                    mot: 'MOT task',
                     gabor: 'Gabor task',
                     'soc-dashboard': 'SOC Dashboard'
                 };

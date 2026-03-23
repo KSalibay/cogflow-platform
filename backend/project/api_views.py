@@ -18,6 +18,7 @@ from apps.audit.models import AuditEvent
 from apps.configs.models import ConfigVersion
 from apps.runs.models import RunSession
 from apps.studies.models import Study
+from apps.users.models import UserProfile
 from apps.users.services import get_or_create_profile
 from apps.results.services import (
     get_decrypted_envelope,
@@ -26,6 +27,9 @@ from apps.results.services import (
     store_trial_results,
 )
 from project.api_serializers import (
+    AdminCreateUserRequestSerializer,
+    AdminUpdateUserActivationRequestSerializer,
+    AdminUpdateUserRoleRequestSerializer,
     AssignStudyOwnerRequestSerializer,
     AuthLoginRequestSerializer,
     CreateParticipantLinkRequestSerializer,
@@ -92,6 +96,15 @@ def _can_manage_researcher_resources(request, profile) -> bool:
     if not request.user.is_authenticated:
         return False
     return profile.role in {profile.ROLE_ADMIN, profile.ROLE_RESEARCHER}
+
+
+def _require_platform_admin(request):
+    if not request.user.is_authenticated:
+        return None, Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+    profile = get_or_create_profile(request.user)
+    if profile.role != profile.ROLE_ADMIN:
+        return None, Response({"error": "Platform admin role required"}, status=status.HTTP_403_FORBIDDEN)
+    return profile, None
 
 
 def _get_study_owner_username(study: Study) -> str | None:
@@ -271,6 +284,59 @@ class TotpVerifyView(APIView):
         )
 
 
+class TotpDisableView(APIView):
+    """Remove TOTP MFA from the logged-in user's account."""
+
+    @transaction.atomic
+    def post(self, request):
+        if not request.user.is_authenticated:
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+        profile = get_or_create_profile(request.user)
+        profile.mfa_enabled = False
+        profile.mfa_totp_secret_encrypted = None
+        profile.mfa_last_verified_at = None
+        profile.save(update_fields=["mfa_enabled", "mfa_totp_secret_encrypted", "mfa_last_verified_at"])
+        request.session.pop("mfa_verified_at", None)
+        request.session.modified = True
+        record_audit(
+            action="mfa_totp_disabled",
+            resource_type="user",
+            resource_id=request.user.id,
+            actor=request.user.username,
+        )
+        return Response({"ok": True}, status=status.HTTP_200_OK)
+
+
+class PasswordChangeView(APIView):
+    """Allow a logged-in user to change their own password."""
+
+    @transaction.atomic
+    def post(self, request):
+        if not request.user.is_authenticated:
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+        current = request.data.get("current_password", "")
+        new_pwd = request.data.get("new_password", "")
+        if not current or not new_pwd:
+            return Response({"error": "current_password and new_password are required"}, status=status.HTTP_400_BAD_REQUEST)
+        if len(new_pwd) < 8:
+            return Response({"error": "New password must be at least 8 characters"}, status=status.HTTP_400_BAD_REQUEST)
+        user = authenticate(request, username=request.user.username, password=current)
+        if user is None:
+            return Response({"error": "Current password is incorrect"}, status=status.HTTP_401_UNAUTHORIZED)
+        user.set_password(new_pwd)
+        user.save(update_fields=["password"])
+        # Maintain the current session so the user stays logged in
+        from django.contrib.auth import update_session_auth_hash
+        update_session_auth_hash(request, user)
+        record_audit(
+            action="password_changed",
+            resource_type="user",
+            resource_id=request.user.id,
+            actor=request.user.username,
+        )
+        return Response({"ok": True}, status=status.HTTP_200_OK)
+
+
 class AuthMeView(APIView):
     """Return current session user info, or 401 if not authenticated."""
 
@@ -278,12 +344,200 @@ class AuthMeView(APIView):
         if not request.user.is_authenticated:
             return Response({"authenticated": False}, status=status.HTTP_401_UNAUTHORIZED)
         profile = get_or_create_profile(request.user)
+        mfa_verified_at = request.session.get("mfa_verified_at")
         return Response(
             {
                 "authenticated": True,
                 "username": request.user.username,
                 "role": profile.role,
                 "mfa_enabled": profile.mfa_enabled,
+                "mfa_verified_at": mfa_verified_at,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class AdminUsersView(APIView):
+    """List and create platform users (platform_admin only)."""
+
+    @transaction.atomic
+    def get(self, request):
+        _, error = _require_platform_admin(request)
+        if error:
+            return error
+
+        users = []
+        for user in User.objects.all().order_by("username"):
+            profile = get_or_create_profile(user)
+            users.append(
+                {
+                    "id": user.id,
+                    "username": user.username,
+                    "email": user.email,
+                    "is_active": user.is_active,
+                    "is_superuser": user.is_superuser,
+                    "role": profile.role,
+                    "mfa_enabled": profile.mfa_enabled,
+                    "last_login": user.last_login,
+                    "date_joined": user.date_joined,
+                }
+            )
+
+        return Response({"users": users}, status=status.HTTP_200_OK)
+
+    @transaction.atomic
+    def post(self, request):
+        _, error = _require_platform_admin(request)
+        if error:
+            return error
+
+        serializer = AdminCreateUserRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        username = data["username"].strip()
+        if User.objects.filter(username=username).exists():
+            return Response({"error": "Username already exists"}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = User.objects.create_user(
+            username=username,
+            password=data["password"],
+            email=(data.get("email") or "").strip(),
+        )
+        user.is_active = data.get("is_active", True)
+        user.save(update_fields=["is_active"])
+
+        profile = get_or_create_profile(user)
+        profile.role = data["role"]
+        profile.save(update_fields=["role"])
+
+        record_audit(
+            action="admin_user_created",
+            resource_type="user",
+            resource_id=user.id,
+            actor=request.user.username,
+            metadata={"username": user.username, "role": profile.role},
+        )
+
+        return Response(
+            {
+                "ok": True,
+                "user": {
+                    "id": user.id,
+                    "username": user.username,
+                    "email": user.email,
+                    "is_active": user.is_active,
+                    "role": profile.role,
+                },
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class AdminUserRoleView(APIView):
+    """Update an existing user's role (platform_admin only)."""
+
+    @transaction.atomic
+    def post(self, request, user_id: int):
+        _, error = _require_platform_admin(request)
+        if error:
+            return error
+
+        serializer = AdminUpdateUserRoleRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        role = serializer.validated_data["role"]
+
+        target = User.objects.filter(id=user_id).first()
+        if not target:
+            return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        profile = get_or_create_profile(target)
+        profile.role = role
+        profile.save(update_fields=["role"])
+
+        record_audit(
+            action="admin_user_role_updated",
+            resource_type="user",
+            resource_id=target.id,
+            actor=request.user.username,
+            metadata={"username": target.username, "role": role},
+        )
+
+        return Response(
+            {"ok": True, "user": {"id": target.id, "username": target.username, "role": profile.role}},
+            status=status.HTTP_200_OK,
+        )
+
+
+class AdminUserDeleteView(APIView):
+    """Delete a user account (platform_admin only)."""
+
+    @transaction.atomic
+    def post(self, request, user_id: int):
+        _, error = _require_platform_admin(request)
+        if error:
+            return error
+
+        if request.user.id == user_id:
+            return Response({"error": "You cannot delete your own account"}, status=status.HTTP_400_BAD_REQUEST)
+
+        target = User.objects.filter(id=user_id).first()
+        if not target:
+            return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        username = target.username
+        target.delete()
+
+        record_audit(
+            action="admin_user_deleted",
+            resource_type="user",
+            resource_id=user_id,
+            actor=request.user.username,
+            metadata={"username": username},
+        )
+
+        return Response({"ok": True}, status=status.HTTP_200_OK)
+
+
+class AdminUserActivationView(APIView):
+    """Activate or deactivate a user account (platform_admin only)."""
+
+    @transaction.atomic
+    def post(self, request, user_id: int):
+        _, error = _require_platform_admin(request)
+        if error:
+            return error
+
+        serializer = AdminUpdateUserActivationRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        is_active = serializer.validated_data["is_active"]
+
+        if request.user.id == user_id and not is_active:
+            return Response({"error": "You cannot deactivate your own account"}, status=status.HTTP_400_BAD_REQUEST)
+
+        target = User.objects.filter(id=user_id).first()
+        if not target:
+            return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        target.is_active = is_active
+        target.save(update_fields=["is_active"])
+
+        record_audit(
+            action="admin_user_activation_updated",
+            resource_type="user",
+            resource_id=target.id,
+            actor=request.user.username,
+            metadata={"username": target.username, "is_active": is_active},
+        )
+
+        return Response(
+            {
+                "ok": True,
+                "user": {
+                    "id": target.id,
+                    "username": target.username,
+                    "is_active": target.is_active,
+                },
             },
             status=status.HTTP_200_OK,
         )
@@ -314,6 +568,35 @@ class BuilderAppView(APIView):
         html = html.replace(
             "window.COGFLOW_PLATFORM_URL    = '';",
             f"window.COGFLOW_PLATFORM_URL    = '{platform_url}';",
+        )
+        return HttpResponse(html, content_type="text/html; charset=utf-8")
+
+
+class InterpreterAppView(APIView):
+    """Serve the CogFlow Interpreter frontend with this platform's URL pre-configured."""
+
+    schema = None
+
+    def get(self, request):
+        from django.conf import settings
+        from django.http import HttpResponse
+
+        interpreter_dir = settings.BASE_DIR / "frontend" / "interpreter"
+        if not interpreter_dir.exists():
+            interpreter_dir = settings.BASE_DIR.parent / "frontend" / "interpreter"
+
+        index_path = interpreter_dir / "index.html"
+        if not index_path.exists():
+            return Response(
+                {"error": "Interpreter not available — frontend assets not mounted."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        platform_url = request.build_absolute_uri("/").rstrip("/")
+        html = index_path.read_text(encoding="utf-8")
+        html = html.replace(
+            "window.COGFLOW_PLATFORM_URL = '';",
+            f"window.COGFLOW_PLATFORM_URL = '{platform_url}';",
         )
         return HttpResponse(html, content_type="text/html; charset=utf-8")
 
@@ -356,6 +639,52 @@ class StudiesListView(APIView):
                 }
             )
         return Response({"studies": studies})
+
+
+class StudyRunsView(APIView):
+    """Return recent run metadata for a study to power dashboard result access."""
+
+    def get(self, request, study_slug: str):
+        if not request.user.is_authenticated:
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        profile = get_or_create_profile(request.user)
+        if not _can_manage_researcher_resources(request, profile):
+            return Response({"error": "Insufficient role permissions"}, status=status.HTTP_403_FORBIDDEN)
+
+        study = Study.objects.filter(slug=study_slug, is_active=True).first()
+        if not study:
+            return Response({"error": "Study not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if profile.role != profile.ROLE_ADMIN and study.owner_user_id and study.owner_user_id != request.user.id:
+            return Response({"error": "Study is not owned by the current researcher"}, status=status.HTTP_403_FORBIDDEN)
+
+        runs = []
+        for run in study.run_sessions.select_related("owner_user", "result_envelope").order_by("-started_at")[:20]:
+            envelope = getattr(run, "result_envelope", None)
+            runs.append(
+                {
+                    "run_session_id": run.id,
+                    "status": run.status,
+                    "started_at": run.started_at,
+                    "completed_at": run.completed_at,
+                    "owner_username": run.owner_user.username if run.owner_user else _get_study_owner_username(study),
+                    "participant_key_preview": f"{run.participant_key[:12]}..." if run.participant_key else None,
+                    "has_result": bool(envelope),
+                    "trial_count": envelope.trial_count if envelope else 0,
+                    "result_created_at": envelope.created_at if envelope else None,
+                }
+            )
+
+        return Response(
+            {
+                "study_slug": study.slug,
+                "study_name": study.name,
+                "owner_username": _get_study_owner_username(study),
+                "runs": runs,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class PublishConfigView(APIView):

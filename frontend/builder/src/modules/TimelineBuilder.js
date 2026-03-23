@@ -1216,6 +1216,7 @@ class TimelineBuilder {
             if (innerType === 'sart-trial') return 'sart';
             if (innerType === 'nback-block') return 'nback';
             if (innerType === 'gabor-trial' || innerType === 'gabor-quest' || innerType === 'gabor-learning') return 'gabor';
+            if (innerType === 'mot-trial') return 'mot';
             if (innerType === 'continuous-image-presentation') return 'continuous-image';
             return null;
         };
@@ -1283,6 +1284,7 @@ class TimelineBuilder {
                 if (keys.some(k => k.startsWith('pvt_'))) return 'pvt';
                 if (keys.some(k => k.startsWith('gabor_'))) return 'gabor';
                 if (keys.some(k => k.startsWith('nback_'))) return 'nback';
+                if (keys.some(k => k.startsWith('mot_'))) return 'mot';
                 return null;
             })();
 
@@ -1572,7 +1574,7 @@ class TimelineBuilder {
 
                         <div>
                             <div class="small text-muted mb-1">Preview</div>
-                            <div class="border rounded p-2" style="background:#fff;">
+                            <div class="border rounded p-2" style="background:var(--cf-surface);">
                                 <img id="${previewId}" alt="image preview" style="max-width: 100%; max-height: 320px; display:none;" />
                                 <div class="text-muted" data-psy-image-empty="1" style="display:none;">No image selected.</div>
                             </div>
@@ -1609,7 +1611,7 @@ class TimelineBuilder {
 
                         <div>
                             <div class="small text-muted mb-1">Preview</div>
-                            <div class="border rounded p-2" style="background:#fff;">
+                            <div class="border rounded p-2" style="background:var(--cf-surface);">
                                 <audio id="${previewId}" controls style="width: 100%; display:none;"></audio>
                                 <div class="text-muted" data-psy-audio-empty="1" style="display:none;">No audio selected.</div>
                             </div>
@@ -2090,6 +2092,8 @@ class TimelineBuilder {
                         ? ['gabor-trial', 'gabor-quest', 'gabor-learning']
                     : (currentTaskType === 'continuous-image')
                         ? ['continuous-image-presentation']
+                    : (currentTaskType === 'mot')
+                        ? ['mot-trial']
                     : ['rdm-trial', 'rdm-practice', 'rdm-adaptive', 'rdm-dot-groups'];
 
             // Always include generic jsPsych options for Block inner trials.

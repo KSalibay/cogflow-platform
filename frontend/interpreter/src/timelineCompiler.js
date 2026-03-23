@@ -2118,6 +2118,31 @@
     for (const item of expanded) {
       const type = item.type;
 
+      // Backward compatibility: some Builder exports include eye-tracking as a
+      // timeline component instead of under data_collection. This is config-only
+      // and should not create a visible trial.
+      if (type === 'eye-tracking' || type === 'eye_tracking') {
+        try {
+          const dc = isObject(config.data_collection) ? { ...config.data_collection } : {};
+          const existing = isObject(dc.eye_tracking)
+            ? dc.eye_tracking
+            : (isObject(dc['eye-tracking']) ? dc['eye-tracking'] : {});
+
+          const merged = {
+            ...existing,
+            enabled: true,
+            ...(isObject(item) ? item : {})
+          };
+          delete merged.type;
+
+          dc.eye_tracking = merged;
+          config.data_collection = dc;
+        } catch {
+          // ignore
+        }
+        continue;
+      }
+
       if (type === 'detection-response-task-start') {
         timeline.push({
           type: HtmlKeyboard,
@@ -2774,6 +2799,20 @@
           post_trial_gap: Number.isFinite(Number(item.iti_ms)) ? Number(item.iti_ms) : 0,
           ...(onFinish ? { on_finish: onFinish } : {}),
           data: { plugin_type: type, task_type: 'sart' }
+        };
+        timeline.push(maybeWrapTrialWithRewardPopups(trial, type));
+        continue;
+      }
+
+      // MOT task
+      if (type === 'mot-trial') {
+        const Mot = requirePlugin('mot (window.jsPsychMot)', window.jsPsychMot);
+        const onFinish = maybeWrapOnFinishWithRewards(typeof item.on_finish === 'function' ? item.on_finish : null, type);
+        const trial = {
+          ...item,
+          type: Mot,
+          ...(onFinish ? { on_finish: onFinish } : {}),
+          data: { plugin_type: type, task_type: 'mot' }
         };
         timeline.push(maybeWrapTrialWithRewardPopups(trial, type));
         continue;

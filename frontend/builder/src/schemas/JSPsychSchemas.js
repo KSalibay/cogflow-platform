@@ -1858,6 +1858,161 @@ class JSPsychSchemas {
                 }
             },
 
+            'mot-trial': {
+                name: 'mot-trial',
+                description: 'Multiple Object Tracking (MOT) trial — animate objects on canvas, cue targets by flashing, then probe',
+                parameters: {
+                    // Objects
+                    num_objects: {
+                        type: this.parameterTypes.INT,
+                        default: 8,
+                        min: 2,
+                        max: 20,
+                        description: 'Total number of objects on screen'
+                    },
+                    num_targets: {
+                        type: this.parameterTypes.INT,
+                        default: 4,
+                        min: 1,
+                        max: 10,
+                        description: 'Number of target objects to track'
+                    },
+                    object_radius_px: {
+                        type: this.parameterTypes.INT,
+                        default: 22,
+                        min: 5,
+                        max: 80,
+                        description: 'Radius of each object in pixels'
+                    },
+                    object_color: {
+                        type: this.parameterTypes.COLOR,
+                        default: '#FFFFFF',
+                        description: 'Fill color for all objects (outside cue phase)'
+                    },
+                    target_cue_color: {
+                        type: this.parameterTypes.COLOR,
+                        default: '#FF9900',
+                        description: 'Alternate flash color used to cue targets during the cue phase'
+                    },
+                    background_color: {
+                        type: this.parameterTypes.COLOR,
+                        default: '#111111',
+                        description: 'Canvas background color'
+                    },
+                    // Arena
+                    arena_width_px: {
+                        type: this.parameterTypes.INT,
+                        default: 700,
+                        min: 200,
+                        max: 1400,
+                        description: 'Width of the arena canvas in pixels'
+                    },
+                    arena_height_px: {
+                        type: this.parameterTypes.INT,
+                        default: 500,
+                        min: 150,
+                        max: 1000,
+                        description: 'Height of the arena canvas in pixels'
+                    },
+                    boundary_behavior: {
+                        type: this.parameterTypes.SELECT,
+                        default: 'bounce',
+                        options: ['bounce', 'wrap'],
+                        description: 'How objects behave at arena boundaries'
+                    },
+                    min_separation_px: {
+                        type: this.parameterTypes.INT,
+                        default: 50,
+                        min: 0,
+                        max: 200,
+                        description: 'Minimum center-to-center distance when placing objects initially'
+                    },
+                    // Motion
+                    speed_px_per_s: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 150,
+                        min: 20,
+                        max: 600,
+                        description: 'Object speed in pixels per second'
+                    },
+                    speed_variability: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 0.0,
+                        min: 0,
+                        max: 1,
+                        description: 'Per-object speed jitter (0 = all same speed, 1 = ±100% of base speed)'
+                    },
+                    motion_type: {
+                        type: this.parameterTypes.SELECT,
+                        default: 'linear',
+                        options: ['linear', 'curved'],
+                        description: 'Trajectory type: linear (straight paths) or curved (smooth random turns)'
+                    },
+                    curve_strength: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 0.3,
+                        min: 0,
+                        max: 1,
+                        description: 'Turning rate for curved motion (ignored when motion_type is linear)'
+                    },
+                    // Timing
+                    cue_duration_ms: {
+                        type: this.parameterTypes.INT,
+                        default: 2000,
+                        min: 500,
+                        max: 5000,
+                        description: 'Duration of the cue phase (ms) during which targets flash'
+                    },
+                    cue_flash_rate_hz: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 3,
+                        min: 0.5,
+                        max: 10,
+                        description: 'Flash frequency (Hz) for target cue color alternation'
+                    },
+                    tracking_duration_ms: {
+                        type: this.parameterTypes.INT,
+                        default: 8000,
+                        min: 1000,
+                        max: 30000,
+                        description: 'Duration of the tracking phase (ms) where all objects move unlabeled'
+                    },
+                    iti_ms: {
+                        type: this.parameterTypes.INT,
+                        default: 1000,
+                        min: 0,
+                        max: 10000,
+                        description: 'Inter-trial interval (ms) shown as blank canvas after the response'
+                    },
+                    // Probe / Response
+                    probe_mode: {
+                        type: this.parameterTypes.SELECT,
+                        default: 'click',
+                        options: ['click', 'number_entry'],
+                        description: 'Probe interaction: click objects to select targets, or type numbered labels shown inside objects'
+                    },
+                    probe_timeout_ms: {
+                        type: this.parameterTypes.INT,
+                        default: 0,
+                        min: 0,
+                        max: 30000,
+                        description: 'Probe phase time limit in ms (0 = no time limit)'
+                    },
+                    show_feedback: {
+                        type: this.parameterTypes.BOOL,
+                        default: false,
+                        description: 'Show correct/incorrect feedback after probe response'
+                    },
+                    feedback_duration_ms: {
+                        type: this.parameterTypes.INT,
+                        default: 1500,
+                        min: 0,
+                        max: 10000,
+                        description: 'Duration of feedback display in ms (ignored when show_feedback is false)'
+                    }
+                }
+            },
+
             'block': {
                 name: 'block',
                 description: 'Generate many trials from parameter windows/ranges (compact representation for large experiments)',
@@ -1865,7 +2020,7 @@ class JSPsychSchemas {
                     block_component_type: {
                         type: this.parameterTypes.SELECT,
                         default: 'rdm-trial',
-                        options: ['rdm-trial', 'rdm-practice', 'rdm-adaptive', 'rdm-dot-groups', 'flanker-trial', 'sart-trial', 'simon-trial', 'pvt-trial', 'task-switching-trial', 'stroop-trial', 'emotional-stroop-trial', 'gabor-trial', 'gabor-quest', 'gabor-learning', 'nback-block', 'html-button-response', 'html-keyboard-response', 'image-keyboard-response', 'continuous-image-presentation'],
+                        options: ['rdm-trial', 'rdm-practice', 'rdm-adaptive', 'rdm-dot-groups', 'flanker-trial', 'sart-trial', 'simon-trial', 'pvt-trial', 'task-switching-trial', 'stroop-trial', 'emotional-stroop-trial', 'gabor-trial', 'gabor-quest', 'gabor-learning', 'nback-block', 'mot-trial', 'html-button-response', 'html-keyboard-response', 'image-keyboard-response', 'continuous-image-presentation'],
                         required: true,
                         description: 'What component type this block generates'
                     },
@@ -3175,6 +3330,88 @@ class JSPsychSchemas {
                         default: 10,
                         blockTarget: 'rdm-dot-groups',
                         description: 'RDM Groups: group 2 speed max'
+                    },
+
+                    // MOT block window parameters
+                    mot_num_objects_options: {
+                        type: this.parameterTypes.STRING,
+                        default: '6,8,10',
+                        blockTarget: 'mot-trial',
+                        description: 'MOT: comma-separated integers for num_objects sampling'
+                    },
+                    mot_num_targets_options: {
+                        type: this.parameterTypes.STRING,
+                        default: '2,3,4',
+                        blockTarget: 'mot-trial',
+                        description: 'MOT: comma-separated integers for num_targets sampling'
+                    },
+                    mot_speed_px_per_s_min: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 100,
+                        blockTarget: 'mot-trial',
+                        description: 'MOT: minimum speed (px/s) for block sampling'
+                    },
+                    mot_speed_px_per_s_max: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 200,
+                        blockTarget: 'mot-trial',
+                        description: 'MOT: maximum speed (px/s) for block sampling'
+                    },
+                    mot_tracking_duration_ms_min: {
+                        type: this.parameterTypes.INT,
+                        default: 5000,
+                        blockTarget: 'mot-trial',
+                        description: 'MOT: minimum tracking duration (ms) for block sampling'
+                    },
+                    mot_tracking_duration_ms_max: {
+                        type: this.parameterTypes.INT,
+                        default: 10000,
+                        blockTarget: 'mot-trial',
+                        description: 'MOT: maximum tracking duration (ms) for block sampling'
+                    },
+                    mot_cue_duration_ms_min: {
+                        type: this.parameterTypes.INT,
+                        default: 1500,
+                        blockTarget: 'mot-trial',
+                        description: 'MOT: minimum cue duration (ms) for block sampling'
+                    },
+                    mot_cue_duration_ms_max: {
+                        type: this.parameterTypes.INT,
+                        default: 2500,
+                        blockTarget: 'mot-trial',
+                        description: 'MOT: maximum cue duration (ms) for block sampling'
+                    },
+                    mot_iti_ms_min: {
+                        type: this.parameterTypes.INT,
+                        default: 800,
+                        blockTarget: 'mot-trial',
+                        description: 'MOT: minimum ITI (ms) for block sampling'
+                    },
+                    mot_iti_ms_max: {
+                        type: this.parameterTypes.INT,
+                        default: 1500,
+                        blockTarget: 'mot-trial',
+                        description: 'MOT: maximum ITI (ms) for block sampling'
+                    },
+                    mot_motion_type: {
+                        type: this.parameterTypes.SELECT,
+                        default: 'linear',
+                        options: ['linear', 'curved'],
+                        blockTarget: 'mot-trial',
+                        description: 'MOT: fixed motion type for all trials in this block'
+                    },
+                    mot_probe_mode: {
+                        type: this.parameterTypes.SELECT,
+                        default: 'click',
+                        options: ['click', 'number_entry'],
+                        blockTarget: 'mot-trial',
+                        description: 'MOT: fixed probe mode for all trials in this block'
+                    },
+                    mot_show_feedback: {
+                        type: this.parameterTypes.BOOL,
+                        default: false,
+                        blockTarget: 'mot-trial',
+                        description: 'MOT: whether to show feedback for all trials in this block'
                     }
                 },
                 data: {}
@@ -3635,7 +3872,22 @@ class JSPsychSchemas {
             }
 
             // Validate task type (experiment-wide)
-            const knownTaskTypes = ['rdm', 'sart', 'flanker', 'gabor', 'soc-dashboard', 'stroop', 'nback', 'simon', 'custom'];
+            const knownTaskTypes = [
+                'rdm',
+                'stroop',
+                'emotional-stroop',
+                'nback',
+                'simon',
+                'task-switching',
+                'pvt',
+                'mot',
+                'gabor',
+                'flanker',
+                'sart',
+                'continuous-image',
+                'soc-dashboard',
+                'custom'
+            ];
             if (config.task_type === undefined || config.task_type === null || config.task_type === '') {
                 warnings.push('Missing recommended field: task_type');
             } else if (typeof config.task_type !== 'string') {

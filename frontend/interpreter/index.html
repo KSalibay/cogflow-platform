@@ -312,14 +312,17 @@
 
   <!-- Interpreter runtime -->
   <script>
+    // Filled by platform-hosted builds; left blank for standalone/local runs.
+    window.COGFLOW_PLATFORM_URL = '';
+
     // Demo default: Token Store (Cloudflare Worker) base URL.
     // For distribution: change this value (or remove to rely on JATOS component properties).
     window.COGFLOW_TOKEN_STORE_BASE_URL = 'https://cool-star-379d.kami-salibayeva.workers.dev';
   </script>
   <script src="src/drtEngine.js?v=20260223-3"></script>
-  <script src="src/rdmEngine.js?v=20260207"></script>
-  <script src="src/jspsych-rdm.js?v=20260207"></script>
-  <script src="src/jspsych-rdm-continuous.js?v=20260207"></script>
+  <script src="src/rdmEngine.js?v=20260324-3"></script>
+  <script src="src/jspsych-rdm.js?v=20260324-2"></script>
+  <script src="src/jspsych-rdm-continuous.js?v=20260324-2"></script>
   <script src="src/jspsych-survey-response.js?v=20260207"></script>
   <script src="src/jspsych-flanker.js?v=20260207"></script>
   <script src="src/jspsych-sart.js?v=20260207"></script>
@@ -329,6 +332,7 @@
   <script src="src/jspsych-simon.js?v=20260218"></script>
   <script src="src/jspsych-task-switching.js?v=20260306-3"></script>
   <script src="src/jspsych-pvt.js?v=20260219"></script>
+  <script src="src/jspsych-mot.js?v=20260323-1"></script>
   <script src="src/jspsych-nback.js?v=20260222"></script>
   <script src="src/jspsych-nback-continuous.js?v=20260222"></script>
   <script src="src/jspsych-visual-angle-calibration.js?v=20260210"></script>
@@ -337,6 +341,6 @@
   <script src="src/configLoader.js?v=20260207"></script>
   <script src="src/timelineCompiler.js?v=20260305-2"></script>
   <script src="src/djangoRuntimeBackend.js"></script>
-  <script src="src/main.js?v=20260309-1"></script>
+  <script src="src/main.js?v=20260324-2"></script>
 </body>
 </html>

@@ -31,6 +31,40 @@
     return false;
   }
 
+  function getInterpreterBaseUrl() {
+    const scripts = Array.from(document.querySelectorAll('script[src]'));
+    for (const s of scripts) {
+      const src = (s && typeof s.src === 'string') ? s.src : '';
+      if (!src) continue;
+      try {
+        if (/\/src\/[A-Za-z0-9._-]+(?:\?.*)?$/.test(src)) {
+          return src.replace(/\/src\/[A-Za-z0-9._-]+(?:\?.*)?$/, '/');
+        }
+      } catch {
+        // ignore
+      }
+    }
+    try {
+      return new URL('./', window.location.href).toString();
+    } catch {
+      return './';
+    }
+  }
+
+  function resolveRuntimeAssetUrl(rawUrl) {
+    const u = (rawUrl === null || rawUrl === undefined) ? '' : String(rawUrl).trim();
+    if (!u) return '';
+    if (/^(https?:|data:|blob:)/i.test(u)) return u;
+    if (u.startsWith('/')) return u;
+
+    const base = getInterpreterBaseUrl();
+    try {
+      return new URL(u, base).toString();
+    } catch {
+      return u;
+    }
+  }
+
   function getEyeTrackingConfig(config) {
     const c = isObject(config) ? config : {};
     const dc = isObject(c.data_collection) ? c.data_collection : {};
@@ -74,20 +108,24 @@
       //   - webgazer_src: string
       //   - webgazer_srcs: string[]
       webgazer_srcs: (() => {
+        const toResolvedList = (arr) => arr
+          .map((s) => resolveRuntimeAssetUrl(s))
+          .filter(Boolean);
+
         if (Array.isArray(settingsRaw.webgazer_srcs) && settingsRaw.webgazer_srcs.length) {
-          return settingsRaw.webgazer_srcs.map((s) => String(s || '').trim()).filter(Boolean);
+          return toResolvedList(settingsRaw.webgazer_srcs);
         }
 
         if (typeof settingsRaw.webgazer_src === 'string' && settingsRaw.webgazer_src.trim()) {
-          return [settingsRaw.webgazer_src.trim()];
+          return toResolvedList([settingsRaw.webgazer_src]);
         }
 
         return [
           // If you vendor WebGazer, drop it here (or update this path).
-          'vendor/webgazer.min.js',
+          resolveRuntimeAssetUrl('vendor/webgazer.min.js'),
           // CDN fallback (pinned to the same upstream tag as our vendored copy)
           'https://cdn.jsdelivr.net/gh/brownhci/WebGazer@3.4.0/www/webgazer.js'
-        ];
+        ].filter(Boolean);
       })(),
       // Whether to show the webcam preview box.
       show_video: settingsRaw.show_video === true,
@@ -272,8 +310,8 @@
         if (t - this._lastSampleT < interval) return;
         this._lastSampleT = t;
 
-        const x = Number(data.x);
-        const y = Number(data.y);
+        const x = Math.min(Math.max(0, Number(data.x)), window.innerWidth);
+        const y = Math.min(Math.max(0, Number(data.y)), window.innerHeight);
         if (!Number.isFinite(x) || !Number.isFinite(y)) return;
 
         this._samples.push({ t, x, y });
@@ -327,6 +365,17 @@
           window.webgazer.applyKalmanFilter(true);
         } catch {
           // Some builds may not support all UI toggles.
+        }
+
+        // Clear any stored calibration from a previous session.
+        // Stale data (e.g. from an uncalibrated run) would otherwise seed the
+        // regression model before the new calibration trials run.
+        try {
+          if (typeof window.webgazer.clearData === 'function') {
+            window.webgazer.clearData();
+          }
+        } catch {
+          // ignore — not all builds expose clearData
         }
 
         window.webgazer.setGazeListener(this._listener);

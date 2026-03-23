@@ -1,7 +1,7 @@
 (function () {
   try {
-    window.__COGFLOW_INTERPRETER_VERSION = '20260223-16';
-      console.log('[Interpreter] main.js loaded', '20260224-1');
+    window.__COGFLOW_INTERPRETER_VERSION = '20260324-2';
+      console.log('[Interpreter] main.js loaded', '20260324-2');
   } catch {
     // ignore
   }
@@ -557,6 +557,29 @@
     return null;
   }
 
+  function getPlatformLaunchToken() {
+    try {
+      if (typeof window !== 'undefined' && typeof window.COGFLOW_LAUNCH_TOKEN === 'string') {
+        const fromWindow = window.COGFLOW_LAUNCH_TOKEN.trim();
+        if (fromWindow) return fromWindow;
+      }
+    } catch {
+      // ignore
+    }
+
+    try {
+      const fromQuery = (
+        getQueryParam('launch_token') ||
+        getQueryParam('launch') ||
+        getQueryParam('token') ||
+        ''
+      ).toString().trim();
+      return fromQuery || null;
+    } catch {
+      return null;
+    }
+  }
+
   function getDebugMode() {
     try {
       const v = (getQueryParam('debug') || '').toString().trim().toLowerCase();
@@ -804,6 +827,7 @@
       ['window.jsPsychGabor', window.jsPsychGabor],
       ['window.jsPsychFlanker', window.jsPsychFlanker],
       ['window.jsPsychSart', window.jsPsychSart],
+      ['window.jsPsychMot', window.jsPsychMot],
       ['window.jsPsychContinuousImagePresentation', window.jsPsychContinuousImagePresentation],
       ['window.jsPsychSurveyResponse', window.jsPsychSurveyResponse]
     ];
@@ -1251,6 +1275,22 @@
         return false;
       }
     })();
+
+    const isDjangoLaunchMode = (() => {
+      try {
+        const hasLaunchToken = new URLSearchParams(window.location?.search || '').has('launch_token');
+        const hasPlatformHost = typeof window.COGFLOW_PLATFORM_URL === 'string' && window.COGFLOW_PLATFORM_URL.trim() !== '';
+        return hasLaunchToken || hasPlatformHost;
+      } catch {
+        return false;
+      }
+    })();
+
+    // In platform launch-token mode, JATOS is intentionally absent.
+    // Avoid probing /jatos.js endpoints that return 404 HTML and generate MIME warnings.
+    if (isDjangoLaunchMode && !probablyPublix) {
+      return false;
+    }
 
     if (isJatosReady()) return true;
 
@@ -1878,7 +1918,12 @@
               getQueryParam('code') ||
               null
             );
-            await window.DjangoRuntimeBackend.startRun(studySlug, participantId);
+            if (!window.DjangoRuntimeBackend.hasActiveRun()) {
+              await window.DjangoRuntimeBackend.startRun({
+                studySlug,
+                participantExternalId: participantId,
+              });
+            }
             await window.DjangoRuntimeBackend.submitResult(payload);
             renderBlockingStatus('Submitted to Platform', 'Results saved to CogFlow Platform.');
           } catch (e) {
@@ -2288,7 +2333,12 @@
               getQueryParam('code') ||
               null
             );
-            await window.DjangoRuntimeBackend.startRun(studySlug, participantId);
+            if (!window.DjangoRuntimeBackend.hasActiveRun()) {
+              await window.DjangoRuntimeBackend.startRun({
+                studySlug,
+                participantExternalId: participantId,
+              });
+            }
             await window.DjangoRuntimeBackend.submitResult(payload);
             renderBlockingStatus('Submitted to Platform', 'Results saved to CogFlow Platform.');
           } catch (e) {
@@ -2400,6 +2450,69 @@
       renderBlockingStatus('Starting', 'Loaded inline config from component HTML. Starting...');
       await startExperiment(cfg, 'inline');
       return true;
+    }
+
+    async function maybeLoadConfigFromPlatformLaunch() {
+      const launchToken = getPlatformLaunchToken();
+      if (!launchToken) return false;
+
+      if (!window.DjangoRuntimeBackend || !window.DjangoRuntimeBackend.isEnabled()) {
+        setStatus('Platform launch links require a platform-backed interpreter build.');
+        renderBlockingStatus(
+          'Interpreter setup',
+          'This launch link requires the platform runtime, but no platform backend URL is configured.'
+        );
+        return true;
+      }
+
+      const participantId = (
+        (typeof window.COGFLOW_PARTICIPANT_ID === 'string' && window.COGFLOW_PARTICIPANT_ID.trim()) ||
+        getQueryParam('participant') ||
+        getQueryParam('code') ||
+        null
+      );
+
+      setStatus('Starting run from launch link...');
+      renderBlockingStatus('Starting', 'Claiming launch link and loading config from CogFlow Platform...');
+
+      try {
+        const startData = await window.DjangoRuntimeBackend.startRun({
+          launchToken,
+          participantExternalId: participantId,
+        });
+        const cfg = startData && typeof startData.config === 'object' ? startData.config : null;
+        if (!cfg) {
+          throw new Error('Platform startRun response missing config payload');
+        }
+
+        try {
+          cfg.__source_url = `${window.DjangoRuntimeBackend._baseUrl()}/api/v1/runs/start`;
+        } catch {
+          // ignore
+        }
+
+        try {
+          if (startData.study_slug) window.COGFLOW_STUDY_SLUG = startData.study_slug;
+        } catch {
+          // ignore
+        }
+
+        const runtimeConfigId = (() => {
+          const studySlug = (startData.study_slug || '').toString().trim();
+          const configVersionId = (startData.config_version_id || '').toString().trim();
+          if (studySlug && configVersionId) return `${studySlug}@${configVersionId}`;
+          return studySlug || configVersionId || 'platform-launch';
+        })();
+
+        await startExperiment(cfg, runtimeConfigId);
+        return true;
+      } catch (e) {
+        console.error('Platform launch bootstrap failed:', e);
+        const msg = e && e.message ? e.message : String(e);
+        setStatus(`Platform launch failed: ${msg}`);
+        renderBlockingStatus('Platform launch failed', msg);
+        return true;
+      }
     }
 
     async function maybeLoadConfigFromTokenStore() {
@@ -2667,15 +2780,39 @@
 
     // If JATOS component properties include token-store settings, prefer them and skip URL params entirely.
     // This avoids relying on query-string propagation through redirects.
-    try {
-      const p = maybeLoadConfigFromTokenStore();
-      if (p && typeof p.then === 'function') {
-        p.then((handled) => {
-          if (handled) return;
-          // Next preference: inline config embedded in component HTML.
-          maybeLoadInlineConfig().then((handledInline) => {
+    function continueBootstrapAfterPlatformCheck() {
+      try {
+        const p = maybeLoadConfigFromTokenStore();
+        if (p && typeof p.then === 'function') {
+          p.then((handled) => {
+            if (handled) return;
+            // Next preference: inline config embedded in component HTML.
+            maybeLoadInlineConfig().then((handledInline) => {
+              if (handledInline) return;
+              // Optional: legacy URL-param id mechanism.
+              if (disableLegacyIdMechanism) {
+                setStatus('No config source found. (Legacy ?id disabled)');
+                renderBlockingStatus(
+                  'Interpreter setup',
+                  'No config source found. Provide token-store settings via JATOS Component Properties (config_store_base_url, config_store_config_id, config_store_read_token) OR embed a full config JSON in this component HTML (id="cogflow_component_config_json").'
+                );
+                return;
+              }
+              continueLegacyBootstrap();
+            });
+          });
+          return;
+        }
+      } catch {
+        // ignore
+      }
+
+      // Non-promise path: try inline config next.
+      try {
+        const p2 = maybeLoadInlineConfig();
+        if (p2 && typeof p2.then === 'function') {
+          p2.then((handledInline) => {
             if (handledInline) return;
-            // Optional: legacy URL-param id mechanism.
             if (disableLegacyIdMechanism) {
               setStatus('No config source found. (Legacy ?id disabled)');
               renderBlockingStatus(
@@ -2686,6 +2823,19 @@
             }
             continueLegacyBootstrap();
           });
+          return;
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    try {
+      const launchBootstrap = maybeLoadConfigFromPlatformLaunch();
+      if (launchBootstrap && typeof launchBootstrap.then === 'function') {
+        launchBootstrap.then((handledLaunch) => {
+          if (handledLaunch) return;
+          continueBootstrapAfterPlatformCheck();
         });
         return;
       }
@@ -2693,27 +2843,7 @@
       // ignore
     }
 
-    // Non-promise path: try inline config next.
-    try {
-      const p2 = maybeLoadInlineConfig();
-      if (p2 && typeof p2.then === 'function') {
-        p2.then((handledInline) => {
-          if (handledInline) return;
-          if (disableLegacyIdMechanism) {
-            setStatus('No config source found. (Legacy ?id disabled)');
-            renderBlockingStatus(
-              'Interpreter setup',
-              'No config source found. Provide token-store settings via JATOS Component Properties (config_store_base_url, config_store_config_id, config_store_read_token) OR embed a full config JSON in this component HTML (id="cogflow_component_config_json").'
-            );
-            return;
-          }
-          continueLegacyBootstrap();
-        });
-        return;
-      }
-    } catch {
-      // ignore
-    }
+    continueBootstrapAfterPlatformCheck();
 
     function continueLegacyBootstrap() {
 

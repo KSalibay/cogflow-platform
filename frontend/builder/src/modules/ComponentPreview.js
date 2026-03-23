@@ -124,6 +124,8 @@ class ComponentPreview {
             this.showNbackTrialSequencePreview(componentData);
         } else if (componentType === 'nback-block') {
             this.showNbackBlockPreview(componentData);
+        } else if (componentType === 'mot-trial') {
+            this.showMotPreview(componentData);
         } else if (componentType === 'survey-response') {
             this.showSurveyPreview(componentData);
         } else if (componentType === 'soc-dashboard') {
@@ -2418,6 +2420,11 @@ class ComponentPreview {
             return;
         }
 
+        if (baseType === 'mot-trial') {
+            this.showMotPreview(sampled);
+            return;
+        }
+
         if (baseType === 'html-keyboard-response') {
             const stimulusText = (sampled.stimulus ?? sampled.stimulus_html ?? '').toString() || 'No HTML stimulus provided';
             this.showInstructionsPreview(stimulusText, sampled);
@@ -3685,6 +3692,27 @@ class ComponentPreview {
 
             const iti = randInt(src.pvt_iti_min, src.pvt_iti_max);
             if (iti !== null) sampled.iti_ms = iti;
+        } else if (componentType === 'mot-trial') {
+            const parseIntCSV = (raw) => (raw ?? '').toString().split(',')
+                .map(s => parseInt(s.trim(), 10)).filter(n => Number.isFinite(n));
+            const numObjs = parseIntCSV(src.mot_num_objects_options);
+            sampled.num_objects = numObjs.length > 0 ? numObjs[Math.floor(Math.random() * numObjs.length)] : 8;
+            const numTgts = parseIntCSV(src.mot_num_targets_options);
+            sampled.num_targets = numTgts.length > 0 ? numTgts[Math.floor(Math.random() * numTgts.length)] : 4;
+            const spd = randFloat(src.mot_speed_px_per_s_min, src.mot_speed_px_per_s_max);
+            if (spd !== null) sampled.speed_px_per_s = spd;
+            const tDur = randInt(src.mot_tracking_duration_ms_min, src.mot_tracking_duration_ms_max);
+            if (tDur !== null) sampled.tracking_duration_ms = tDur;
+            const cDur = randInt(src.mot_cue_duration_ms_min, src.mot_cue_duration_ms_max);
+            if (cDur !== null) sampled.cue_duration_ms = cDur;
+            const itiMot = randInt(src.mot_iti_ms_min, src.mot_iti_ms_max);
+            if (itiMot !== null) sampled.iti_ms = itiMot;
+            sampled.motion_type      = (src.mot_motion_type || 'linear').toString();
+            sampled.probe_mode       = (src.mot_probe_mode  || 'click').toString();
+            sampled.show_feedback    = !!src.mot_show_feedback;
+            sampled.object_color     = src.object_color     || '#FFFFFF';
+            sampled.target_cue_color = src.target_cue_color || '#FF9900';
+            sampled.background_color = src.background_color || '#111111';
         } else if (componentType === 'stroop-trial') {
             const uiStimulusNames = (() => {
                 try {
@@ -4832,6 +4860,83 @@ class ComponentPreview {
         
         if (frameCountEl) frameCountEl.textContent = this.frameCount || 0;
         if (randomDotsEl) randomDotsEl.textContent = this.dots.length - coherentCount;
+    }
+    showMotPreview(componentData) {
+        const previewModal = this.getPreviewModal();
+        if (!previewModal) return;
+        const { modalEl, modal } = previewModal;
+
+        const params = componentData || {};
+        const W    = params.arena_width_px  || 700;
+        const H    = params.arena_height_px || 500;
+        const bg   = params.background_color || '#111111';
+        const N    = Math.max(2, parseInt(params.num_objects, 10) || 8);
+        const T    = Math.min(N - 1, Math.max(1, parseInt(params.num_targets, 10) || 4));
+        const note = params._previewContextNote || '';
+
+        const canvasId = 'motPreviewCanvas_' + Date.now();
+        const bodyHtml = `
+            <div class="text-center">
+                <canvas id="${canvasId}" width="${W}" height="${H}"
+                    style="background:${bg};max-width:100%;border:1px solid #555;"></canvas>
+                ${note ? `<p class="text-muted small mt-1">${note}</p>` : ''}
+                <p class="text-muted small">Static preview — ${T} target(s) (orange flash) among ${N} object(s).
+                  Speed: ${params.speed_px_per_s ?? 150} px/s &middot; ${params.motion_type ?? 'linear'} &middot; ${params.probe_mode ?? 'click'} probe</p>
+            </div>`;
+
+        const titleEl = modalEl.querySelector('.modal-title');
+        const bodyEl  = modalEl.querySelector('.modal-body');
+        if (titleEl) titleEl.textContent = 'MOT Trial Preview';
+        if (bodyEl)  bodyEl.innerHTML    = bodyHtml;
+        modal.show();
+
+        setTimeout(() => {
+            const canvas = document.getElementById(canvasId);
+            if (canvas) this._renderMotPreviewToCanvas(canvas, params);
+        }, 50);
+    }
+
+    _renderMotPreviewToCanvas(canvas, params) {
+        const ctx = canvas.getContext('2d');
+        const W   = canvas.width;
+        const H   = canvas.height;
+        const bg  = params.background_color  || '#111111';
+        const objColor = params.object_color     || '#FFFFFF';
+        const tgtColor = params.target_cue_color || '#FF9900';
+        const r   = Math.max(5, parseInt(params.object_radius_px, 10) || 22);
+        const N   = Math.max(2, parseInt(params.num_objects, 10) || 8);
+        const T   = Math.min(N - 1, Math.max(1, parseInt(params.num_targets, 10) || 4));
+
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, W, H);
+
+        // Place circles with rejection sampling to avoid overlap
+        const minDist   = 2 * r + 6;
+        const positions = [];
+        for (let i = 0; i < N; i++) {
+            let x, y, ok, attempts = 0;
+            do {
+                x = r + Math.random() * (W - 2 * r);
+                y = r + Math.random() * (H - 2 * r);
+                ok = positions.every(p => Math.hypot(p.x - x, p.y - y) >= minDist);
+            } while (!ok && ++attempts < 500);
+            positions.push({ x, y, isTarget: i < T });
+        }
+        // Shuffle so targets are not always top-left
+        for (let i = positions.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [positions[i], positions[j]] = [positions[j], positions[i]];
+        }
+
+        for (const p of positions) {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, r, 0, 2 * Math.PI);
+            ctx.fillStyle   = p.isTarget ? tgtColor : objColor;
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(136,136,136,0.5)';
+            ctx.lineWidth   = 1.5;
+            ctx.stroke();
+        }
     }
 }
 

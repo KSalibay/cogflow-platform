@@ -96,6 +96,47 @@
     return { cmPerDeg, pxPerDeg };
   }
 
+  function getInterpreterBaseUrl() {
+    const scripts = Array.from(document.querySelectorAll('script[src]'));
+    for (const s of scripts) {
+      const src = (s && typeof s.src === 'string') ? s.src : '';
+      if (!src) continue;
+      try {
+        if (/\/src\/[A-Za-z0-9._-]+(?:\?.*)?$/.test(src)) {
+          return src.replace(/\/src\/[A-Za-z0-9._-]+(?:\?.*)?$/, '/');
+        }
+      } catch {
+        // ignore
+      }
+    }
+    try {
+      return new URL('./', window.location.href).toString();
+    } catch {
+      return './';
+    }
+  }
+
+  function normalizePostureImageUrl(rawUrl, fallback) {
+    let u = (rawUrl === null || rawUrl === undefined) ? '' : String(rawUrl).trim();
+    if (!u) u = fallback;
+    if (!u) return '';
+
+    if (/^(https?:|data:|blob:)/i.test(u)) return u;
+
+    // If caller passed only a file name, keep backward compatibility by
+    // resolving it under the interpreter's img/ folder.
+    if (!u.startsWith('/') && !u.includes('/')) {
+      u = `img/${u}`;
+    }
+
+    const base = getInterpreterBaseUrl();
+    try {
+      return new URL(u, base).toString();
+    } catch {
+      return u;
+    }
+  }
+
   function normalizeObjectPreset(preset, fallbackCm) {
     const p = (preset || '').toString().trim().toLowerCase();
     if (p === 'id_card_long' || p === 'credit_card_long') {
@@ -188,9 +229,9 @@
           ? `<div class="psy-muted" style="margin-top:10px;">Optional webcam step is enabled for this study. It will only show a live preview to help you keep a consistent position; it does not currently estimate distance.</div>`
           : '';
 
-        const closeImg = esc(trial.close_image_url || 'img/criss-cross.png');
-        const normalImg = esc(trial.normal_image_url || 'img/sitting.png');
-        const farImg = esc(trial.far_image_url || 'img/recline.png');
+        const closeImg = esc(normalizePostureImageUrl(trial.close_image_url, 'img/criss-cross.png'));
+        const normalImg = esc(normalizePostureImageUrl(trial.normal_image_url, 'img/sitting.png'));
+        const farImg = esc(normalizePostureImageUrl(trial.far_image_url, 'img/recline.png'));
 
         display_element.innerHTML = `
           <div class="psy-wrap">

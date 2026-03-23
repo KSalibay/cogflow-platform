@@ -96,6 +96,15 @@
       this.rng = Math.random;
       this.arrowDirectionDeg = null;
       this.arrowColor = null;
+      this.fps = 0;
+      this.debugOverlayEnabled = false;
+      this._debugFrameReseeds = 0;
+      this._debugFrameNoiseJumps = 0;
+      this._debugSecReseeds = 0;
+      this._debugSecNoiseJumps = 0;
+      this._debugAccReseeds = 0;
+      this._debugAccNoiseJumps = 0;
+      this._debugLastSecTs = 0;
 
       this._init();
     }
@@ -117,6 +126,18 @@
       this.apertureShape = (p.aperture_shape === 'square') ? 'square' : 'circle';
       this.apertureSize = Number(p.aperture_size ?? Math.min(w, h) / 2);
       this.apertureRadius = this.apertureShape === 'circle' ? (this.apertureSize / 2) : null;
+      this.noiseType = typeof p.noise_type === 'string' ? p.noise_type : 'random_direction';
+
+      const globalDebug = (() => {
+        try {
+          if (typeof window === 'undefined') return false;
+          if (window.COGFLOW_RDM_DEBUG === true) return true;
+          return window.localStorage?.getItem('cogflow_rdm_debug_overlay') === '1';
+        } catch {
+          return false;
+        }
+      })();
+      this.debugOverlayEnabled = (p.debug_overlay === true) || globalDebug;
 
       this.lifetimeFrames = Math.max(1, Number.parseInt(p.lifetime_frames ?? 60, 10) || 60);
 
@@ -281,6 +302,7 @@
       const direction = doSpeed ? lerpAngleDeg(aDir, bDir, t) : bDir;
 
       this.params = { ...(this.params || {}), ...(b || {}) };
+      this.noiseType = typeof b.noise_type === 'string' ? b.noise_type : (typeof this.noiseType === 'string' ? this.noiseType : 'random_direction');
 
       for (const d of this.dots) {
         d.color = dotColor;
@@ -352,16 +374,39 @@
 
     _newDot(meta) {
       const pos = this._randomInAperture();
-      return {
+      const dot = {
         x: pos.x,
         y: pos.y,
-        life: Math.floor(Math.random() * this.lifetimeFrames),
+        life: Math.floor(this.rng() * this.lifetimeFrames),
         group: meta.group,
         color: meta.color,
         coherence: meta.coherence,
         direction: meta.direction,
-        speed: meta.speed
+        speed: meta.speed,
+        noiseDirection: this.rng() * 360
       };
+      this._assignDotMotion(dot);
+      return dot;
+    }
+
+    _assignDotMotion(dot) {
+      dot.isCoherent = this.rng() < clamp(Number(dot.coherence ?? 0.5), 0, 1);
+      if (!dot.isCoherent) {
+        dot.noiseDirection = this.rng() * 360;
+      }
+      const dir = dot.isCoherent ? Number(dot.direction ?? 0) : Number(dot.noiseDirection ?? (this.rng() * 360));
+      const r = degToRad(dir);
+      dot.vx = Math.cos(r) * Number(dot.speed ?? 0);
+      dot.vy = Math.sin(r) * Number(dot.speed ?? 0);
+    }
+
+    _reseedDot(dot) {
+      const pos = this._randomInAperture();
+      dot.x = pos.x;
+      dot.y = pos.y;
+      dot.life = 0;
+      this._assignDotMotion(dot);
+      this._debugFrameReseeds += 1;
     }
 
     _randomInAperture() {
@@ -401,42 +446,69 @@
     _tick(ts) {
       if (!this.running) return;
       this.frameCount++;
+      if (this.lastTs > 0) {
+        const dt = ts - this.lastTs;
+        if (dt > 0) {
+          const instFps = 1000 / dt;
+          this.fps = this.fps > 0 ? (this.fps * 0.85 + instFps * 0.15) : instFps;
+        }
+      }
+
+      if (!this._debugLastSecTs) {
+        this._debugLastSecTs = ts;
+      }
       this.lastTs = ts;
       this.step();
+
+      // Accumulate after step() so the current frame's counters are included.
+      this._debugAccReseeds += this._debugFrameReseeds;
+      this._debugAccNoiseJumps += this._debugFrameNoiseJumps;
+      if (ts - this._debugLastSecTs >= 1000) {
+        this._debugSecReseeds = this._debugAccReseeds;
+        this._debugSecNoiseJumps = this._debugAccNoiseJumps;
+        this._debugAccReseeds = 0;
+        this._debugAccNoiseJumps = 0;
+        this._debugLastSecTs = ts;
+      }
+
       this.render();
       this.raf = requestAnimationFrame(this._tick);
     }
 
     step() {
+      this._debugFrameReseeds = 0;
+      this._debugFrameNoiseJumps = 0;
+
       for (let i = 0; i < this.dots.length; i++) {
         const d = this.dots[i];
         d.life++;
         if (d.life >= this.lifetimeFrames) {
-          const pos = this._randomInAperture();
-          d.x = pos.x;
-          d.y = pos.y;
-          d.life = 0;
+          this._reseedDot(d);
           continue;
         }
 
-        // Decide coherent vs noise
-        const coherent = this.rng() < d.coherence;
+        if (!d.isCoherent && this.noiseType === 'random_position') {
+          const pos = this._randomInAperture();
+          d.x = pos.x;
+          d.y = pos.y;
+          this._debugFrameNoiseJumps += 1;
+          continue;
+        }
 
-        const dir = coherent ? d.direction : (this.rng() * 360);
-        const r = degToRad(dir);
-        const vx = Math.cos(r) * d.speed;
-        const vy = Math.sin(r) * d.speed;
+        if (!d.isCoherent && this.noiseType === 'random_walk') {
+          d.noiseDirection = this.rng() * 360;
+          const r = degToRad(d.noiseDirection);
+          d.vx = Math.cos(r) * Number(d.speed ?? 0);
+          d.vy = Math.sin(r) * Number(d.speed ?? 0);
+        }
 
-        d.x += vx;
-        d.y += vy;
+        d.x += d.vx;
+        d.y += d.vy;
 
         // Wrap inside aperture
         if (this.apertureShape === 'circle') {
           if (!pointInCircle(d.x, d.y, this.centerX, this.centerY, this.apertureRadius)) {
-            const pos = this._randomInAperture();
-            d.x = pos.x;
-            d.y = pos.y;
-            d.life = 0;
+            this._reseedDot(d);
           }
         } else {
           const half = this.apertureSize / 2;
@@ -446,13 +518,73 @@
             d.y < this.centerY - half ||
             d.y > this.centerY + half
           ) {
-            const pos = this._randomInAperture();
-            d.x = pos.x;
-            d.y = pos.y;
-            d.life = 0;
+            this._reseedDot(d);
           }
         }
       }
+    }
+
+    _renderDebugOverlay() {
+      if (!this.debugOverlayEnabled) return;
+      const ctx = this.ctx;
+
+      let coherentDots = 0;
+      let speedSum = 0;
+      let dirX = 0;
+      let dirY = 0;
+      for (const d of this.dots) {
+        if (d.isCoherent) coherentDots += 1;
+        const sp = Number(d.speed ?? 0);
+        speedSum += sp;
+        const a = degToRad(Number(d.direction ?? 0));
+        dirX += Math.cos(a);
+        dirY += Math.sin(a);
+      }
+      const total = Math.max(1, this.dots.length);
+      const cohRatio = coherentDots / total;
+      const avgSpeed = speedSum / total;
+      const meanDir = (Math.atan2(dirY, dirX) * 180) / Math.PI;
+      const meanDirNorm = (meanDir + 360) % 360;
+
+      const lines = [
+        `RDM DEBUG`,
+        `fps=${this.fps.toFixed(1)} dots=${this.dots.length} life=${this.lifetimeFrames}`,
+        `noise=${this.noiseType} reseed/s=${this._debugSecReseeds} noise-jump/s=${this._debugSecNoiseJumps}`,
+        `coherent=${coherentDots}/${this.dots.length} (${(cohRatio * 100).toFixed(1)}%)`,
+        `avgSpeed=${avgSpeed.toFixed(2)} px/frame meanDir=${meanDirNorm.toFixed(1)} deg`
+      ];
+      if (this.lifetimeFrames <= 10) {
+        lines.push('WARNING: low lifetime causes jitter (recommend >= 30)');
+      }
+
+      const x = 10;
+      const y = 10;
+      const lineHeight = 14;
+      const pad = 8;
+
+      ctx.save();
+      ctx.font = '12px monospace';
+      let maxWidth = 0;
+      for (const line of lines) {
+        const w = ctx.measureText(line).width;
+        if (w > maxWidth) maxWidth = w;
+      }
+      const boxW = maxWidth + pad * 2;
+      const boxH = lines.length * lineHeight + pad * 2;
+
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.62)';
+      ctx.fillRect(x, y, boxW, boxH);
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 0.5, y + 0.5, boxW - 1, boxH - 1);
+
+      ctx.fillStyle = '#d9f0ff';
+      let cy = y + pad + 11;
+      for (const line of lines) {
+        ctx.fillText(line, x + pad, cy);
+        cy += lineHeight;
+      }
+      ctx.restore();
     }
 
     render() {
@@ -529,6 +661,8 @@
       if (this.arrowDirectionDeg !== null && this.arrowColor !== null) {
         this._drawFeedbackArrow();
       }
+
+      this._renderDebugOverlay();
     }
 
     _drawFeedbackArrow() {

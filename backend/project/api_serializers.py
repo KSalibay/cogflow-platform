@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from apps.users.models import UserProfile
 from project.constants import (
     RUNTIME_MODE_CHOICES,
     RUNTIME_MODE_DJANGO,
@@ -70,3 +71,19 @@ class CreateParticipantLinkRequestSerializer(serializers.Serializer):
 
 class AssignStudyOwnerRequestSerializer(serializers.Serializer):
     owner_username = serializers.CharField(max_length=150)
+
+
+class AdminCreateUserRequestSerializer(serializers.Serializer):
+    username = serializers.CharField(max_length=150)
+    password = serializers.CharField(max_length=128)
+    email = serializers.EmailField(required=False, allow_blank=True)
+    role = serializers.ChoiceField(choices=[c[0] for c in UserProfile.ROLE_CHOICES])
+    is_active = serializers.BooleanField(required=False, default=True)
+
+
+class AdminUpdateUserRoleRequestSerializer(serializers.Serializer):
+    role = serializers.ChoiceField(choices=[c[0] for c in UserProfile.ROLE_CHOICES])
+
+
+class AdminUpdateUserActivationRequestSerializer(serializers.Serializer):
+    is_active = serializers.BooleanField()

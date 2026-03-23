@@ -5,538 +5,2188 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>CogFlow Portal</title>
     <style>
+      /* ── Design tokens ─────────────────────────────────────── */
       :root {
-        --bg: #f5f7fb;
-        --panel: #ffffff;
-        --ink: #1f2430;
-        --muted: #66738a;
-        --line: #dbe2ee;
-        --accent: #1052dc;
-        --ok: #1f8f4e;
-        --warn: #c04a00;
+        --cf-ash-grey: #BAC7BE;
+        --cf-lilac-ash: #AE8CA3;
+        --cf-olive-wood: #7B6B43;
+        --cf-twilight-indigo: #3A405A;
+        --cf-space-indigo: #30334A;
+        --cf-deep-walnut: #3F3221;
+        --bg:        #e3e9e5;
+        --panel:     #ffffff;
+        --ink:       #232742;
+        --muted:     rgba(35, 39, 66, 0.68);
+        --line:      rgba(48, 51, 74, 0.18);
+        --accent:    var(--cf-twilight-indigo);
+        --accent-lt: #edf1f7;
+        --ok:        #4f5f3a;
+        --ok-bg:     #e7edde;
+        --warn:      #8d2f2f;
+        --warn-bg:   #f4e3e3;
+        --sidebar-w: 224px;
+        --sidebar-w-collapsed: 52px;
+        --topbar-h:  52px;
+        --radius:    10px;
+        --shadow:    0 10px 30px rgba(17, 24, 39, 0.12);
+        --transition: 220ms ease;
       }
+
+      html[data-cf-theme="dark"] {
+        --bg:        #262c41;
+        --panel:     #2f3550;
+        --ink:       #dfe8e1;
+        --muted:     rgba(223, 232, 225, 0.78);
+        --line:      rgba(186, 199, 190, 0.24);
+        --accent:    var(--cf-lilac-ash);
+        --accent-lt: rgba(174, 140, 163, 0.18);
+        --ok:        #bfd3a5;
+        --ok-bg:     rgba(123, 148, 95, 0.22);
+        --warn:      #ffc4c4;
+        --warn-bg:   rgba(165, 63, 63, 0.25);
+      }
+
+      *, *::before, *::after { box-sizing: border-box; }
 
       body {
         margin: 0;
-        font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
-        background: radial-gradient(circle at top right, #eaf0ff 0%, var(--bg) 45%);
+        font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+        background: radial-gradient(circle at 0% 0%, #eef3ef 0%, var(--bg) 36%, #dbe4de 100%);
         color: var(--ink);
+        min-height: 100vh;
       }
 
-      .shell {
-        max-width: 1100px;
-        margin: 24px auto;
-        padding: 0 16px;
+      html[data-cf-theme="dark"] body {
+        background: radial-gradient(circle at 0% 0%, #323854 0%, #262c41 40%, #1f2438 100%);
       }
 
-      .topbar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        margin-bottom: 14px;
+      /* ── Login overlay ─────────────────────────────────────── */
+      #loginOverlay {
+        position: fixed; inset: 0;
+        background: linear-gradient(140deg, var(--cf-space-indigo) 0%, var(--cf-twilight-indigo) 56%, #4b5272 100%);
+        display: flex; align-items: center; justify-content: center;
+        z-index: 9000;
       }
 
-      .topbar-actions {
-        display: flex;
-        gap: 8px;
-        align-items: center;
-      }
+      #loginOverlay.hidden { display: none; }
 
-      h1 {
-        margin: 0;
-        font-size: 1.35rem;
-      }
-
-      .subtitle {
-        margin: 4px 0 0;
-        color: var(--muted);
-        font-size: 0.95rem;
-      }
-
-      .btn {
-        border: 1px solid transparent;
-        background: var(--accent);
-        color: #fff;
-        border-radius: 8px;
-        padding: 9px 12px;
-        font-weight: 600;
-        cursor: pointer;
-        font-size: 0.9rem;
-        text-decoration: none;
-        display: inline-block;
-      }
-
-      .btn:disabled {
-        opacity: 0.6;
-        cursor: wait;
-      }
-
-      .btn.secondary {
-        background: #eef3ff;
-        color: #214179;
-        border-color: #cad8f7;
-      }
-
-      .btn.small {
-        padding: 6px 9px;
-        font-size: 0.8rem;
-        border-radius: 7px;
-      }
-
-      .btn.danger {
-        background: #fff0ed;
-        color: #8b1a00;
-        border-color: #f5c5b8;
-      }
-
-      .btn.builder {
-        background: #0f7340;
-        color: #fff;
-      }
-
-      /* ── Auth panel ────────────────────────────────────────── */
-      .auth-bar {
+      .login-card {
         background: var(--panel);
-        border: 1px solid var(--line);
-        border-radius: 12px;
-        padding: 12px 16px;
-        margin-bottom: 12px;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        flex-wrap: wrap;
+        border-radius: 16px;
+        padding: 40px 36px 32px;
+        width: 100%;
+        max-width: 380px;
+        box-shadow: 0 16px 48px rgba(0,0,0,.28);
       }
 
-      .auth-bar .auth-label {
-        font-size: 0.88rem;
+      .login-logo {
+        display: flex; align-items: center; justify-content: center;
+        margin-bottom: 28px;
+      }
+
+      .login-logo img {
+        width: 220px;
+        height: auto;
+        max-width: 100%;
+        display: block;
+      }
+
+      .login-logo-text { font-size: 1.2rem; font-weight: 700; }
+      .login-logo-sub  { font-size: 0.78rem; color: var(--muted); margin-top: 1px; }
+
+      .login-card h2 {
+        margin: 0 0 20px;
+        font-size: 1.15rem;
+        font-weight: 600;
+      }
+
+      .field-group {
+        display: flex; flex-direction: column; gap: 12px;
+        margin-bottom: 18px;
+      }
+
+      .field-group label {
+        display: block;
+        font-size: 0.8rem;
+        font-weight: 600;
         color: var(--muted);
-        flex-shrink: 0;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        margin-bottom: 4px;
       }
 
-      .auth-bar input[type="text"],
-      .auth-bar input[type="password"] {
-        border: 1px solid var(--line);
-        border-radius: 7px;
-        padding: 6px 10px;
-        font-size: 0.88rem;
+      .field-group input {
+        width: 100%;
+        border: 1.5px solid var(--line);
+        border-radius: var(--radius);
+        padding: 10px 12px;
+        font-size: 0.95rem;
         font-family: inherit;
         outline: none;
         background: var(--bg);
         color: var(--ink);
-        width: 140px;
+        transition: border-color var(--transition);
       }
 
-      .auth-bar input:focus {
-        border-color: var(--accent);
-        background: #fff;
-      }
+      .field-group input:focus { border-color: var(--accent); background: #fff; }
 
-      .auth-bar .auth-identity {
-        font-size: 0.9rem;
+      .btn {
+        display: inline-flex; align-items: center; justify-content: center;
+        gap: 6px;
+        border: 1.5px solid transparent;
+        border-radius: var(--radius);
+        padding: 9px 14px;
+        font-size: 0.88rem;
         font-weight: 600;
-        color: var(--ok);
+        font-family: inherit;
+        cursor: pointer;
+        text-decoration: none;
+        transition: background var(--transition), opacity var(--transition);
+        white-space: nowrap;
       }
 
-      .auth-bar .auth-role {
+      .btn:disabled { opacity: .55; cursor: wait; }
+
+      .btn-primary  { background: var(--accent); color: #fff; }
+      .btn-primary:hover:not(:disabled) { background: #2f3551; }
+
+      .btn-ghost    { background: transparent; color: var(--muted); border-color: var(--line); }
+      .btn-ghost:hover:not(:disabled) { background: var(--accent-lt); color: var(--accent); border-color: var(--accent); }
+
+      .btn-danger   { background: var(--warn-bg); color: var(--warn); border-color: #fca5a5; }
+
+      .btn-sm { padding: 5px 10px; font-size: 0.8rem; border-radius: 7px; }
+      .btn-xs { padding: 3px 8px;  font-size: 0.74rem; border-radius: 6px; }
+
+      .btn-full { width: 100%; }
+
+      .login-error {
+        background: var(--warn-bg);
+        color: var(--warn);
+        border-radius: 8px;
+        padding: 8px 12px;
+        font-size: 0.84rem;
+        margin-bottom: 14px;
+      }
+
+      .login-error.hidden { display: none; }
+
+      .mfa-hint {
         font-size: 0.8rem;
         color: var(--muted);
-        background: #eef2fb;
-        border-radius: 999px;
-        padding: 2px 8px;
-        display: inline-block;
+        margin-top: -6px;
+        margin-bottom: 12px;
       }
 
-      .auth-bar .auth-error {
-        font-size: 0.8rem;
-        color: var(--warn);
-      }
-
-      /* ── Main panel ─────────────────────────────────────────── */
-      .panel {
-        background: var(--panel);
-        border: 1px solid var(--line);
-        border-radius: 14px;
+      /* ── App shell ─────────────────────────────────────────── */
+      #appShell {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
         overflow: hidden;
       }
 
-      .status {
-        padding: 10px 14px;
+      #appShell.hidden { display: none; }
+
+      .topbar {
+        height: var(--topbar-h);
+        background: rgba(255, 255, 255, 0.95);
         border-bottom: 1px solid var(--line);
-        color: var(--muted);
-        font-size: 0.92rem;
+        display: flex;
+        align-items: center;
+        padding: 0 16px;
+        gap: 12px;
+        flex-shrink: 0;
+        box-shadow: var(--shadow);
+        z-index: 100;
       }
 
-      .status.ok {
-        color: var(--ok);
+      .topbar-logo {
+        display: flex; align-items: center;
+        color: var(--ink);
+        user-select: none;
       }
 
-      table {
-        width: 100%;
-        border-collapse: collapse;
+      .brand-logo {
+        height: 28px;
+        width: auto;
+        display: block;
       }
 
-      th,
-      td {
-        text-align: left;
-        padding: 10px 12px;
+      .brand-logo-light { display: none; }
+
+      html[data-cf-theme="dark"] .brand-logo-dark { display: none; }
+      html[data-cf-theme="dark"] .brand-logo-light { display: block; }
+
+      html[data-cf-theme="dark"] .topbar {
+        background: var(--cf-space-indigo);
+        border-bottom: 1px solid rgba(186, 199, 190, 0.26);
+      }
+
+      .topbar-spacer { flex: 1; }
+
+      .topbar-user {
+        display: flex; align-items: center; gap: 8px;
+        font-size: 0.85rem; color: var(--ink);
+      }
+
+      .theme-btn {
+        min-width: 108px;
+      }
+
+      .topbar .btn-ghost {
+        color: var(--ink);
+        border-color: var(--line);
+      }
+
+      .topbar .btn-ghost:hover:not(:disabled) {
+        color: var(--accent);
+        border-color: var(--accent);
+        background: var(--accent-lt);
+      }
+
+      html[data-cf-theme="dark"] .topbar-user { color: var(--cf-ash-grey); }
+      html[data-cf-theme="dark"] .topbar .btn-ghost {
+        color: var(--cf-ash-grey);
+        border-color: rgba(186, 199, 190, 0.3);
+      }
+      html[data-cf-theme="dark"] .topbar .btn-ghost:hover:not(:disabled) {
+        color: #fff;
+        border-color: var(--cf-lilac-ash);
+        background: rgba(174, 140, 163, 0.2);
+      }
+
+      .role-pill {
+        display: inline-block; padding: 2px 8px;
+        border-radius: 99px; font-size: 0.72rem; font-weight: 600;
+        background: #edf1f7; color: var(--accent); border: 1px solid #ced8ea;
+      }
+
+      html[data-cf-theme="dark"] .role-pill {
+        background: rgba(174, 140, 163, 0.2); color: #e6d2df; border: 1px solid rgba(174, 140, 163, 0.45);
+      }
+
+      .app-body {
+        display: flex; flex: 1; overflow: hidden; padding: 10px 12px 12px 0;
+      }
+
+      /* ── Sidebar ───────────────────────────────────────────── */
+      .sidebar {
+        width: var(--sidebar-w);
+        margin-left: 12px;
+        background: linear-gradient(180deg, #f9fbfd 0%, #f2f6f4 100%);
+        border: 1px solid #d7e0e8;
+        border-right: 1px solid #d1dae3;
+        border-radius: 16px;
+        display: flex; flex-direction: column;
+        flex-shrink: 0; overflow: hidden;
+        transition: width var(--transition);
+        box-shadow: 0 12px 28px rgba(35, 39, 66, 0.08);
+        z-index: 50;
+      }
+
+      .sidebar.collapsed {
+        width: var(--sidebar-w-collapsed);
+        margin-left: 12px;
+      }
+
+      html[data-cf-theme="dark"] .sidebar {
+        background: linear-gradient(180deg, #2d3550 0%, #252d43 100%);
+        border-color: rgba(186, 199, 190, 0.2);
+        box-shadow: 0 14px 28px rgba(12, 16, 28, 0.42);
+      }
+
+      .sidebar-toggle {
+        display: flex; align-items: center; justify-content: flex-end;
+        padding: 10px 10px 6px; flex-shrink: 0;
+      }
+
+      .sidebar.collapsed .sidebar-toggle { justify-content: center; }
+
+      .toggle-btn {
+        background: none; border: none; cursor: pointer;
+        color: var(--muted); padding: 4px; border-radius: 6px;
+        display: flex; align-items: center; justify-content: center;
+        transition: background var(--transition), color var(--transition);
+      }
+
+      .toggle-btn:hover { background: var(--accent-lt); color: var(--accent); }
+
+      .nav-list {
+        flex: 1; overflow-y: auto;
+        padding: 8px 8px 6px;
+        display: flex; flex-direction: column; gap: 2px;
+      }
+
+      .nav-item {
+        position: relative;
+        display: flex; align-items: center; gap: 10px;
+        padding: 9px 11px; border-radius: 10px;
+        cursor: pointer; font-size: 0.88rem; font-weight: 500;
+        color: var(--muted); user-select: none;
+        transition: background var(--transition), color var(--transition), box-shadow var(--transition);
+        white-space: nowrap; overflow: hidden;
+        border: none; background: none; width: 100%; text-align: left;
+      }
+
+      .nav-item:hover  { background: #eef3f8; color: var(--ink); }
+      .nav-item.active {
+        background: #e4e9f2;
+        color: var(--accent);
+        font-weight: 600;
+        box-shadow: inset 0 0 0 1px rgba(58, 64, 90, 0.14);
+      }
+
+      .nav-item.active::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 8px;
+        bottom: 8px;
+        width: 3px;
+        border-radius: 999px;
+        background: var(--accent);
+      }
+
+      html[data-cf-theme="dark"] .nav-item:hover { background: rgba(186, 199, 190, 0.08); }
+      html[data-cf-theme="dark"] .nav-item.active {
+        background: rgba(130, 145, 184, 0.18);
+        box-shadow: inset 0 0 0 1px rgba(145, 160, 198, 0.36);
+      }
+
+      .nav-icon {
+        flex-shrink: 0; width: 20px; height: 20px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1rem;
+        border-radius: 7px;
+        background: rgba(58, 64, 90, 0.08);
+      }
+
+      html[data-cf-theme="dark"] .nav-icon { background: rgba(186, 199, 190, 0.12); }
+
+      .nav-label { overflow: hidden; text-overflow: ellipsis; }
+      .sidebar.collapsed .nav-label { display: none; }
+
+      .sub-nav { padding-left: 8px; display: flex; flex-direction: column; gap: 2px; }
+      .sub-nav.hidden { display: none; }
+      .sidebar.collapsed .sub-nav { display: none; }
+
+      .nav-item.sub { font-size: 0.82rem; padding: 7px 11px; }
+
+      .nav-divider {
+        height: 1px; background: var(--line); margin: 6px 4px; flex-shrink: 0;
+      }
+
+      .sidebar-footer {
+        padding: 10px 8px; border-top: 1px solid var(--line);
+        flex-shrink: 0; display: flex; flex-direction: column; gap: 6px;
+      }
+
+      .user-chip {
+        display: flex; align-items: center; gap: 8px;
+        padding: 8px 9px; border-radius: 10px; overflow: hidden;
+        background: rgba(58, 64, 90, 0.06);
+      }
+
+      html[data-cf-theme="dark"] .user-chip { background: rgba(186, 199, 190, 0.1); }
+
+      .user-avatar {
+        width: 30px; height: 30px; border-radius: 50%;
+        background: var(--cf-lilac-ash); color: var(--cf-space-indigo);
+        display: flex; align-items: center; justify-content: center;
+        font-weight: 700; font-size: 0.82rem; flex-shrink: 0;
+      }
+
+      .user-meta { overflow: hidden; }
+      .user-name { font-size: 0.85rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .user-role { font-size: 0.73rem; color: var(--muted); }
+      .sidebar.collapsed .user-meta { display: none; }
+      .sidebar.collapsed .user-chip { justify-content: center; padding: 6px 4px; }
+
+      .signout-btn {
+        display: flex; align-items: center; gap: 8px;
+        padding: 8px 10px; font-size: 0.82rem; font-weight: 500;
+        color: var(--muted); cursor: pointer;
+        border: none; background: none; border-radius: 7px;
+        width: 100%; text-align: left;
+        white-space: nowrap; overflow: hidden;
+        transition: background var(--transition), color var(--transition);
+      }
+
+      .signout-btn:hover { background: var(--warn-bg); color: var(--warn); }
+      .sidebar.collapsed .signout-btn { justify-content: center; }
+      .sidebar.collapsed .signout-label { display: none; }
+
+      /* ── Content pane ──────────────────────────────────────── */
+      .content-pane {
+        flex: 1; overflow: hidden;
+        display: flex; flex-direction: column;
+      }
+
+      .view { display: none; flex: 1; overflow: hidden; flex-direction: column; }
+      .view.active { display: flex; }
+
+      .view-scroll { flex: 1; overflow-y: auto; padding: 24px; }
+
+      .view-iframe { flex: 1; border: none; display: block; width: 100%; height: 100%; }
+
+      /* ── Studies view ──────────────────────────────────────── */
+      .view-header {
+        padding: 20px 24px 0;
+        display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+        flex-shrink: 0;
+      }
+
+      .view-title    { margin: 0; font-size: 1.2rem; font-weight: 700; }
+      .view-subtitle { margin: 4px 0 0; color: var(--muted); font-size: 0.88rem; }
+
+      .panel {
+        background: var(--panel); border: 1px solid var(--line);
+        border-radius: 14px; overflow: hidden; box-shadow: var(--shadow);
+      }
+
+      .panel-pad {
+        padding: 18px 20px;
+      }
+
+      html[data-cf-theme="dark"] .panel,
+      html[data-cf-theme="dark"] .detail-card,
+      html[data-cf-theme="dark"] .detail-panel,
+      html[data-cf-theme="dark"] .ethics-section,
+      html[data-cf-theme="dark"] .account-section {
+        background: rgba(56, 66, 96, 0.86);
+      }
+
+      html[data-cf-theme="dark"] th {
+        background: rgba(66, 76, 108, 0.42);
+      }
+
+      html[data-cf-theme="dark"] tr:hover td { background: rgba(90, 104, 145, 0.18); }
+      html[data-cf-theme="dark"] .detail-row { background: rgba(73, 84, 121, 0.2); }
+      html[data-cf-theme="dark"] .detail-card { background: rgba(61, 72, 104, 0.78); }
+      html[data-cf-theme="dark"] .rollout-field-row input {
+        background: rgba(40, 47, 72, 0.86);
+        border-color: rgba(186, 199, 190, 0.24);
+      }
+      html[data-cf-theme="dark"] .result-item { background: rgba(62, 73, 106, 0.72); }
+      html[data-cf-theme="dark"] .result-meta-block { background: rgba(48, 57, 84, 0.85); }
+      html[data-cf-theme="dark"] .ethics-copy-block {
+        background: rgba(62, 73, 106, 0.72);
+        border-color: rgba(186, 199, 190, 0.26);
+        color: rgba(223, 232, 225, 0.92);
+      }
+      html[data-cf-theme="dark"] .account-field input,
+      html[data-cf-theme="dark"] .auth-secret {
+        background: rgba(40, 47, 72, 0.86);
+        border-color: rgba(186, 199, 190, 0.24);
+        color: var(--cf-ash-grey);
+      }
+      html[data-cf-theme="dark"] .account-field input:focus {
+        background: rgba(43, 52, 78, 0.95);
+      }
+      html[data-cf-theme="dark"] .mfa-qr-wrap {
+        background: rgba(45, 53, 80, 0.92);
+        border-color: rgba(186, 199, 190, 0.26);
+      }
+
+      .status-bar {
+        padding: 9px 16px; border-bottom: 1px solid var(--line);
+        font-size: 0.84rem; color: var(--muted);
+      }
+
+      .status-bar.ok    { color: var(--ok); }
+      .status-bar.error { color: var(--warn); }
+
+      table { width: 100%; border-collapse: collapse; }
+
+      th, td {
+        text-align: left; padding: 10px 14px;
         border-bottom: 1px solid var(--line);
-        font-size: 0.92rem;
-        vertical-align: top;
+        font-size: 0.88rem; vertical-align: top;
       }
 
       th {
-        font-size: 0.82rem;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        color: var(--muted);
+        font-size: 0.74rem; text-transform: uppercase;
+        letter-spacing: .05em; color: var(--muted);
+        background: #f8faff; font-weight: 600;
       }
 
+      tr:last-child td { border-bottom: none; }
+      tr:hover td { background: #f8fafd; }
+
       .pill {
-        display: inline-block;
-        padding: 2px 7px;
-        border-radius: 999px;
-        font-size: 0.74rem;
-        background: #eef2fb;
+        display: inline-block; padding: 2px 7px; border-radius: 99px;
+        font-size: 0.73rem; background: var(--accent-lt); color: var(--accent);
       }
 
       .mono {
         font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 0.82em;
       }
 
-      @media (max-width: 760px) {
-        .topbar {
-          flex-direction: column;
-          align-items: flex-start;
-        }
+      /* Detail row */
+      .detail-row { background: #f6f9ff; }
+      .detail-row td { padding-top: 0; }
 
-        table,
-        thead,
-        tbody,
-        tr,
-        th,
-        td {
-          display: block;
-          width: 100%;
-        }
+      .detail-panel {
+        margin: 0 0 14px;
+        background: var(--panel); border: 1px solid var(--line);
+        border-radius: 12px; padding: 16px; box-shadow: var(--shadow);
+      }
 
-        thead {
-          display: none;
-        }
+      .detail-header {
+        display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+        margin-bottom: 14px;
+      }
 
-        tr {
-          border-bottom: 1px solid var(--line);
-          padding: 4px 0;
-        }
+      .detail-title    { margin: 0; font-size: 1rem; font-weight: 700; }
+      .detail-subtitle { margin: 4px 0 0; color: var(--muted); font-size: 0.82rem; }
 
-        td {
-          border-bottom: 0;
-          padding: 8px 12px;
-        }
+      .detail-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 14px;
+      }
 
-        td::before {
-          content: attr(data-label);
-          display: block;
-          color: var(--muted);
-          font-size: 0.73rem;
-          text-transform: uppercase;
-          letter-spacing: 0.04em;
-          margin-bottom: 3px;
-        }
+      .detail-card {
+        border: 1px solid var(--line); border-radius: 10px;
+        padding: 14px; background: #fcfeff;
+      }
+
+      .detail-card h3 { margin: 0 0 12px; font-size: 0.9rem; font-weight: 700; }
+
+      .rollout-field { margin-bottom: 12px; }
+
+      .rollout-field-label {
+        display: block; margin-bottom: 4px;
+        color: var(--muted); font-size: 0.72rem;
+        text-transform: uppercase; letter-spacing: .04em;
+      }
+
+      .rollout-field-row { display: flex; gap: 8px; align-items: stretch; }
+
+      .rollout-field-row input {
+        flex: 1; min-width: 0; border: 1px solid var(--line);
+        border-radius: 8px; padding: 7px 10px; font-size: 0.82rem;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        background: #fff; color: var(--ink);
+      }
+
+      .rollout-meta { color: var(--muted); font-size: 0.8rem; margin-top: 8px; }
+
+      .result-list { display: grid; gap: 10px; }
+
+      .result-item {
+        border: 1px solid var(--line); border-radius: 10px;
+        background: #fff; padding: 12px;
+      }
+
+      .result-meta {
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+        gap: 8px; margin-bottom: 10px;
+      }
+
+      .result-meta-block { background: #f5f8fc; border-radius: 8px; padding: 7px 10px; }
+      .result-meta-label { color: var(--muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: .04em; }
+      .result-meta-value { margin-top: 3px; font-size: 0.84rem; }
+
+      .result-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+
+      .result-json {
+        margin: 0; padding: 12px; border-radius: 8px;
+        background: #0f172a; color: #bae6fd;
+        overflow: auto; font-size: 0.78rem; line-height: 1.5;
+      }
+
+      .result-message { color: var(--muted); font-size: 0.82rem; }
+      .result-message.error { color: var(--warn); }
+
+      /* ── Ethics view ───────────────────────────────────────── */
+      .ethics-section {
+        background: var(--panel); border: 1px solid var(--line);
+        border-radius: 12px; padding: 20px 24px; margin-bottom: 16px;
+        box-shadow: var(--shadow);
+      }
+
+      .ethics-section h3 { margin: 0 0 10px; font-size: 1rem; font-weight: 700; }
+      .ethics-section p  { margin: 0 0 10px; font-size: 0.88rem; line-height: 1.65; color: #334155; }
+
+      .ethics-copy-block {
+        background: #f8faff; border: 1px solid var(--line);
+        border-radius: 8px; padding: 12px 14px;
+        font-size: 0.84rem; line-height: 1.6; color: var(--ink);
+        margin-top: 8px; white-space: pre-wrap;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 10px;
+        align-items: start;
+      }
+
+      .ethics-copy-text { min-width: 0; }
+
+      .copy-block-btn {
+        position: static;
+        margin-top: 1px;
+        align-self: start;
+      }
+
+      /* ── Account view ──────────────────────────────────────── */
+      .account-section {
+        background: var(--panel); border: 1px solid var(--line);
+        border-radius: 12px; padding: 20px 24px; margin-bottom: 16px;
+        box-shadow: var(--shadow);
+      }
+
+      .account-section h3 {
+        margin: 0 0 16px; font-size: 1rem; font-weight: 700;
+        padding-bottom: 10px; border-bottom: 1px solid var(--line);
+      }
+
+      .account-field {
+        display: grid; grid-template-columns: 160px 1fr;
+        align-items: center; gap: 12px; margin-bottom: 14px;
+      }
+
+      .account-field label { font-size: 0.84rem; font-weight: 600; color: var(--muted); }
+
+      .account-field input {
+        border: 1.5px solid var(--line); border-radius: 8px;
+        padding: 8px 11px; font-size: 0.88rem; font-family: inherit;
+        outline: none; background: var(--bg); color: var(--ink);
+        max-width: 340px; width: 100%;
+        transition: border-color var(--transition);
+      }
+
+      .account-field input:focus { border-color: var(--accent); background: #fff; }
+
+      .account-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+
+      .inline-note { font-size: 0.8rem; color: var(--muted); margin-top: 4px; }
+      .ok-note  { color: var(--ok); }
+      .err-note { color: var(--warn); }
+
+      .auth-secret {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        background: #f3f7ff; border: 1px solid var(--line);
+        border-radius: 7px; padding: 5px 9px; font-size: 0.82rem; letter-spacing: .05em;
+      }
+
+      .mfa-qr-wrap {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 136px; height: 136px; border: 1px solid var(--line);
+        border-radius: 10px; background: #fff; margin: 6px 0;
+      }
+
+      .mfa-qr-wrap img { width: 128px; height: 128px; image-rendering: pixelated; }
+
+      /* ── Placeholder views ─────────────────────────────────── */
+      .placeholder-pane {
+        flex: 1; display: flex; align-items: center; justify-content: center;
+        flex-direction: column; gap: 14px; color: var(--muted);
+        padding: 40px; text-align: center;
+      }
+
+      .placeholder-icon  { font-size: 2.8rem; }
+      .placeholder-title { font-size: 1.1rem; font-weight: 700; color: var(--ink); margin: 0; }
+      .placeholder-desc  { font-size: 0.88rem; max-width: 440px; margin: 0; line-height: 1.6; }
+
+      /* ── Misc ──────────────────────────────────────────────── */
+      .spinner {
+        display: inline-block; width: 14px; height: 14px;
+        border: 2px solid var(--line); border-top-color: var(--accent);
+        border-radius: 50%; animation: spin .6s linear infinite;
+      }
+
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      /* Final dark-surface enforcement (keep near end so default light blocks cannot override). */
+      html[data-cf-theme="dark"] .nav-item.active {
+        background: rgba(130, 145, 184, 0.18) !important;
+        box-shadow: inset 0 0 0 1px rgba(145, 160, 198, 0.36) !important;
+      }
+
+      html[data-cf-theme="dark"] .detail-row,
+      html[data-cf-theme="dark"] .detail-row td,
+      html[data-cf-theme="dark"] tr:hover td {
+        background: rgba(73, 84, 121, 0.2) !important;
+      }
+
+      html[data-cf-theme="dark"] .panel,
+      html[data-cf-theme="dark"] .detail-panel,
+      html[data-cf-theme="dark"] .detail-card,
+      html[data-cf-theme="dark"] .result-item,
+      html[data-cf-theme="dark"] .ethics-section,
+      html[data-cf-theme="dark"] .account-section {
+        background: rgba(56, 66, 96, 0.86) !important;
+        border-color: rgba(186, 199, 190, 0.24) !important;
+      }
+
+      html[data-cf-theme="dark"] .result-meta-block,
+      html[data-cf-theme="dark"] .ethics-copy-block,
+      html[data-cf-theme="dark"] .rollout-field-row input,
+      html[data-cf-theme="dark"] .account-field input,
+      html[data-cf-theme="dark"] .auth-secret,
+      html[data-cf-theme="dark"] .mfa-qr-wrap {
+        background: rgba(48, 57, 84, 0.86) !important;
+        border-color: rgba(186, 199, 190, 0.24) !important;
+        color: rgba(223, 232, 225, 0.94) !important;
+      }
+
+      html[data-cf-theme="dark"] .ethics-section p,
+      html[data-cf-theme="dark"] .result-meta-value,
+      html[data-cf-theme="dark"] .rollout-meta {
+        color: rgba(223, 232, 225, 0.84) !important;
+      }
+
+      html[data-cf-theme="dark"] th {
+        background: rgba(66, 76, 108, 0.42) !important;
+      }
+
+      @media (max-width: 640px) {
+        :root { --sidebar-w: 200px; }
+        .app-body { padding-right: 8px; }
+        .sidebar { margin-left: 8px; }
+        .view-scroll { padding: 14px; }
+        .account-field { grid-template-columns: 1fr; }
       }
     </style>
   </head>
   <body>
-    <div class="shell">
-      <!-- Top bar -->
-      <div class="topbar">
-        <div>
-          <h1>CogFlow Portal</h1>
-          <p class="subtitle">Studies Dashboard — published experiments and run metrics.</p>
+
+    <!-- ══ LOGIN OVERLAY ══════════════════════════════════════ -->
+    <div id="loginOverlay">
+      <div class="login-card">
+        <div class="login-logo">
+          <img src="/builder/img/logo_light.png" alt="CogFlow" />
         </div>
-        <div class="topbar-actions">
-          <a href="/builder/" class="btn builder" target="_blank">Open Builder ↗</a>
-          <a id="dbAdminBtn" href="http://localhost:8080/?pgsql=db&username=cogflow&db=cogflow_platform&ns=public" class="btn" style="background:#6b21a8;display:none" target="_blank">DB Admin ↗</a>
-          <button id="refreshBtn" class="btn secondary">Refresh</button>
+
+        <div id="loginError" class="login-error hidden"></div>
+
+        <!-- Step 1: credentials -->
+        <div id="loginStep1">
+          <h2>Sign in</h2>
+          <div class="field-group">
+            <div>
+              <label for="authUsername">Username</label>
+              <input type="text" id="authUsername" autocomplete="username" placeholder="your-username" />
+            </div>
+            <div>
+              <label for="authPassword">Password</label>
+              <input type="password" id="authPassword" autocomplete="current-password" placeholder="••••••••" />
+            </div>
+          </div>
+          <button class="btn btn-primary btn-full" id="loginBtn">Sign In</button>
+        </div>
+
+        <!-- Step 2: MFA code -->
+        <div id="loginStep2" style="display:none;">
+          <h2>Two-factor authentication</h2>
+          <p class="mfa-hint">Enter the 6-digit code from your authenticator app.</p>
+          <div class="field-group">
+            <div>
+              <label for="loginMfaCode">Authentication code</label>
+              <input type="text" id="loginMfaCode" inputmode="numeric"
+                     autocomplete="one-time-code" placeholder="000000" maxlength="12" />
+            </div>
+          </div>
+          <button class="btn btn-primary btn-full" id="loginMfaBtn">Verify &amp; Sign In</button>
         </div>
       </div>
-
-      <!-- Auth panel -->
-      <div class="auth-bar" id="authBar">
-        <span class="auth-label" id="authStatus">Checking session…</span>
-      </div>
-
-      <!-- Studies panel -->
-      <section class="panel">
-        <div id="status" class="status">Loading studies...</div>
-        <table>
-          <thead>
-            <tr>
-              <th>Study</th>
-              <th>Owner</th>
-              <th>Runtime</th>
-              <th>Latest Config</th>
-              <th>Run Count</th>
-              <th>Last Result</th>
-              <th>Researcher Actions</th>
-            </tr>
-          </thead>
-          <tbody id="rows"></tbody>
-        </table>
-      </section>
     </div>
 
+    <!-- ══ APP SHELL ══════════════════════════════════════════ -->
+    <div id="appShell" class="hidden">
+
+      <header class="topbar">
+        <div class="topbar-logo">
+          <img src="/builder/img/logo_dark.png" alt="CogFlow" class="brand-logo brand-logo-dark" />
+          <img src="/builder/img/logo_light.png" alt="CogFlow" class="brand-logo brand-logo-light" />
+        </div>
+        <div class="topbar-spacer"></div>
+        <div class="topbar-user">
+          <button class="btn btn-ghost btn-sm theme-btn" id="portalThemeToggle">Theme: Light</button>
+          <span id="topbarUsername" class="mono"></span>
+          <span id="topbarRole" class="role-pill"></span>
+          <a id="dbAdminBtn"
+             href="http://localhost:8080/?pgsql=db&username=cogflow&db=cogflow_platform&ns=public"
+             class="btn btn-ghost btn-sm" style="display:none" target="_blank">DB ↗</a>
+        </div>
+      </header>
+
+      <div class="app-body">
+
+        <!-- ── Sidebar ──────────────────────────────────────── -->
+        <nav class="sidebar" id="sidebar">
+          <div class="sidebar-toggle">
+            <button class="toggle-btn" id="sidebarToggle" title="Toggle sidebar">
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                <rect x="2" y="4"    width="14" height="1.5" rx=".75" fill="currentColor"/>
+                <rect x="2" y="8.25" width="14" height="1.5" rx=".75" fill="currentColor"/>
+                <rect x="2" y="12.5" width="14" height="1.5" rx=".75" fill="currentColor"/>
+              </svg>
+            </button>
+          </div>
+
+          <div class="nav-list">
+            <button class="nav-item active" data-view="studies" id="navStudies">
+              <span class="nav-icon">🗂</span>
+              <span class="nav-label">My Studies</span>
+            </button>
+            <div class="sub-nav" id="subNavStudies">
+              <button class="nav-item sub active" data-view="studies" id="navResults">
+                <span class="nav-icon">📊</span>
+                <span class="nav-label">Results</span>
+              </button>
+            </div>
+
+            <div class="nav-divider"></div>
+
+            <button class="nav-item" data-view="builder" id="navBuilder">
+              <span class="nav-icon">🔧</span>
+              <span class="nav-label">Builder</span>
+            </button>
+
+            <button class="nav-item" data-view="preview" id="navPreview">
+              <span class="nav-icon">▶</span>
+              <span class="nav-label">Preview</span>
+            </button>
+
+            <div class="nav-divider"></div>
+
+            <button class="nav-item" data-view="integrations" id="navIntegrations">
+              <span class="nav-icon">🔗</span>
+              <span class="nav-label">Integrations</span>
+            </button>
+
+            <button class="nav-item" data-view="ethics" id="navEthics">
+              <span class="nav-icon">🛡</span>
+              <span class="nav-label">Ethics &amp; Compliance</span>
+            </button>
+
+            <button class="nav-item" data-view="feedback" id="navFeedback">
+              <span class="nav-icon">💬</span>
+              <span class="nav-label">Feedback</span>
+            </button>
+
+            <button class="nav-item" data-view="admin" id="navAdmin" style="display:none;">
+              <span class="nav-icon">🧑‍💼</span>
+              <span class="nav-label">Admin Panel</span>
+            </button>
+
+            <div class="nav-divider"></div>
+
+            <button class="nav-item" data-view="account" id="navAccount">
+              <span class="nav-icon">⚙</span>
+              <span class="nav-label">Account Settings</span>
+            </button>
+          </div>
+
+          <div class="sidebar-footer">
+            <div class="user-chip">
+              <div class="user-avatar" id="sidebarAvatar">?</div>
+              <div class="user-meta">
+                <div class="user-name" id="sidebarUsername">—</div>
+                <div class="user-role" id="sidebarRole">—</div>
+              </div>
+            </div>
+            <button class="signout-btn" id="signOutBtn">
+              <span style="flex-shrink:0;font-size:1rem;">⬅</span>
+              <span class="signout-label">Sign Out</span>
+            </button>
+          </div>
+        </nav>
+
+        <!-- ── Content pane ─────────────────────────────────── -->
+        <main class="content-pane">
+
+          <!-- VIEW: My Studies -->
+          <div class="view active" id="viewStudies">
+            <div class="view-header">
+              <div>
+                <h1 class="view-title">My Studies</h1>
+                <p class="view-subtitle">Published experiments and run metrics.</p>
+              </div>
+              <div style="padding-top:4px;">
+                <button class="btn btn-ghost btn-sm" id="refreshBtn">↻ Refresh</button>
+              </div>
+            </div>
+            <div class="view-scroll" style="padding-top:16px;">
+              <div class="panel">
+                <div id="studiesStatus" class="status-bar">Loading studies…</div>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Study</th>
+                      <th>Owner</th>
+                      <th>Runtime</th>
+                      <th>Config</th>
+                      <th>Runs</th>
+                      <th>Last Result</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="studyRows"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- VIEW: Builder (iframe) -->
+          <div class="view" id="viewBuilder">
+            <iframe id="builderFrame" class="view-iframe"
+                    src="about:blank" title="CogFlow Builder"
+                    allow="clipboard-write"></iframe>
+          </div>
+
+          <!-- VIEW: Preview (Interpreter iframe) -->
+          <div class="view" id="viewPreview">
+            <div class="view-header" style="padding-bottom:14px;flex-shrink:0;">
+              <div>
+                <h1 class="view-title">Experiment Preview</h1>
+                <p class="view-subtitle">Run a full experiment session before deploying links.</p>
+              </div>
+              <div style="display:flex;gap:8px;align-items:center;padding-top:4px;flex-wrap:wrap;">
+                <select id="previewStudySelect"
+                        style="border:1.5px solid var(--line);border-radius:8px;padding:5px 10px;font-size:.82rem;font-family:inherit;cursor:pointer;background:var(--bg);color:var(--ink);">
+                  <option value="">— Select study —</option>
+                </select>
+                <button class="btn btn-primary btn-sm" id="previewLaunchBtn">Launch Preview</button>
+              </div>
+            </div>
+            <iframe id="previewFrame" class="view-iframe"
+                    src="about:blank" title="Experiment Preview"
+                    allow="camera;microphone;clipboard-write"
+                    style="border-top:1px solid var(--line);"></iframe>
+          </div>
+
+          <!-- VIEW: Integrations -->
+          <div class="view" id="viewIntegrations">
+            <div class="placeholder-pane">
+              <div class="placeholder-icon">🔗</div>
+              <h2 class="placeholder-title">Integrations coming soon</h2>
+              <p class="placeholder-desc">Prolific, SONA, and other recruitment platform integrations will appear here. You will be able to link completion URLs and automate credit granting per study.</p>
+            </div>
+          </div>
+
+          <!-- VIEW: Ethics & Compliance -->
+          <div class="view" id="viewEthics">
+            <div class="view-scroll">
+              <h1 class="view-title" style="margin:0 0 4px;">Ethics &amp; Compliance</h1>
+              <p class="view-subtitle" style="margin:0 0 20px;">Copy-ready boilerplate text for IRB / ethics board submissions.</p>
+
+              <div class="ethics-section">
+                <h3>Data Encryption at Rest</h3>
+                <p>Use the following paragraph when describing how participant data is stored:</p>
+                <div class="ethics-copy-block" id="eb1"><span class="ethics-copy-text">All behavioural data collected through CogFlow are encrypted at rest using AES-128 symmetric encryption (Fernet, RFC 7519 compliant) before being written to the database. Each result payload is independently encrypted with a server-managed key. Encryption occurs server-side immediately upon receipt; raw participant responses are never persisted in plaintext. Decryption requires authenticated researcher access and, where multi-factor authentication is enabled, a verified TOTP session within the preceding 24 hours.</span><button class="btn btn-ghost btn-xs copy-block-btn" onclick="copyEthicsBlock('eb1',this)">Copy</button></div>
+              </div>
+
+              <div class="ethics-section">
+                <h3>Participant Identifier Pseudonymisation</h3>
+                <p>Use the following paragraph when describing identifier handling:</p>
+                <div class="ethics-copy-block" id="eb2"><span class="ethics-copy-text">Participant identifiers are pseudonymised prior to storage. External participant IDs (e.g., Prolific IDs, SONA codes) are hashed using a salted one-way function before being written to the database. The plaintext identifier is never stored. A researcher-visible truncated preview (first six characters of the hash) is retained solely for quality-control purposes and cannot be reversed to recover the original identifier.</span><button class="btn btn-ghost btn-xs copy-block-btn" onclick="copyEthicsBlock('eb2',this)">Copy</button></div>
+              </div>
+
+              <div class="ethics-section">
+                <h3>Data Transmission Security</h3>
+                <p>Use the following paragraph when describing data in transit:</p>
+                <div class="ethics-copy-block" id="eb3"><span class="ethics-copy-text">All data transmitted between participants' browsers and the CogFlow platform server are encrypted in transit using TLS 1.2 or higher. The platform does not use persistent client-side storage (cookies carry only session tokens; no behavioural data are written to localStorage or IndexedDB). Session tokens expire on logout and are bound to the server-side session record.</span><button class="btn btn-ghost btn-xs copy-block-btn" onclick="copyEthicsBlock('eb3',this)">Copy</button></div>
+              </div>
+
+              <div class="ethics-section">
+                <h3>Data Retention and Deletion</h3>
+                <p>Use the following paragraph when describing retention policy:</p>
+                <div class="ethics-copy-block" id="eb4"><span class="ethics-copy-text">Participant data are retained for the duration of the research project and for a post-completion period as specified in the approved ethics protocol, after which all result envelopes are permanently deleted from the database. Researchers may request deletion of data for individual participants or for an entire study at any time via the portal. All deletion events are recorded in an immutable audit log with timestamps and requesting-user identity.</span><button class="btn btn-ghost btn-xs copy-block-btn" onclick="copyEthicsBlock('eb4',this)">Copy</button></div>
+              </div>
+
+              <div class="ethics-section">
+                <h3>Access Controls and Audit Logging</h3>
+                <p>Use the following paragraph when describing access controls:</p>
+                <div class="ethics-copy-block" id="eb5"><span class="ethics-copy-text">Access to participant data is restricted to the owning researcher account and platform administrators. All sensitive actions (data decryption, participant link generation, researcher assignment changes, data export, and deletion requests) are recorded in a tamper-evident audit log that captures the acting user, action type, target resource, timestamp, and outcome. Audit records cannot be modified or deleted by any user role.</span><button class="btn btn-ghost btn-xs copy-block-btn" onclick="copyEthicsBlock('eb5',this)">Copy</button></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- VIEW: Feedback -->
+          <div class="view" id="viewFeedback">
+            <div class="placeholder-pane">
+              <div class="placeholder-icon">💬</div>
+              <h2 class="placeholder-title">Feedback form coming soon</h2>
+              <p class="placeholder-desc">An in-portal feedback form will be available here. For now, please report issues and suggestions via your institution's designated CogFlow contact.</p>
+            </div>
+          </div>
+
+          <!-- VIEW: Admin Panel -->
+          <div class="view" id="viewAdmin">
+            <div class="view-header">
+              <div>
+                <h1 class="view-title">Admin Panel</h1>
+                <p class="view-subtitle">Manage platform users, roles, and account lifecycle.</p>
+              </div>
+              <div style="padding-top:4px;">
+                <button class="btn btn-ghost btn-sm" id="adminRefreshBtn">↻ Refresh Users</button>
+              </div>
+            </div>
+            <div class="view-scroll" style="padding-top:16px;">
+              <div class="panel panel-pad" style="margin-bottom:14px;">
+                <h3 style="margin:0 0 10px;">Create New User</h3>
+                <div id="adminMsg" class="inline-note" style="display:none;margin-bottom:10px;"></div>
+                <div class="account-field">
+                  <label for="adminNewUsername">Username</label>
+                  <input type="text" id="adminNewUsername" autocomplete="off" />
+                </div>
+                <div class="account-field">
+                  <label for="adminNewEmail">Email (optional)</label>
+                  <input type="email" id="adminNewEmail" autocomplete="off" />
+                </div>
+                <div class="account-field">
+                  <label for="adminNewPassword">Temporary password</label>
+                  <input type="password" id="adminNewPassword" autocomplete="new-password" />
+                </div>
+                <div class="account-field">
+                  <label for="adminNewRole">Role</label>
+                  <select id="adminNewRole" style="border:1.5px solid var(--line);border-radius:8px;padding:7px 11px;font-size:.88rem;font-family:inherit;outline:none;background:var(--bg);color:var(--ink);max-width:260px;">
+                    <option value="researcher">researcher</option>
+                    <option value="analyst">analyst</option>
+                    <option value="participant">participant</option>
+                    <option value="platform_admin">platform_admin</option>
+                  </select>
+                </div>
+                <div class="account-actions">
+                  <button class="btn btn-primary btn-sm" id="adminCreateUserBtn">Create User</button>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div id="adminStatus" class="status-bar">Loading users…</div>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Username</th>
+                      <th>Email</th>
+                      <th>Role</th>
+                      <th>Active</th>
+                      <th>MFA</th>
+                      <th>Last Login</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="adminUserRows"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- VIEW: Account Settings -->
+          <div class="view" id="viewAccount">
+            <div class="view-scroll">
+              <h1 class="view-title" style="margin:0 0 4px;">Account Settings</h1>
+              <p class="view-subtitle" style="margin:0 0 20px;">Manage your credentials, MFA, and profile.</p>
+
+              <div class="account-section">
+                <h3>Change Password</h3>
+                <div id="pwdMsg" class="inline-note" style="display:none;margin-bottom:12px;"></div>
+                <div class="account-field">
+                  <label for="pwdCurrent">Current password</label>
+                  <input type="password" id="pwdCurrent" autocomplete="current-password" />
+                </div>
+                <div class="account-field">
+                  <label for="pwdNew">New password</label>
+                  <input type="password" id="pwdNew" autocomplete="new-password" />
+                </div>
+                <div class="account-field">
+                  <label for="pwdConfirm">Confirm new</label>
+                  <input type="password" id="pwdConfirm" autocomplete="new-password" />
+                </div>
+                <div class="account-actions">
+                  <button class="btn btn-primary btn-sm" id="changePwdBtn">Update Password</button>
+                </div>
+              </div>
+
+              <div class="account-section" id="mfaSection">
+                <h3>Two-Factor Authentication (TOTP)</h3>
+                <div id="mfaAccountMsg" class="inline-note" style="display:none;margin-bottom:12px;"></div>
+                <div id="mfaStatusBlock"></div>
+              </div>
+            </div>
+          </div>
+
+        </main>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
     <script>
-      const API_BASE = "";
+    "use strict";
+    const API = "";
 
-      // ── CSRF + credentials helpers ──────────────────────────
-      function getCsrf() {
-        const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
-        return m ? decodeURIComponent(m[1]) : "";
-      }
+    // ── CSRF ──────────────────────────────────────────────────
+    function getCsrf() {
+      const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+      return m ? decodeURIComponent(m[1]) : "";
+    }
 
-      function postOpts(body) {
-        return {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json", "X-CSRFToken": getCsrf() },
-          body: JSON.stringify(body),
+    function postOpts(body) {
+      return {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": getCsrf() },
+        body: JSON.stringify(body),
+      };
+    }
+
+    // ── State ─────────────────────────────────────────────────
+    let currentUser   = null;
+    let mfaSetupState = null;
+    let studiesList   = [];
+    const studyUiState = {};
+
+    function getStudyState(slug) {
+      const k = String(slug || "");
+      if (!studyUiState[k]) {
+        studyUiState[k] = {
+          expanded: false, rollout: null,
+          runs: [], runsLoaded: false, runsLoading: false, runsError: null,
+          decryptions: {}, exportBusy: false,
         };
       }
+      return studyUiState[k];
+    }
 
-      // ── Auth state ──────────────────────────────────────────
-      let currentUser = null; // {username, role} or null
+    // ── Utilities ─────────────────────────────────────────────
+    function esc(v) {
+      return String(v ?? "")
+        .replaceAll("&","&amp;").replaceAll("<","&lt;")
+        .replaceAll(">","&gt;").replaceAll('"',"&quot;");
+    }
 
-      function formatIso(isoText) {
-        if (!isoText) return "-";
-        const dt = new Date(isoText);
-        if (Number.isNaN(dt.getTime())) return String(isoText);
-        return dt.toLocaleString();
+    function fmt(iso) {
+      if (!iso) return "—";
+      const d = new Date(iso);
+      return isNaN(d.getTime()) ? String(iso) : d.toLocaleString();
+    }
+
+    function absUrl(raw) {
+      const s = (raw || "").toString().trim();
+      if (!s || s === "-") return s;
+      if (/^https?:\/\//i.test(s)) return s;
+      try { return new URL(s, location.origin).toString(); } catch { return s; }
+    }
+
+    async function copyText(text, btn) {
+      const orig = btn?.textContent;
+      try {
+        await navigator.clipboard.writeText(String(text || ""));
+        if (btn) { btn.textContent = "Copied!"; setTimeout(() => btn.textContent = orig, 1400); }
+      } catch {
+        if (btn) { btn.textContent = "Failed";  setTimeout(() => btn.textContent = orig, 1400); }
       }
+    }
 
-      // ── Auth panel rendering ────────────────────────────────
-      function renderAuthBar(user, errorMsg) {
-        const bar = document.getElementById("authBar");
-        if (user) {
-          bar.innerHTML = `
-            <span class="auth-identity">✓ Signed in as ${user.username}</span>
-            <span class="auth-role">${user.role || "—"}</span>
-            <button class="btn secondary small" id="logoutBtn">Sign Out</button>
-          `;
-          document.getElementById("logoutBtn").addEventListener("click", doLogout);
+    // ── Download helpers ───────────────────────────────────────
+    function dlJson(name, obj) {
+      const b = new Blob([JSON.stringify(obj, null, 2)], { type: "application/json" });
+      const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(b), download: name });
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
+    }
+
+    function csvEsc(v) {
+      const s = String(v ?? "");
+      return /[",\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
+    }
+
+    function flatCsv(obj, prefix = "") {
+      const out = {};
+      for (const [k, v] of Object.entries(obj && typeof obj === "object" ? obj : {})) {
+        const key = prefix ? `${prefix}_${k}` : k;
+        if (v && typeof v === "object" && !Array.isArray(v)) Object.assign(out, flatCsv(v, key));
+        else out[key] = Array.isArray(v) ? JSON.stringify(v) : v;
+      }
+      return out;
+    }
+
+    function toCsv(rows) {
+      const hs = [];
+      for (const r of rows) for (const k of Object.keys(r || {})) if (!hs.includes(k)) hs.push(k);
+      if (!hs.length) return "";
+      return [hs.map(csvEsc).join(","), ...rows.map(r => hs.map(h => csvEsc((r || {})[h])).join(","))].join("\n");
+    }
+
+    function dlCsv(name, rows) {
+      const b = new Blob([toCsv(rows)], { type: "text/csv;charset=utf-8" });
+      const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(b), download: name });
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
+    }
+
+    function mkBundle(run, dec) {
+      return { run_session_id: run.run_session_id, status: run.status,
+               started_at: run.started_at, completed_at: run.completed_at,
+               trial_count: run.trial_count, participant_key_preview: run.participant_key_preview,
+               result_payload: dec.result_payload || {} };
+    }
+
+    function bundleRows(bundle) {
+      const trials = Array.isArray(bundle?.result_payload?.trials) ? bundle.result_payload.trials : [];
+      const base = { run_session_id: bundle.run_session_id, status: bundle.status,
+                     started_at: bundle.started_at, completed_at: bundle.completed_at,
+                     participant_key_preview: bundle.participant_key_preview, trial_count: bundle.trial_count };
+      if (!trials.length) return [base];
+      return trials.map((t, i) => ({ ...base, trial_row_index: i, ...flatCsv(t, "trial") }));
+    }
+
+    async function fetchDec(runId) {
+      const r = await fetch(`${API}/api/v1/results/decrypt`, postOpts({ run_session_id: runId }));
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+      return d;
+    }
+
+    // ── Navigation ─────────────────────────────────────────────
+    const VIEWS = ["studies","builder","preview","integrations","ethics","feedback","admin","account"];
+    let builderLoaded = false;
+    let adminUsersLoaded = false;
+    let adminUsers = [];
+
+    function normalizeTheme(theme) {
+      return theme === "dark" ? "dark" : "light";
+    }
+
+    function getStoredPortalTheme() {
+      try {
+        return normalizeTheme(localStorage.getItem("cogflow_portal_theme") || "light");
+      } catch {
+        return "light";
+      }
+    }
+
+    let currentTheme = getStoredPortalTheme();
+
+    function builderThemeUrl(theme) {
+      const t = normalizeTheme(theme);
+      return `/builder/?theme=${encodeURIComponent(t)}&v=20260324-1`;
+    }
+
+    function notifyBuilderTheme(theme) {
+      const frame = document.getElementById("builderFrame");
+      if (!frame || !frame.contentWindow) return;
+      try {
+        frame.contentWindow.postMessage({ type: "cogflow:set-theme", theme: normalizeTheme(theme) }, location.origin);
+      } catch {
+        // ignore
+      }
+    }
+
+    function applyPortalTheme(theme, persist = true) {
+      currentTheme = normalizeTheme(theme);
+      document.documentElement.setAttribute("data-cf-theme", currentTheme);
+      const btn = document.getElementById("portalThemeToggle");
+      if (btn) btn.textContent = `Theme: ${currentTheme === "dark" ? "Dark" : "Light"}`;
+      if (persist) {
+        try {
+          localStorage.setItem("cogflow_portal_theme", currentTheme);
+          // Keep Builder consistent when opened directly as well.
+          localStorage.setItem("cogflow_builder_theme", currentTheme);
+        } catch {
+          // ignore
+        }
+      }
+      if (builderLoaded) notifyBuilderTheme(currentTheme);
+    }
+
+    applyPortalTheme(currentTheme, false);
+
+    function activateView(id) {
+      VIEWS.forEach(v => {
+        document.getElementById(`view${v[0].toUpperCase()}${v.slice(1)}`)?.classList.toggle("active", v === id);
+        const navEl = document.getElementById(`nav${v[0].toUpperCase()}${v.slice(1)}`);
+        if (navEl) navEl.classList.toggle("active", v === id);
+      });
+      // Keep "My Studies" and "Results" both highlighted when studies view is active
+      if (id === "studies") {
+        document.getElementById("navStudies")?.classList.add("active");
+        document.getElementById("navResults")?.classList.add("active");
+      } else {
+        document.getElementById("navResults")?.classList.remove("active");
+      }
+      document.getElementById("subNavStudies").classList.toggle("hidden", id !== "studies");
+
+      if (id === "builder" && !builderLoaded) {
+        document.getElementById("builderFrame").src = builderThemeUrl(currentTheme);
+        builderLoaded = true;
+      }
+      if (id === "admin" && currentUser?.role === "platform_admin" && !adminUsersLoaded) {
+        loadAdminUsers();
+      }
+    }
+
+    // Listen for postMessage from Builder (study published)
+    window.addEventListener("message", e => {
+      if (e.origin !== location.origin) return;
+      if (e.data?.type === "cogflow:study-published") loadStudies();
+      if (e.data?.type === "cogflow:builder-ready") notifyBuilderTheme(currentTheme);
+    });
+
+    // Sidebar collapse toggle
+    let sidebarCollapsed = false;
+    document.getElementById("sidebarToggle").addEventListener("click", () => {
+      sidebarCollapsed = !sidebarCollapsed;
+      document.getElementById("sidebar").classList.toggle("collapsed", sidebarCollapsed);
+    });
+
+    // Nav click wiring
+    document.querySelectorAll(".nav-item[data-view]").forEach(btn => {
+      btn.addEventListener("click", () => activateView(btn.getAttribute("data-view")));
+    });
+
+    document.getElementById("portalThemeToggle")?.addEventListener("click", () => {
+      applyPortalTheme(currentTheme === "dark" ? "light" : "dark", true);
+      if (builderLoaded) {
+        notifyBuilderTheme(currentTheme);
+      }
+    });
+
+    // ── Session check ──────────────────────────────────────────
+    async function checkSession() {
+      try {
+        const r = await fetch(`${API}/api/v1/auth/me`, { credentials: "include" });
+        if (r.ok) {
+          const d = await r.json();
+          currentUser = { username: d.username, role: d.role,
+                          mfa_enabled: !!d.mfa_enabled,
+                          mfa_verified: !!(d.mfa_enabled && d.mfa_verified_at),
+                          mfa_verified_at: d.mfa_verified_at || null };
+          showApp();
         } else {
-          bar.innerHTML = `
-            <label class="auth-label" for="authUsername">Sign in to manage studies:</label>
-            <input type="text"     id="authUsername" placeholder="Username"  autocomplete="username" />
-            <input type="password" id="authPassword" placeholder="Password"  autocomplete="current-password" />
-            <button class="btn small" id="loginBtn">Sign In</button>
-            ${errorMsg ? `<span class="auth-error">${errorMsg}</span>` : ""}
-          `;
-          const loginBtn = document.getElementById("loginBtn");
-          loginBtn.addEventListener("click", doLogin);
-          // allow Enter key in password field
-          document.getElementById("authPassword").addEventListener("keydown", (e) => {
-            if (e.key === "Enter") doLogin();
-          });
+          currentUser = null; showLogin();
         }
-      }
+      } catch { currentUser = null; showLogin(); }
+    }
 
-      async function checkSession() {
-        try {
-          const res = await fetch(`${API_BASE}/api/v1/auth/me`, { credentials: "include" });
-          if (res.ok) {
-            const data = await res.json();
-            currentUser = { username: data.username, role: data.role };
-            renderAuthBar(currentUser, null);
-            document.getElementById('dbAdminBtn').style.display =
-              data.role === 'platform_admin' ? '' : 'none';
+    function showLogin(msg) {
+      document.getElementById("appShell").classList.add("hidden");
+      document.getElementById("loginOverlay").classList.remove("hidden");
+      document.getElementById("loginStep1").style.display = "";
+      document.getElementById("loginStep2").style.display = "none";
+      const el = document.getElementById("loginError");
+      if (msg) { el.textContent = msg; el.classList.remove("hidden"); }
+      else       el.classList.add("hidden");
+    }
+
+    function showApp() {
+      document.getElementById("loginOverlay").classList.add("hidden");
+      document.getElementById("appShell").classList.remove("hidden");
+      const u = currentUser;
+      const isAdmin = u.role === "platform_admin";
+      document.getElementById("topbarUsername").textContent  = u.username;
+      document.getElementById("topbarRole").textContent      = u.role || "";
+      document.getElementById("sidebarUsername").textContent = u.username;
+      document.getElementById("sidebarRole").textContent     = u.role || "";
+      document.getElementById("sidebarAvatar").textContent   = (u.username || "?")[0].toUpperCase();
+      document.getElementById("dbAdminBtn").style.display    = isAdmin ? "" : "none";
+      document.getElementById("navAdmin").style.display      = isAdmin ? "" : "none";
+      renderMfaStatusBlock();
+      loadStudies();
+      if (isAdmin) {
+        loadAdminUsers();
+      } else {
+        adminUsersLoaded = false;
+        adminUsers = [];
+      }
+    }
+
+    // ── Login: step 1 (credentials) ────────────────────────────
+    async function doLogin() {
+      const username = (document.getElementById("authUsername")?.value || "").trim();
+      const password = document.getElementById("authPassword")?.value || "";
+      if (!username) return;
+      const btn = document.getElementById("loginBtn");
+      btn.disabled = true; btn.textContent = "Signing in…";
+      try {
+        const r = await fetch(`${API}/api/v1/auth/login`, postOpts({ username, password }));
+        const d = await r.json().catch(() => ({}));
+        btn.disabled = false; btn.textContent = "Sign In";
+        if (r.ok && d.ok) {
+          currentUser = { username: d.username, role: null,
+                          mfa_enabled: !!d.mfa_enabled, mfa_verified: false, mfa_verified_at: null };
+          if (d.mfa_enabled) {
+            document.getElementById("loginStep1").style.display = "none";
+            document.getElementById("loginStep2").style.display = "";
+            document.getElementById("loginError").classList.add("hidden");
+            document.getElementById("loginMfaCode").focus();
           } else {
-            currentUser = null;
-            renderAuthBar(null, null);
-          }
-        } catch (_) {
-          currentUser = null;
-          renderAuthBar(null, null);
-        }
-      }
-
-      async function doLogin() {
-        const username = (document.getElementById("authUsername")?.value || "").trim();
-        const password = document.getElementById("authPassword")?.value || "";
-        if (!username) return;
-
-        const loginBtn = document.getElementById("loginBtn");
-        if (loginBtn) loginBtn.disabled = true;
-
-        try {
-          const res = await fetch(`${API_BASE}/api/v1/auth/login`, postOpts({ username, password }));
-          const data = await res.json().catch(() => ({}));
-          if (res.ok && data.ok) {
-            currentUser = { username: data.username, role: null };
-            // Refresh session info & studies
             await checkSession();
-            await loadStudies();
-          } else {
-            renderAuthBar(null, data.error || "Login failed");
           }
-        } catch (err) {
-          renderAuthBar(null, "Network error");
+        } else {
+          showLogin(d.error || "Invalid credentials");
+        }
+      } catch {
+        btn.disabled = false; btn.textContent = "Sign In";
+        showLogin("Network error — is the server running?");
+      }
+    }
+
+    // ── Login: step 2 (MFA) ────────────────────────────────────
+    async function doLoginMfa() {
+      const code = (document.getElementById("loginMfaCode")?.value || "").trim();
+      if (!code) return;
+      const btn = document.getElementById("loginMfaBtn");
+      btn.disabled = true; btn.textContent = "Verifying…";
+      try {
+        const r = await fetch(`${API}/api/v1/auth/mfa/verify`, postOpts({ code }));
+        const d = await r.json().catch(() => ({}));
+        btn.disabled = false; btn.textContent = "Verify & Sign In";
+        if (r.ok && d.ok) { await checkSession(); }
+        else {
+          document.getElementById("loginError").textContent = d.error || "Invalid code — try again";
+          document.getElementById("loginError").classList.remove("hidden");
+        }
+      } catch {
+        btn.disabled = false; btn.textContent = "Verify & Sign In";
+        document.getElementById("loginError").textContent = "Network error";
+        document.getElementById("loginError").classList.remove("hidden");
+      }
+    }
+
+    document.getElementById("loginBtn").addEventListener("click", doLogin);
+    document.getElementById("authPassword").addEventListener("keydown", e => e.key === "Enter" && doLogin());
+    document.getElementById("loginMfaBtn").addEventListener("click", doLoginMfa);
+    document.getElementById("loginMfaCode").addEventListener("keydown", e => e.key === "Enter" && doLoginMfa());
+
+    // ── Sign out ───────────────────────────────────────────────
+    document.getElementById("signOutBtn").addEventListener("click", async () => {
+      await fetch(`${API}/api/v1/auth/logout`, postOpts({}));
+      currentUser = null; mfaSetupState = null;
+      builderLoaded = false;
+      document.getElementById("builderFrame").src = "about:blank";
+      document.getElementById("previewFrame").src  = "about:blank";
+      showLogin();
+    });
+
+    // ── Refresh ────────────────────────────────────────────────
+    document.getElementById("refreshBtn").addEventListener("click", loadStudies);
+    document.getElementById("adminRefreshBtn")?.addEventListener("click", () => loadAdminUsers(true));
+
+    // ── Studies ────────────────────────────────────────────────
+    async function loadStudies() {
+      const statusEl  = document.getElementById("studiesStatus");
+      const refreshBtn = document.getElementById("refreshBtn");
+      refreshBtn.disabled = true;
+      statusEl.className = "status-bar";
+      statusEl.textContent = "Refreshing…";
+      try {
+        const r = await fetch(`${API}/api/v1/studies`, { credentials: "include" });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const d = await r.json();
+        studiesList = d.studies || [];
+        renderStudyRows(studiesList);
+        populatePreviewSelect(studiesList);
+        statusEl.className = "status-bar ok";
+        statusEl.textContent = `${studiesList.length} ${studiesList.length === 1 ? "study" : "studies"} — refreshed ${new Date().toLocaleTimeString()}.`;
+      } catch (err) {
+        statusEl.className = "status-bar error";
+        statusEl.textContent = `Failed to load studies: ${err?.message || err}`;
+      } finally {
+        refreshBtn.disabled = false;
+      }
+    }
+
+    function populatePreviewSelect(studies) {
+      const sel  = document.getElementById("previewStudySelect");
+      const prev = sel.value;
+      sel.innerHTML = '<option value="">— Select study —</option>';
+      for (const s of studies) {
+        const o = document.createElement("option");
+        o.value = s.study_slug; o.textContent = s.study_name || s.study_slug;
+        sel.appendChild(o);
+      }
+      if (prev) sel.value = prev;
+    }
+
+    // ── Study table ────────────────────────────────────────────
+    function renderStudyRows(studies) {
+      const tbody = document.getElementById("studyRows");
+      tbody.innerHTML = "";
+
+      if (!studies.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:32px;">No studies yet. Use the Builder to create and publish a study.</td></tr>';
+        return;
+      }
+
+      for (const s of studies) {
+        const state = getStudyState(s.study_slug);
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>
+            <div><strong>${esc(s.study_name || s.study_slug || "—")}</strong></div>
+            <div class="mono" style="color:var(--muted);font-size:.78em;">${esc(s.study_slug || "")}</div>
+          </td>
+          <td>${esc(s.owner_username || "—")}</td>
+          <td><span class="pill">${esc(s.runtime_mode || "—")}</span></td>
+          <td class="mono">${esc(s.latest_config_version || "—")}</td>
+          <td>${typeof s.run_count === "number" ? s.run_count : "—"}</td>
+          <td style="font-size:.82rem;color:var(--muted);">${fmt(s.last_result_at)}</td>
+          <td>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <button class="btn btn-ghost btn-xs" data-action="gen-link"       data-slug="${esc(s.study_slug)}">Generate Links</button>
+              <button class="btn btn-ghost btn-xs" data-action="toggle-details" data-slug="${esc(s.study_slug)}">${state.expanded ? "Hide" : "Show Results"}</button>
+              <button class="btn btn-ghost btn-xs" data-action="open-preview"   data-slug="${esc(s.study_slug)}">Preview ▶</button>
+              <button class="btn btn-ghost btn-xs" data-action="reassign"       data-slug="${esc(s.study_slug)}">Reassign</button>
+            </div>
+          </td>`;
+        tbody.appendChild(tr);
+
+        if (state.expanded) {
+          const w = document.createElement("tbody");
+          w.innerHTML = buildDetailRow(s);
+          tbody.appendChild(w.firstElementChild);
         }
       }
 
-      async function doLogout() {
-        await fetch(`${API_BASE}/api/v1/auth/logout`, postOpts({}));
-        currentUser = null;
-        renderAuthBar(null, null);
-        await loadStudies();
+      // Action bindings
+      tbody.querySelectorAll("[data-action='gen-link']").forEach(b =>
+        b.addEventListener("click", () => {
+          const pid = window.prompt("Participant external ID (optional):", "") || "";
+          generateLink(b.getAttribute("data-slug"), pid);
+        })
+      );
+      tbody.querySelectorAll("[data-action='toggle-details']").forEach(b =>
+        b.addEventListener("click", () => toggleDetails(b.getAttribute("data-slug")))
+      );
+      tbody.querySelectorAll("[data-action='open-preview']").forEach(b =>
+        b.addEventListener("click", () => {
+          document.getElementById("previewStudySelect").value = b.getAttribute("data-slug");
+          activateView("preview");
+        })
+      );
+      tbody.querySelectorAll("[data-action='reassign']").forEach(b =>
+        b.addEventListener("click", () => {
+          const owner = window.prompt("New owner username (admin only):", "");
+          if (owner?.trim()) reassignOwner(b.getAttribute("data-slug"), owner.trim());
+        })
+      );
+      tbody.querySelectorAll("[data-action='collapse']").forEach(b =>
+        b.addEventListener("click", () => { getStudyState(b.getAttribute("data-slug")).expanded = false; loadStudies(); })
+      );
+      tbody.querySelectorAll("[data-action='decrypt']").forEach(b =>
+        b.addEventListener("click", () => decryptRun(b.getAttribute("data-slug"), b.getAttribute("data-run")))
+      );
+      tbody.querySelectorAll("[data-action='export-json']").forEach(b =>
+        b.addEventListener("click", () => exportRun(b.getAttribute("data-slug"), b.getAttribute("data-run"), "json"))
+      );
+      tbody.querySelectorAll("[data-action='export-csv']").forEach(b =>
+        b.addEventListener("click", () => exportRun(b.getAttribute("data-slug"), b.getAttribute("data-run"), "csv"))
+      );
+      tbody.querySelectorAll("[data-action='export-all-json']").forEach(b =>
+        b.addEventListener("click", () => exportAll(b.getAttribute("data-slug"), "json"))
+      );
+      tbody.querySelectorAll("[data-action='export-all-csv']").forEach(b =>
+        b.addEventListener("click", () => exportAll(b.getAttribute("data-slug"), "csv"))
+      );
+      tbody.querySelectorAll("[data-action='copy-run-id']").forEach(b =>
+        b.addEventListener("click", () => copyText(b.getAttribute("data-run"), b))
+      );
+      tbody.querySelectorAll("[data-copy]").forEach(b =>
+        b.addEventListener("click", () => copyText(b.getAttribute("data-copy"), b))
+      );
+    }
+
+    // ── Detail row ─────────────────────────────────────────────
+    function rfRow(label, val) {
+      const sv = esc(String(val || "—"));
+      return `<div class="rollout-field">
+        <span class="rollout-field-label">${esc(label)}</span>
+        <div class="rollout-field-row">
+          <input type="text" readonly value="${sv}" />
+          <button class="btn btn-ghost btn-xs" data-copy="${sv}">Copy</button>
+        </div>
+      </div>`;
+    }
+
+    function metaB(label, val) {
+      return `<div class="result-meta-block">
+        <div class="result-meta-label">${esc(label)}</div>
+        <div class="result-meta-value">${esc(val || "—")}</div>
+      </div>`;
+    }
+
+    function buildDetailRow(study) {
+      const state = getStudyState(study.study_slug);
+      const slug  = esc(study.study_slug);
+
+      let rolloutCard;
+      if (state.rollout) {
+        const opts   = state.rollout.launch_options || {};
+        const multi  = opts.multi_use  || {};
+        const single = opts.single_use || {};
+        rolloutCard = `<article class="detail-card"><h3>Launch rollout</h3>
+          <div class="detail-grid">
+            <div>
+              ${rfRow("Multi-use URL",   absUrl(multi.launch_url  || state.rollout.launch_url || ""))}
+              ${rfRow("Multi-use token", multi.launch_token  || state.rollout.launch_token || "")}
+              <p class="rollout-meta">Reusable while valid. Expires ${esc(fmt(state.rollout.expires_at))}.</p>
+            </div>
+            <div>
+              ${rfRow("Single-use URL",   absUrl(single.launch_url   || ""))}
+              ${rfRow("Single-use token", single.launch_token || "")}
+              <p class="rollout-meta">Single-use launch. Owner: ${esc(state.rollout.owner_username || "—")}.</p>
+            </div>
+          </div>
+        </article>`;
+      } else {
+        rolloutCard = `<article class="detail-card"><h3>Launch rollout</h3>
+          <p class="result-message">Click "Generate Links" to create rollout URLs and tokens.</p>
+        </article>`;
       }
 
-      // ── Table rendering ─────────────────────────────────────
-      function renderRows(studies) {
-        const tbody = document.getElementById("rows");
-        tbody.innerHTML = "";
+      let resultsCard;
+      if (state.runsLoading) {
+        resultsCard = `<article class="detail-card"><h3>Results</h3><div class="result-message"><span class="spinner"></span> Loading…</div></article>`;
+      } else if (state.runsError) {
+        resultsCard = `<article class="detail-card"><h3>Results</h3><div class="result-message error">${esc(state.runsError)}</div></article>`;
+      } else if (state.runsLoaded && !state.runs.length) {
+        resultsCard = `<article class="detail-card"><h3>Results</h3><div class="result-message">No runs recorded yet.</div></article>`;
+      } else if (state.runsLoaded) {
+        const busy = state.exportBusy;
+        resultsCard = `<article class="detail-card">
+          <div class="detail-header" style="margin-bottom:10px;">
+            <h3 style="margin:0;">Results <span style="font-size:.78rem;color:var(--muted);font-weight:400;">(${state.runs.length})</span></h3>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button class="btn btn-ghost btn-xs" data-action="export-all-json" data-slug="${slug}" ${busy ? "disabled" : ""}>Export All JSON</button>
+              <button class="btn btn-ghost btn-xs" data-action="export-all-csv"  data-slug="${slug}" ${busy ? "disabled" : ""}>Export All CSV</button>
+            </div>
+          </div>
+          <div class="result-list">
+            ${state.runs.map(run => {
+              const ds = state.decryptions[run.run_session_id] || {};
+              return `<section class="result-item">
+                <div class="result-meta">
+                  ${metaB("Run ID",      run.run_session_id)}
+                  ${metaB("Status",      run.status)}
+                  ${metaB("Started",     fmt(run.started_at))}
+                  ${metaB("Completed",   fmt(run.completed_at))}
+                  ${metaB("Trials",      String(run.trial_count || 0))}
+                  ${metaB("Participant", run.participant_key_preview || "—")}
+                </div>
+                <div class="result-actions">
+                  <button class="btn btn-ghost btn-xs" data-action="decrypt"      data-slug="${slug}" data-run="${esc(run.run_session_id)}" ${run.has_result ? "" : "disabled"}>View Payload</button>
+                  <button class="btn btn-ghost btn-xs" data-action="export-json"  data-slug="${slug}" data-run="${esc(run.run_session_id)}" ${run.has_result ? "" : "disabled"}>Export JSON</button>
+                  <button class="btn btn-ghost btn-xs" data-action="export-csv"   data-slug="${slug}" data-run="${esc(run.run_session_id)}" ${run.has_result ? "" : "disabled"}>Export CSV</button>
+                  <button class="btn btn-ghost btn-xs" data-action="copy-run-id" data-run="${esc(run.run_session_id)}">Copy ID</button>
+                </div>
+                ${ds.error   ? `<div class="result-message error">${esc(ds.error)}</div>` : ""}
+                ${ds.payload ? `<pre class="result-json">${esc(JSON.stringify(ds.payload, null, 2))}</pre>` : ""}
+                ${!run.has_result ? `<div class="result-message">No result envelope for this run yet.</div>` : ""}
+              </section>`;
+            }).join("")}
+          </div>
+        </article>`;
+      } else {
+        resultsCard = `<article class="detail-card"><h3>Results</h3><div class="result-message">Use "Show Results" to load recent runs.</div></article>`;
+      }
 
-        if (!Array.isArray(studies) || studies.length === 0) {
-          tbody.innerHTML =
-            '<tr><td data-label="Info" colspan="7">No studies yet. Use the Builder to create and publish a study.</td></tr>';
+      return `<tr class="detail-row"><td colspan="7">
+        <div class="detail-panel">
+          <div class="detail-header">
+            <div>
+              <h3 class="detail-title">${esc(study.study_name || study.study_slug || "Study")}</h3>
+              <p class="detail-subtitle">${esc(study.study_slug || "")} · ${esc(study.owner_username || "")} · ${esc(study.runtime_mode || "")}</p>
+            </div>
+            <button class="btn btn-ghost btn-xs" data-action="collapse" data-slug="${slug}">Close ✕</button>
+          </div>
+          <div class="detail-grid">${rolloutCard}${resultsCard}</div>
+        </div>
+      </td></tr>`;
+    }
+
+    // ── Study actions ──────────────────────────────────────────
+    async function toggleDetails(slug) {
+      const st = getStudyState(slug);
+      st.expanded = !st.expanded;
+      if (st.expanded && !st.runsLoaded && !st.runsLoading) { await loadRuns(slug); return; }
+      loadStudies();
+    }
+
+    async function loadRuns(slug) {
+      const st = getStudyState(slug);
+      st.expanded = true; st.runsLoading = true; st.runsError = null;
+      loadStudies();
+      try {
+        const r = await fetch(`${API}/api/v1/studies/${encodeURIComponent(slug)}/runs`, { credentials: "include" });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+        st.runs = Array.isArray(d.runs) ? d.runs : [];
+        st.runsLoaded = true; st.runsError = null;
+      } catch (err) {
+        st.runs = []; st.runsLoaded = false; st.runsError = err?.message || String(err);
+      } finally {
+        st.runsLoading = false; loadStudies();
+      }
+    }
+
+    async function generateLink(slug, pid) {
+      const st = getStudyState(slug);
+      st.expanded = true;
+      const sb = document.getElementById("studiesStatus");
+      sb.className = "status-bar"; sb.textContent = `Generating links for ${slug}…`;
+      try {
+        const r = await fetch(`${API}/api/v1/studies/${encodeURIComponent(slug)}/participant-links`,
+          postOpts({ participant_external_id: pid || null, expires_in_hours: 72 }));
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+        st.rollout = d;
+        sb.className = "status-bar ok"; sb.textContent = `Links generated for ${slug}.`;
+        if (!st.runsLoaded && !st.runsLoading) { await loadRuns(slug); return; }
+        loadStudies();
+      } catch (err) {
+        sb.className = "status-bar error"; sb.textContent = `Link generation failed: ${err?.message || err}`;
+        loadStudies();
+      }
+    }
+
+    async function reassignOwner(slug, owner) {
+      const sb = document.getElementById("studiesStatus");
+      sb.className = "status-bar"; sb.textContent = `Reassigning ${slug} → ${owner}…`;
+      try {
+        const r = await fetch(`${API}/api/v1/studies/${encodeURIComponent(slug)}/owner`, postOpts({ owner_username: owner }));
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+        sb.className = "status-bar ok"; sb.textContent = `Owner reassigned: ${slug} → ${d.owner_username || owner}`;
+        loadStudies();
+      } catch (err) {
+        sb.className = "status-bar error"; sb.textContent = `Reassign failed: ${err?.message || err}`;
+      }
+    }
+
+    // ── Decrypt / export ───────────────────────────────────────
+    async function decryptRun(slug, runId) {
+      const st = getStudyState(slug);
+      st.decryptions[runId] = { loading: true, error: null, payload: null };
+      loadStudies();
+      try {
+        const d = await fetchDec(runId);
+        st.decryptions[runId] = { loading: false, error: null, payload: d.result_payload || {} };
+      } catch (err) {
+        const msg = err?.message || String(err);
+        st.decryptions[runId] = { loading: false, error: msg, payload: null };
+        if (/MFA/i.test(msg) && currentUser) currentUser.mfa_verified = false;
+      }
+      loadStudies();
+    }
+
+    async function exportRun(slug, runId, format) {
+      const st  = getStudyState(slug);
+      try {
+        const dec  = await fetchDec(runId);
+        const run  = (st.runs || []).find(r => r.run_session_id === runId)
+                  || { run_session_id: runId, status: "—", started_at: null, completed_at: null, trial_count: 0, participant_key_preview: null };
+        const b    = mkBundle(run, dec);
+        if (format === "csv") dlCsv(`cogflow-run-${runId}.csv`, bundleRows(b));
+        else                  dlJson(`cogflow-run-${runId}.json`, dec);
+        st.decryptions[runId] = { loading: false, error: null, payload: dec.result_payload || {} };
+      } catch (err) {
+        const msg = err?.message || String(err);
+        st.decryptions[runId] = { loading: false, error: msg, payload: null };
+        if (/MFA/i.test(msg) && currentUser) currentUser.mfa_verified = false;
+      }
+      loadStudies();
+    }
+
+    async function exportAll(slug, format) {
+      const st   = getStudyState(slug);
+      const runs = (st.runs || []).filter(r => r.has_result);
+      if (!runs.length) return;
+      st.exportBusy = true; loadStudies();
+      const exported = [], failures = [];
+      for (const run of runs) {
+        try {
+          const dec = await fetchDec(run.run_session_id);
+          exported.push(mkBundle(run, dec));
+          st.decryptions[run.run_session_id] = { loading: false, error: null, payload: dec.result_payload || {} };
+        } catch (err) {
+          const msg = err?.message || String(err);
+          failures.push({ run_session_id: run.run_session_id, error: msg });
+          st.decryptions[run.run_session_id] = { loading: false, error: msg, payload: null };
+          if (/MFA/i.test(msg) && currentUser) currentUser.mfa_verified = false;
+          break;
+        }
+      }
+      if (exported.length) {
+        if (format === "csv") dlCsv(`cogflow-${slug}-results.csv`, exported.flatMap(b => bundleRows(b)));
+        else dlJson(`cogflow-${slug}-results.json`, { exported_at: new Date().toISOString(), study_slug: slug, exported_count: exported.length, failed_count: failures.length, runs: exported, failures });
+      }
+      st.exportBusy = false; loadStudies();
+    }
+
+    // ── Admin users ───────────────────────────────────────────
+    function renderAdminRows() {
+      const tbody = document.getElementById("adminUserRows");
+      if (!tbody) return;
+      tbody.innerHTML = "";
+
+      if (!adminUsers.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:24px;">No users found.</td></tr>';
+        return;
+      }
+
+      for (const u of adminUsers) {
+        const tr = document.createElement("tr");
+        const disabledSelfDelete = currentUser && u.id === currentUser.id;
+        const disabledSelfToggle = currentUser && u.id === currentUser.id;
+        const toggleLabel = u.is_active ? "Deactivate" : "Activate";
+        tr.innerHTML = `
+          <td><strong>${esc(u.username || "—")}</strong></td>
+          <td>${esc(u.email || "—")}</td>
+          <td>
+            <select class="admin-role-select" data-user-id="${Number(u.id)}" style="border:1.5px solid var(--line);border-radius:8px;padding:4px 8px;font-size:.8rem;font-family:inherit;outline:none;background:var(--bg);color:var(--ink);max-width:180px;">
+              <option value="researcher" ${u.role === "researcher" ? "selected" : ""}>researcher</option>
+              <option value="analyst" ${u.role === "analyst" ? "selected" : ""}>analyst</option>
+              <option value="participant" ${u.role === "participant" ? "selected" : ""}>participant</option>
+              <option value="platform_admin" ${u.role === "platform_admin" ? "selected" : ""}>platform_admin</option>
+            </select>
+          </td>
+          <td>${u.is_active ? "Yes" : "No"}</td>
+          <td>${u.mfa_enabled ? "Enabled" : "Off"}</td>
+          <td>${esc(fmt(u.last_login))}</td>
+          <td>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <button class="btn btn-ghost btn-xs" data-action="admin-save-role" data-user-id="${Number(u.id)}">Save Role</button>
+              <button class="btn btn-ghost btn-xs" data-action="admin-toggle-active" data-user-id="${Number(u.id)}" ${disabledSelfToggle ? "disabled" : ""}>${toggleLabel}</button>
+              <button class="btn btn-danger btn-xs" data-action="admin-delete-user" data-user-id="${Number(u.id)}" ${disabledSelfDelete ? "disabled" : ""}>Delete</button>
+            </div>
+          </td>`;
+        tbody.appendChild(tr);
+      }
+
+      tbody.querySelectorAll('[data-action="admin-save-role"]').forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const userId = btn.getAttribute("data-user-id");
+          const sel = tbody.querySelector(`select.admin-role-select[data-user-id="${String(userId)}"]`);
+          const role = sel?.value || "";
+          if (!role) return;
+          const msgEl = document.getElementById("adminMsg");
+          btn.disabled = true;
+          try {
+            const r = await fetch(`${API}/api/v1/admin/users/${encodeURIComponent(userId)}/role`, postOpts({ role }));
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+            inlineMsg(msgEl, `Role updated for user #${userId}.`, "ok");
+            await loadAdminUsers(true);
+          } catch (err) {
+            inlineMsg(msgEl, `Role update failed: ${err?.message || err}`, "err");
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      });
+
+      tbody.querySelectorAll('[data-action="admin-delete-user"]').forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const userId = btn.getAttribute("data-user-id");
+          const rowUser = adminUsers.find(x => String(x.id) === String(userId));
+          if (!rowUser) return;
+          if (!confirm(`Delete user ${rowUser.username}? This cannot be undone.`)) return;
+          const msgEl = document.getElementById("adminMsg");
+          btn.disabled = true;
+          try {
+            const r = await fetch(`${API}/api/v1/admin/users/${encodeURIComponent(userId)}/delete`, postOpts({}));
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+            inlineMsg(msgEl, `Deleted ${rowUser.username}.`, "ok");
+            await loadAdminUsers(true);
+          } catch (err) {
+            inlineMsg(msgEl, `Delete failed: ${err?.message || err}`, "err");
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      });
+
+      tbody.querySelectorAll('[data-action="admin-toggle-active"]').forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const userId = btn.getAttribute("data-user-id");
+          const rowUser = adminUsers.find(x => String(x.id) === String(userId));
+          if (!rowUser) return;
+          const nextIsActive = !rowUser.is_active;
+          const verb = nextIsActive ? "activate" : "deactivate";
+          if (!confirm(`Are you sure you want to ${verb} ${rowUser.username}?`)) return;
+
+          const msgEl = document.getElementById("adminMsg");
+          btn.disabled = true;
+          try {
+            const r = await fetch(`${API}/api/v1/admin/users/${encodeURIComponent(userId)}/activation`, postOpts({ is_active: nextIsActive }));
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+            inlineMsg(msgEl, `${rowUser.username} is now ${nextIsActive ? "active" : "inactive"}.`, "ok");
+            await loadAdminUsers(true);
+          } catch (err) {
+            inlineMsg(msgEl, `Activation update failed: ${err?.message || err}`, "err");
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      });
+    }
+
+    async function loadAdminUsers(force = false) {
+      if (currentUser?.role !== "platform_admin") return;
+      if (!force && adminUsersLoaded && adminUsers.length) {
+        renderAdminRows();
+        return;
+      }
+      const statusEl = document.getElementById("adminStatus");
+      if (statusEl) {
+        statusEl.className = "status-bar";
+        statusEl.textContent = "Loading users…";
+      }
+      try {
+        const r = await fetch(`${API}/api/v1/admin/users`, { credentials: "include" });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+        adminUsers = Array.isArray(d.users) ? d.users : [];
+        adminUsersLoaded = true;
+        renderAdminRows();
+        if (statusEl) {
+          statusEl.className = "status-bar ok";
+          statusEl.textContent = `${adminUsers.length} ${adminUsers.length === 1 ? "user" : "users"} loaded.`;
+        }
+      } catch (err) {
+        adminUsers = [];
+        adminUsersLoaded = false;
+        renderAdminRows();
+        if (statusEl) {
+          statusEl.className = "status-bar error";
+          statusEl.textContent = `Failed to load users: ${err?.message || err}`;
+        }
+      }
+    }
+
+    document.getElementById("adminCreateUserBtn")?.addEventListener("click", async () => {
+      const username = (document.getElementById("adminNewUsername")?.value || "").trim();
+      const email = (document.getElementById("adminNewEmail")?.value || "").trim();
+      const password = document.getElementById("adminNewPassword")?.value || "";
+      const role = document.getElementById("adminNewRole")?.value || "researcher";
+      const msgEl = document.getElementById("adminMsg");
+
+      if (!username || !password) {
+        inlineMsg(msgEl, "Username and temporary password are required.", "err");
+        return;
+      }
+      if (password.length < 8) {
+        inlineMsg(msgEl, "Temporary password must be at least 8 characters.", "err");
+        return;
+      }
+
+      const btn = document.getElementById("adminCreateUserBtn");
+      btn.disabled = true;
+      btn.textContent = "Creating…";
+      try {
+        const r = await fetch(`${API}/api/v1/admin/users`, postOpts({ username, email, password, role, is_active: true }));
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+        inlineMsg(msgEl, `User ${username} created successfully.`, "ok");
+        ["adminNewUsername", "adminNewEmail", "adminNewPassword"].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.value = "";
+        });
+        await loadAdminUsers(true);
+      } catch (err) {
+        inlineMsg(msgEl, `Create user failed: ${err?.message || err}`, "err");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Create User";
+      }
+    });
+
+    // ── Preview launch ─────────────────────────────────────────
+    document.getElementById("previewLaunchBtn").addEventListener("click", async () => {
+      const slug = document.getElementById("previewStudySelect").value;
+      if (!slug) return;
+      const btn = document.getElementById("previewLaunchBtn");
+      btn.disabled = true; btn.textContent = "Generating…";
+      try {
+        const r = await fetch(`${API}/api/v1/studies/${encodeURIComponent(slug)}/participant-links`,
+          postOpts({ participant_external_id: "preview", expires_in_hours: 1 }));
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+        const token = d.launch_options?.single_use?.launch_token || d.launch_token || "";
+        document.getElementById("previewFrame").src =
+          token ? `/interpreter/?launch_token=${encodeURIComponent(token)}` : "/interpreter/";
+      } catch (err) {
+        alert(`Preview launch failed: ${err?.message || err}`);
+      } finally {
+        btn.disabled = false; btn.textContent = "Launch Preview";
+      }
+    });
+
+    // ── Account: change password ───────────────────────────────
+    document.getElementById("changePwdBtn").addEventListener("click", async () => {
+      const current = document.getElementById("pwdCurrent").value;
+      const fresh   = document.getElementById("pwdNew").value;
+      const confirm = document.getElementById("pwdConfirm").value;
+      const msgEl   = document.getElementById("pwdMsg");
+      if (!current || !fresh)   { inlineMsg(msgEl, "Enter current and new password.", "err"); return; }
+      if (fresh !== confirm)    { inlineMsg(msgEl, "New passwords do not match.", "err");     return; }
+      if (fresh.length < 8)     { inlineMsg(msgEl, "Password must be at least 8 characters.", "err"); return; }
+      const btn = document.getElementById("changePwdBtn");
+      btn.disabled = true; btn.textContent = "Updating…";
+      try {
+        const r = await fetch(`${API}/api/v1/auth/password/change`, postOpts({ current_password: current, new_password: fresh }));
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && d.ok) {
+          inlineMsg(msgEl, "Password updated successfully.", "ok");
+          ["pwdCurrent","pwdNew","pwdConfirm"].forEach(id => document.getElementById(id).value = "");
+        } else {
+          inlineMsg(msgEl, d.error || "Password change failed.", "err");
+        }
+      } catch { inlineMsg(msgEl, "Network error.", "err"); }
+      finally  { btn.disabled = false; btn.textContent = "Update Password"; }
+    });
+
+    function inlineMsg(el, msg, type) {
+      el.textContent = msg;
+      el.className   = `inline-note ${type === "ok" ? "ok-note" : "err-note"}`;
+      el.style.display = "";
+    }
+
+    // ── Account: MFA settings ──────────────────────────────────
+    function renderMfaStatusBlock() {
+      const block = document.getElementById("mfaStatusBlock");
+      const msgEl = document.getElementById("mfaAccountMsg");
+      const u = currentUser;
+      if (!u || !block) return;
+
+      if (u.mfa_enabled && !mfaSetupState) {
+        block.innerHTML = `
+          <p class="inline-note ok-note" style="margin-bottom:12px;">
+            ✓ TOTP enabled.${u.mfa_verified_at ? ` Last verified: ${fmt(u.mfa_verified_at)}.` : ""}
+          </p>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px;">
+            <input type="text" id="acctMfaCode" placeholder="Enter code to re-verify"
+                   inputmode="numeric" autocomplete="one-time-code" maxlength="12"
+                   style="border:1.5px solid var(--line);border-radius:8px;padding:7px 11px;font-size:.88rem;outline:none;background:var(--bg);max-width:220px;" />
+            <button class="btn btn-ghost btn-sm" id="acctMfaVerifyBtn">Verify</button>
+          </div>
+          <button class="btn btn-danger btn-sm" id="mfaDisableBtn">Remove MFA</button>`;
+        document.getElementById("acctMfaVerifyBtn").addEventListener("click", doMfaVerify);
+        document.getElementById("acctMfaCode").addEventListener("keydown", e => e.key === "Enter" && doMfaVerify());
+        document.getElementById("mfaDisableBtn").addEventListener("click", doMfaDisable);
+
+      } else if (mfaSetupState) {
+        block.innerHTML = `
+          <p class="inline-note" style="margin-bottom:12px;">Scan the QR code in your authenticator app, then enter the code to activate.</p>
+          <div class="mfa-qr-wrap" id="mfaQrWrap"></div><br/>
+          <div style="margin:8px 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <span class="auth-secret">${esc(mfaSetupState.secret)}</span>
+            <button class="btn btn-ghost btn-xs" id="copyMfaSecretBtn">Copy secret</button>
+            <button class="btn btn-ghost btn-xs" id="copyMfaUriBtn">Copy URI</button>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px;">
+            <input type="text" id="acctMfaCode" placeholder="6-digit code"
+                   inputmode="numeric" autocomplete="one-time-code" maxlength="12"
+                   style="border:1.5px solid var(--line);border-radius:8px;padding:7px 11px;font-size:.88rem;outline:none;background:var(--bg);max-width:180px;" />
+            <button class="btn btn-primary btn-sm" id="acctMfaActivateBtn">Activate MFA</button>
+            <button class="btn btn-ghost btn-sm"   id="mfaCancelBtn">Cancel</button>
+          </div>`;
+        renderMfaQr();
+        document.getElementById("copyMfaSecretBtn").addEventListener("click", e => copyText(mfaSetupState.secret, e.currentTarget));
+        document.getElementById("copyMfaUriBtn").addEventListener("click", e => copyText(mfaSetupState.otpauth_uri, e.currentTarget));
+        document.getElementById("acctMfaActivateBtn").addEventListener("click", doMfaActivate);
+        document.getElementById("acctMfaCode").addEventListener("keydown", e => e.key === "Enter" && doMfaActivate());
+        document.getElementById("mfaCancelBtn").addEventListener("click", () => { mfaSetupState = null; renderMfaStatusBlock(); });
+
+      } else {
+        block.innerHTML = `
+          <p class="inline-note" style="margin-bottom:12px;">MFA is not enabled. Add a TOTP authenticator to protect your account and unlock decryption.</p>
+          <button class="btn btn-primary btn-sm" id="mfaEnableBtn">Set up MFA</button>`;
+        document.getElementById("mfaEnableBtn").addEventListener("click", doMfaSetup);
+      }
+      msgEl.style.display = "none";
+    }
+
+    function renderMfaQr() {
+      const uri  = (mfaSetupState?.otpauth_uri || "").trim();
+      const host = document.getElementById("mfaQrWrap");
+      if (!uri || !host) return;
+      const fallback = () => {
+        host.innerHTML = `<img alt="MFA QR" src="https://api.qrserver.com/v1/create-qr-code/?size=132x132&data=${encodeURIComponent(uri)}" />`;
+      };
+      try {
+        if (window.QRCode?.toDataURL) {
+          window.QRCode.toDataURL(uri, { width: 132, margin: 1 }, (err, url) => {
+            if (err || !url) { fallback(); } else { host.innerHTML = `<img alt="MFA QR" src="${url}" />`; }
+          });
           return;
         }
+      } catch { /* fall through */ }
+      fallback();
+    }
 
-        for (const s of studies) {
-          const tr = document.createElement("tr");
-          tr.innerHTML = `
-            <td data-label="Study">
-              <div><strong>${s.study_name || s.study_slug || "(unnamed)"}</strong></div>
-              <div class="mono">${s.study_slug || "-"}</div>
-            </td>
-            <td data-label="Owner">${s.owner_username || "-"}</td>
-            <td data-label="Runtime"><span class="pill">${s.runtime_mode || "-"}</span></td>
-            <td data-label="Latest Config" class="mono">${s.latest_config_version || "-"}</td>
-            <td data-label="Run Count">${typeof s.run_count === "number" ? s.run_count : "-"}</td>
-            <td data-label="Last Result">${formatIso(s.last_result_at)}</td>
-            <td data-label="Researcher Actions">
-              <button class="btn secondary small" data-action="generate-link" data-study-slug="${s.study_slug || ""}">Generate Participant Link</button>
-              <button class="btn secondary small" data-action="reassign-owner" data-study-slug="${s.study_slug || ""}">Reassign Owner</button>
-            </td>
-          `;
-          tbody.appendChild(tr);
-        }
+    async function doMfaSetup() {
+      const msgEl = document.getElementById("mfaAccountMsg");
+      try {
+        const r = await fetch(`${API}/api/v1/auth/mfa/setup`, postOpts({ regenerate: false }));
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.ok) { inlineMsg(msgEl, d.error || "MFA setup failed", "err"); return; }
+        mfaSetupState = { secret: d.totp_secret || "", otpauth_uri: d.otpauth_uri || "" };
+        renderMfaStatusBlock();
+      } catch { inlineMsg(msgEl, "Network error", "err"); }
+    }
 
-        tbody.querySelectorAll("button[data-action='generate-link']").forEach((btn) => {
-          btn.addEventListener("click", async () => {
-            const studySlug = btn.getAttribute("data-study-slug");
-            if (!studySlug) return;
-            const participantId = window.prompt("Participant external ID (optional):", "");
-            await generateLaunchLink(studySlug, participantId || "");
-          });
-        });
+    async function doMfaVerify() {
+      const code  = (document.getElementById("acctMfaCode")?.value || "").trim();
+      const msgEl = document.getElementById("mfaAccountMsg");
+      if (!code) return;
+      try {
+        const r = await fetch(`${API}/api/v1/auth/mfa/verify`, postOpts({ code }));
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && d.ok) {
+          currentUser = { ...currentUser, mfa_verified: true, mfa_verified_at: d.mfa_verified_at || new Date().toISOString() };
+          inlineMsg(msgEl, "MFA verified.", "ok");
+          renderMfaStatusBlock();
+        } else { inlineMsg(msgEl, d.error || "Invalid code", "err"); }
+      } catch { inlineMsg(msgEl, "Network error", "err"); }
+    }
 
-        tbody.querySelectorAll("button[data-action='reassign-owner']").forEach((btn) => {
-          btn.addEventListener("click", async () => {
-            const studySlug = btn.getAttribute("data-study-slug");
-            if (!studySlug) return;
-            const ownerUsername = window.prompt("New owner username (admin only):", "");
-            if (!ownerUsername || !ownerUsername.trim()) return;
-            await reassignOwner(studySlug, ownerUsername.trim());
-          });
-        });
-      }
+    async function doMfaActivate() {
+      const code  = (document.getElementById("acctMfaCode")?.value || "").trim();
+      const msgEl = document.getElementById("mfaAccountMsg");
+      if (!code) return;
+      try {
+        const r = await fetch(`${API}/api/v1/auth/mfa/verify`, postOpts({ code }));
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && d.ok) {
+          mfaSetupState = null;
+          currentUser = { ...currentUser, mfa_enabled: true, mfa_verified: true, mfa_verified_at: d.mfa_verified_at || new Date().toISOString() };
+          inlineMsg(msgEl, "MFA enabled and verified.", "ok");
+          renderMfaStatusBlock();
+        } else { inlineMsg(msgEl, d.error || "Activation failed — check your code", "err"); }
+      } catch { inlineMsg(msgEl, "Network error", "err"); }
+    }
 
-      // ── API actions ─────────────────────────────────────────
-      async function generateLaunchLink(studySlug, participantExternalId) {
-        const statusEl = document.getElementById("status");
-        statusEl.className = "status";
-        statusEl.textContent = `Generating participant link for ${studySlug}...`;
+    async function doMfaDisable() {
+      if (!confirm("Remove MFA from your account? Decrypt actions will be blocked until MFA is re-enabled.")) return;
+      const msgEl = document.getElementById("mfaAccountMsg");
+      try {
+        const r = await fetch(`${API}/api/v1/auth/mfa/disable`, postOpts({}));
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && d.ok) {
+          currentUser = { ...currentUser, mfa_enabled: false, mfa_verified: false, mfa_verified_at: null };
+          inlineMsg(msgEl, "MFA removed.", "ok");
+          renderMfaStatusBlock();
+        } else { inlineMsg(msgEl, d.error || "Disable failed", "err"); }
+      } catch { inlineMsg(msgEl, "Network error", "err"); }
+    }
 
-        try {
-          const response = await fetch(
-            `${API_BASE}/api/v1/studies/${encodeURIComponent(studySlug)}/participant-links`,
-            postOpts({ participant_external_id: participantExternalId || null, expires_in_hours: 72 }),
-          );
+    // ── Ethics block copy ──────────────────────────────────────
+    function copyEthicsBlock(blockId, btn) {
+      const el   = document.getElementById(blockId);
+      const fromSpan = el?.querySelector(".ethics-copy-text")?.textContent?.trim() || "";
+      const text = fromSpan || Array.from(el.childNodes)
+        .filter(n => n.nodeType === Node.TEXT_NODE)
+        .map(n => n.textContent).join("").trim();
+      copyText(text, btn);
+    }
 
-          const data = await response.json().catch(() => ({}));
-          if (!response.ok) {
-            throw new Error(data.error || `HTTP ${response.status}`);
-          }
-
-          const options = data.launch_options || {};
-          const multi = options.multi_use || {};
-          const single = options.single_use || {};
-
-          const message = [
-            `Study: ${data.study_slug}`,
-            ``,
-            `Multi-use URL:   ${multi.launch_url || data.launch_url || "-"}`,
-            `Multi-use token: ${multi.launch_token || data.launch_token || "-"}`,
-            ``,
-            `Single-use URL:   ${single.launch_url || "-"}`,
-            `Single-use token: ${single.launch_token || "-"}`,
-            ``,
-            `Expires: ${formatIso(data.expires_at)}`,
-          ].join("\n");
-          window.alert(message);
-          statusEl.className = "status ok";
-          statusEl.textContent = `Launch link generated for ${studySlug}.`;
-        } catch (error) {
-          statusEl.className = "status";
-          statusEl.textContent = `Launch-link generation failed: ${error?.message ?? String(error)}`;
-        }
-      }
-
-      async function reassignOwner(studySlug, ownerUsername) {
-        const statusEl = document.getElementById("status");
-        statusEl.className = "status";
-        statusEl.textContent = `Reassigning owner for ${studySlug} to ${ownerUsername}...`;
-
-        try {
-          const response = await fetch(
-            `${API_BASE}/api/v1/studies/${encodeURIComponent(studySlug)}/owner`,
-            postOpts({ owner_username: ownerUsername }),
-          );
-
-          const data = await response.json().catch(() => ({}));
-          if (!response.ok) {
-            throw new Error(data.error || `HTTP ${response.status}`);
-          }
-
-          statusEl.className = "status ok";
-          statusEl.textContent = `Owner reassigned: ${studySlug} → ${data.owner_username || ownerUsername}`;
-          await loadStudies();
-        } catch (error) {
-          statusEl.className = "status";
-          statusEl.textContent = `Owner reassignment failed: ${error?.message ?? String(error)}`;
-        }
-      }
-
-      async function loadStudies() {
-        const statusEl = document.getElementById("status");
-        const refreshBtn = document.getElementById("refreshBtn");
-        refreshBtn.disabled = true;
-        statusEl.className = "status";
-        statusEl.textContent = "Refreshing studies...";
-
-        try {
-          const response = await fetch(`${API_BASE}/api/v1/studies`, { credentials: "include" });
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          const data = await response.json();
-          renderRows(data.studies || []);
-          statusEl.className = "status ok";
-          statusEl.textContent = `Loaded ${(data.studies || []).length} studies at ${new Date().toLocaleTimeString()}.`;
-        } catch (error) {
-          statusEl.className = "status";
-          statusEl.textContent = `Failed to load studies: ${error?.message ?? String(error)}`;
-        } finally {
-          refreshBtn.disabled = false;
-        }
-      }
-
-      // ── Initialise ──────────────────────────────────────────
-      document.getElementById("refreshBtn").addEventListener("click", loadStudies);
-
-      (async () => {
-        await checkSession();
-        await loadStudies();
-      })();
+    // ── Bootstrap ──────────────────────────────────────────────
+    (async () => { await checkSession(); })();
     </script>
   </body>
 </html>
