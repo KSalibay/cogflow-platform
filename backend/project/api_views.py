@@ -1,6 +1,7 @@
 import os
 import hashlib
 from datetime import timedelta
+from urllib.parse import urlencode
 
 import pyotp
 from django.contrib.auth import authenticate, login, logout
@@ -9,6 +10,7 @@ from django.core import signing
 from django.core.mail import send_mail
 from django.db import transaction
 from django.db.models import Count, Max, Q
+from django.http import HttpResponseRedirect
 from django.shortcuts import render
 from django.utils.decorators import method_decorator
 from django.utils import timezone
@@ -180,6 +182,31 @@ def _launch_token_digest(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
+def _issue_email_verification_token(user: User) -> str:
+    payload = {
+        "uid": user.id,
+        "email": (user.email or "").strip().lower(),
+    }
+    return signing.dumps(payload, salt="auth-register-verify-v1", compress=True)
+
+
+def _read_email_verification_token(token: str) -> dict:
+    max_age_hours = int(os.getenv("AUTH_EMAIL_VERIFY_MAX_AGE_HOURS", "72"))
+    max_age_seconds = max(1, max_age_hours) * 60 * 60
+    return signing.loads(token, salt="auth-register-verify-v1", max_age=max_age_seconds)
+
+
+def _portal_auth_redirect(request, msg: str, mode: str = "login") -> HttpResponseRedirect:
+    portal_url = os.getenv("COGFLOW_PLATFORM_URL", "").strip() or request.build_absolute_uri("/portal/")
+    normalized = portal_url.rstrip("/")
+    if normalized.endswith("/portal"):
+        base = normalized + "/"
+    else:
+        base = normalized + "/portal/"
+    query = urlencode({"auth_mode": mode, "auth_msg": msg})
+    return HttpResponseRedirect(f"{base}?{query}")
+
+
 class AuthLoginView(APIView):
     """Session login endpoint for portal user flows."""
 
@@ -188,6 +215,13 @@ class AuthLoginView(APIView):
         serializer = AuthLoginRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+
+        existing_user = User.objects.filter(username=data["username"]).only("is_active").first()
+        if existing_user and not existing_user.is_active:
+            return Response(
+                {"error": "Please verify your email before signing in."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
 
         user = authenticate(request, username=data["username"], password=data["password"])
         if not user:
@@ -227,7 +261,7 @@ class AuthCsrfView(APIView):
 
 
 class AuthRegisterView(APIView):
-    """Self-service registration endpoint (account starts inactive)."""
+    """Self-service registration endpoint (account activates by email verification)."""
 
     @transaction.atomic
     def post(self, request):
@@ -269,12 +303,16 @@ class AuthRegisterView(APIView):
 
         # Registration mail should not block account creation if SMTP is temporarily unavailable.
         portal_url = os.getenv("COGFLOW_PLATFORM_URL", "").strip() or request.build_absolute_uri("/portal/")
+        verify_token = _issue_email_verification_token(user)
+        verify_url = request.build_absolute_uri("/api/v1/auth/register/verify")
+        verify_url = f"{verify_url}?{urlencode({'token': verify_token})}"
         try:
             send_mail(
-                "CogFlow registration received",
+                "Verify your CogFlow email",
                 (
-                    "Your CogFlow account request has been received.\n\n"
-                    "An admin must activate your account before first sign-in.\n"
+                    "Your CogFlow account has been created.\n\n"
+                    "Please verify your email to activate sign-in:\n"
+                    f"{verify_url}\n\n"
                     f"Portal URL: {portal_url}\n"
                     "If you did not request this account, you can ignore this email."
                 ),
@@ -288,11 +326,52 @@ class AuthRegisterView(APIView):
         return Response(
             {
                 "ok": True,
-                "pending_approval": True,
-                "message": "Registration submitted. An admin must activate your account.",
+                "pending_verification": True,
+                "message": "Registration submitted. Check your email for a verification link.",
             },
             status=status.HTTP_201_CREATED,
         )
+
+
+class AuthRegisterVerifyView(APIView):
+    """Activate a newly-registered account via signed email verification token."""
+
+    schema = None
+
+    @transaction.atomic
+    def get(self, request):
+        token = (request.query_params.get("token") or "").strip()
+        if not token:
+            return _portal_auth_redirect(request, "Verification link is missing or invalid.", mode="login")
+
+        try:
+            data = _read_email_verification_token(token)
+        except signing.SignatureExpired:
+            return _portal_auth_redirect(request, "Verification link expired. Register again to get a new email.", mode="register")
+        except signing.BadSignature:
+            return _portal_auth_redirect(request, "Verification link is invalid.", mode="login")
+
+        uid = data.get("uid")
+        email = (data.get("email") or "").strip().lower()
+        user = User.objects.filter(id=uid).first()
+        if not user:
+            return _portal_auth_redirect(request, "Account not found for this verification link.", mode="register")
+
+        if (user.email or "").strip().lower() != email:
+            return _portal_auth_redirect(request, "Verification link does not match this account.", mode="register")
+
+        if not user.is_active:
+            user.is_active = True
+            user.save(update_fields=["is_active"])
+            record_audit(
+                action="auth_register_verified",
+                resource_type="user",
+                resource_id=user.id,
+                actor=user.username,
+                metadata={"email": user.email},
+            )
+
+        return _portal_auth_redirect(request, "Email verified. You can now sign in.", mode="login")
 
 
 class AuthLogoutView(APIView):

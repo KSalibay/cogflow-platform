@@ -784,7 +784,7 @@
         <!-- Step 1b: registration -->
         <div id="loginStepRegister" style="display:none;">
           <h2>Create account</h2>
-          <p class="mfa-hint" style="margin-top:0;">New accounts require admin activation before first sign-in.</p>
+          <p class="mfa-hint" style="margin-top:0;">New accounts are activated by email verification.</p>
           <div class="field-group">
             <div>
               <label for="regUsername">Username</label>
@@ -1556,7 +1556,7 @@
           const el = document.getElementById(id);
           if (el) el.value = "";
         });
-        showLogin(d.message || "Registration submitted. Wait for admin activation, then sign in.");
+        showLogin(d.message || "Registration submitted. Check email for your verification link, then sign in.");
       } catch (err) {
         showRegister(err?.message || "Registration failed");
       } finally {
@@ -2376,8 +2376,27 @@
       copyText(text, btn);
     }
 
+    function applyAuthMessageFromQuery() {
+      const params = new URLSearchParams(window.location.search || "");
+      const msg = (params.get("auth_msg") || "").trim();
+      const mode = (params.get("auth_mode") || "login").trim();
+      if (!msg) return;
+      if (mode === "register") showRegister(msg);
+      else showLogin(msg);
+
+      try {
+        const clean = `${window.location.pathname}${window.location.hash || ""}`;
+        window.history.replaceState({}, "", clean);
+      } catch {
+        // no-op
+      }
+    }
+
     // ── Bootstrap ──────────────────────────────────────────────
-    (async () => { await checkSession(); })();
+    (async () => {
+      await checkSession();
+      if (!currentUser) applyAuthMessageFromQuery();
+    })();
     </script>
   </body>
 </html>
