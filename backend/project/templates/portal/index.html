@@ -1164,6 +1164,16 @@
       };
     }
 
+    async function ensureCsrfReady() {
+      if (getCsrf()) return true;
+      try {
+        await fetch(`${API}/api/v1/auth/csrf`, { credentials: "include" });
+      } catch {
+        return false;
+      }
+      return !!getCsrf();
+    }
+
     // ── State ─────────────────────────────────────────────────
     let currentUser   = null;
     let mfaSetupState = null;
@@ -1440,6 +1450,10 @@
       const username = (document.getElementById("authUsername")?.value || "").trim();
       const password = document.getElementById("authPassword")?.value || "";
       if (!username) return;
+      if (!(await ensureCsrfReady())) {
+        showLogin("Security cookie was not set. Reload and try again.");
+        return;
+      }
       const btn = document.getElementById("loginBtn");
       btn.disabled = true; btn.textContent = "Signing in…";
       try {
@@ -1470,6 +1484,11 @@
     async function doLoginMfa() {
       const code = (document.getElementById("loginMfaCode")?.value || "").trim();
       if (!code) return;
+      if (!(await ensureCsrfReady())) {
+        document.getElementById("loginError").textContent = "Security cookie was not set. Reload and try again.";
+        document.getElementById("loginError").classList.remove("hidden");
+        return;
+      }
       const btn = document.getElementById("loginMfaBtn");
       btn.disabled = true; btn.textContent = "Verifying…";
       try {
@@ -1503,6 +1522,10 @@
       }
       if (password.length < 8) {
         showRegister("Password must be at least 8 characters.");
+        return;
+      }
+      if (!(await ensureCsrfReady())) {
+        showRegister("Security cookie was not set. Reload and try again.");
         return;
       }
 

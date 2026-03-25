@@ -216,6 +216,16 @@ class AuthLoginView(APIView):
         )
 
 
+@method_decorator(ensure_csrf_cookie, name="dispatch")
+class AuthCsrfView(APIView):
+    """Set CSRF cookie for anonymous portal users before auth POSTs."""
+
+    schema = None
+
+    def get(self, request):
+        return Response({"ok": True}, status=status.HTTP_200_OK)
+
+
 class AuthRegisterView(APIView):
     """Self-service registration endpoint (account starts inactive)."""
 
