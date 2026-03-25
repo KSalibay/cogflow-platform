@@ -5067,6 +5067,7 @@ class JsonBuilder {
         library.innerHTML = '';
         
         components.forEach(component => {
+            if (component.hidden) return;
             const componentCard = this.createComponentCard(component);
             library.appendChild(componentCard);
         });
@@ -5214,6 +5215,7 @@ class JsonBuilder {
             const sartOnlyParams = {
                 sart_digit_options: { type: 'string', default: '1,2,3,4,5,6,7,8,9' },
                 sart_nogo_digit: { type: 'number', default: 3, min: 0, max: 9 },
+                   sart_nogo_probability: { type: 'number', default: null, min: 0, max: 1, step: 0.01, description: 'Probability [0–1] of a no-go trial. Overrides digit-frequency weighting when set. Leave blank to use digit options directly.' },
                 sart_go_key: { type: 'string', default: 'space' },
                 sart_stimulus_duration_min: { type: 'number', default: 150, min: 0, max: 10000 },
                 sart_stimulus_duration_max: { type: 'number', default: 400, min: 0, max: 10000 },
@@ -5498,6 +5500,8 @@ class JsonBuilder {
                 direction_options: { type: 'string', default: '0,180' },
                 speed_min: { type: 'number', default: 4, min: 0, max: 50 },
                 speed_max: { type: 'number', default: 10, min: 0, max: 50 },
+                lifetime_frames_min: { type: 'number', default: 3, min: 1, max: 300 },
+                lifetime_frames_max: { type: 'number', default: 8, min: 1, max: 300 },
 
                 // rdm-practice windows
                 practice_coherence_min: { type: 'number', default: 0.5, min: 0, max: 1, step: 0.01 },
@@ -5588,6 +5592,7 @@ class JsonBuilder {
                     trial_duration: { type: 'number', default: null, min: 500, max: 60000 },
                     response_ends_trial: { type: 'boolean', default: true }
                 },
+                                    text_align: { type: 'select', default: 'left', options: ['left', 'center', 'right'], description: 'Horizontal alignment of the instruction text' },
                 data: {
                     type: 'html-keyboard-response',
                     auto_generated: true,
@@ -5613,6 +5618,7 @@ class JsonBuilder {
                     min_iti_ms: { type: 'number', default: 3000, min: 200, max: 600000, step: 50 },
                     max_iti_ms: { type: 'number', default: 5000, min: 200, max: 600000, step: 50 },
                     stimulus_duration_ms: { type: 'number', default: 1000, min: 50, max: 60000, step: 10 },
+                    drt_display_mode: { type: 'select', default: 'corner_dot', options: ['corner_dot', 'screen_border'] },
                     stimulus_type: { type: 'select', default: 'square', options: ['square', 'circle'] },
                     stimulus_color: { type: 'COLOR', default: '#ff3b3b' },
                     location: { type: 'select', default: 'top-right', options: ['top-right', 'top-left', 'bottom-right', 'bottom-left'] },
@@ -5629,6 +5635,67 @@ class JsonBuilder {
                 category: 'setup',
                 type: 'detection-response-task-stop',
                 parameters: {}
+            },
+            {
+                id: 'loop-start',
+                name: 'Loop Start',
+                icon: 'fas fa-repeat',
+                description: 'Marks the start of a loop range in the timeline',
+                category: 'advanced',
+                hidden: true, // Use the gutter drag UI to create loops instead
+                type: 'loop-start',
+                parameters: {
+                    loop_id: { type: 'string', default: '' },
+                    iterations: { type: 'number', default: 2, min: 1, max: 10000, step: 1 }
+                }
+            },
+            {
+                id: 'loop-end',
+                name: 'Loop End',
+                icon: 'fas fa-flag-checkered',
+                description: 'Marks the end of a loop range in the timeline',
+                category: 'advanced',
+                hidden: true, // Use the gutter drag UI to create loops instead
+                type: 'loop-end',
+                parameters: {
+                    loop_id: { type: 'string', default: '' }
+                }
+            },
+            {
+                id: 'mw-probe',
+                name: 'Mind Wandering Probe',
+                icon: 'fas fa-brain',
+                description: 'Brief thought probe assessing attention focus and mind wandering. Pre-populated with standard questions — fully editable.',
+                category: 'survey',
+                type: 'mw-probe',
+                parameters: {
+                    title: { type: 'string', default: 'Thought Probe' },
+                    instructions: { type: 'string', default: '' },
+                    submit_label: { type: 'string', default: 'Continue' },
+                    allow_empty_on_timeout: { type: 'boolean', default: true },
+                    timeout_ms: { type: 'number', default: null, min: 0, max: 600000 },
+                    min_interval_ms: { type: 'number', default: 0, min: 0, max: 3600000 },
+                    max_interval_ms: { type: 'number', default: 0, min: 0, max: 3600000 },
+                    questions: {
+                        type: 'COMPLEX',
+                        default: [
+                            {
+                                id: 'mw_focus',
+                                type: 'likert',
+                                prompt: 'Just before this probe appeared, where was your attention?',
+                                options: [
+                                    '1 \u2013 Completely on task',
+                                    '2 \u2013 Mostly on task',
+                                    '3 \u2013 Somewhat on task',
+                                    '4 \u2013 Somewhat off task',
+                                    '5 \u2013 Mostly off task',
+                                    '6 \u2013 Completely off task'
+                                ],
+                                required: true
+                            }
+                        ]
+                    }
+                }
             },
             {
                 id: 'survey-response',
@@ -5807,7 +5874,8 @@ class JsonBuilder {
                         prompt: { type: 'string', default: '' },
                         stimulus_duration: { type: 'number', default: null, min: 0, max: 30000 },
                         trial_duration: { type: 'number', default: null, min: 0, max: 60000 },
-                        response_ends_trial: { type: 'boolean', default: true }
+                        response_ends_trial: { type: 'boolean', default: true },
+                        text_align: { type: 'select', default: 'left', options: ['left', 'center', 'right'], description: 'Horizontal alignment of the stimulus text' }
                     }
                 },
                 {
@@ -6636,6 +6704,18 @@ class JsonBuilder {
                 }
                 if (currentTaskType === 'nback') {
                     Object.assign(componentData, this.getNbackDefaultsForNewBlock());
+                }
+                    if (currentTaskType === 'sart') {
+                        Object.assign(componentData, this.getSartDefaultsForNewBlock());
+                    }
+            }
+
+            if (componentDef.id === 'loop-start') {
+                if (!componentData.loop_id) {
+                    componentData.loop_id = `loop_${Date.now()}_${Math.floor(Math.random() * 1000000)}`;
+                }
+                if (!Number.isFinite(Number(componentData.iterations))) {
+                    componentData.iterations = 2;
                 }
             }
 
@@ -7841,7 +7921,27 @@ class JsonBuilder {
         };
     }
 
-    getPvtDefaultsForNewBlock() {
+    getSartDefaultsForNewBlock() {
+        const nogoDigit = Number.parseInt(document.getElementById('sartNoGoDigit')?.value || '3', 10);
+        const goKey = (document.getElementById('sartGoKey')?.value || 'space').toString();
+        const stimMs = Number.parseInt(document.getElementById('sartStimulusDurationMs')?.value || '250', 10);
+        const maskMs = Number.parseInt(document.getElementById('sartMaskDurationMs')?.value || '900', 10);
+        const itiMs = Number.parseInt(document.getElementById('sartItiMs')?.value || '0', 10);
+        return {
+            block_component_type: 'sart-trial',
+            sart_digit_options: '1,2,3,4,5,6,7,8,9',
+            sart_nogo_digit: Number.isFinite(nogoDigit) ? nogoDigit : 3,
+            sart_go_key: goKey,
+            sart_stimulus_duration_min: Number.isFinite(stimMs) ? stimMs : 250,
+            sart_stimulus_duration_max: Number.isFinite(stimMs) ? stimMs : 250,
+            sart_mask_duration_min: Number.isFinite(maskMs) ? maskMs : 900,
+            sart_mask_duration_max: Number.isFinite(maskMs) ? maskMs : 900,
+            sart_iti_min: Number.isFinite(itiMs) ? itiMs : 0,
+            sart_iti_max: Number.isFinite(itiMs) ? itiMs : 0
+        };
+    }
+
+        getPvtDefaultsForNewBlock() {
         const foreperiod = Number.parseInt(document.getElementById('pvtForeperiodMs')?.value || '4000', 10);
         const trialMs = Number.parseInt(document.getElementById('pvtTrialDurationMs')?.value || '10000', 10);
         const itiMs = Number.parseInt(document.getElementById('pvtItiMs')?.value || '0', 10);
@@ -8720,12 +8820,84 @@ class JsonBuilder {
             }
         });
 
+        const loopAwareComponents = this.buildNestedLoopsFromMarkers(components);
+
         const taskType = document.getElementById('taskType')?.value || 'rdm';
         if (taskType === 'soc-dashboard') {
-            return this.composeSocDashboardTimeline(components);
+            return this.composeSocDashboardTimeline(loopAwareComponents);
         }
 
-        return components;
+        return loopAwareComponents;
+    }
+
+    buildNestedLoopsFromMarkers(components) {
+        const list = Array.isArray(components) ? components : [];
+        const root = [];
+        const stack = [{ items: root, loopId: null }];
+
+        const toLoopId = (raw) => (raw ?? '').toString().trim();
+        const toIterations = (raw) => {
+            const n = Number.parseInt(raw ?? '', 10);
+            if (!Number.isFinite(n)) return 1;
+            return Math.max(1, Math.min(10000, n));
+        };
+
+        for (const item of list) {
+            if (!item || typeof item !== 'object') continue;
+
+            const t = (item.type ?? '').toString();
+            if (t === 'loop-start') {
+                const loopId = toLoopId(item.loop_id);
+                const loopNode = {
+                    type: 'loop',
+                    ...(loopId ? { loop_id: loopId } : {}),
+                    iterations: toIterations(item.iterations ?? item.loop_iterations ?? 1),
+                    items: []
+                };
+
+                // Preserve optional label for UI/debugging.
+                if (item.label !== undefined && item.label !== null && item.label !== '') {
+                    loopNode.label = item.label;
+                }
+
+                stack[stack.length - 1].items.push(loopNode);
+                stack.push({ items: loopNode.items, loopId });
+                continue;
+            }
+
+            if (t === 'loop-end') {
+                if (stack.length <= 1) {
+                    // Unmatched end marker; drop it from exported timeline.
+                    continue;
+                }
+
+                const closingId = toLoopId(item.loop_id);
+                if (!closingId) {
+                    stack.pop();
+                    continue;
+                }
+
+                // Close nearest matching loop_id while preserving nesting order.
+                let matchedIndex = -1;
+                for (let i = stack.length - 1; i >= 1; i--) {
+                    if ((stack[i].loopId || '') === closingId) {
+                        matchedIndex = i;
+                        break;
+                    }
+                }
+                if (matchedIndex === -1) {
+                    continue;
+                }
+                while (stack.length - 1 >= matchedIndex) {
+                    stack.pop();
+                }
+                continue;
+            }
+
+            stack[stack.length - 1].items.push(item);
+        }
+
+        return root;
     }
 
     composeSocDashboardTimeline(components) {
@@ -8832,10 +9004,21 @@ class JsonBuilder {
         // Handle html-keyboard-response components (Instructions) differently
         if (component.type === 'html-keyboard-response') {
             // Instructions components store parameters directly on the component object
+                let _stimulus = (component.stimulus || '');
+                // Strip Quill's ql-align-* classes and replace with inline styles.
+                // Quill outputs <p class="ql-align-center"> but Interpreter doesn't have Quill CSS.
+                _stimulus = _stimulus.replace(/class="[^"]*ql-align-(center|right)[^"]*"/g, (_match, align) => {
+                    return `style='text-align: ${align};'`;
+                });
+                // Also apply text_align field if explicitly set (takes precedence over Quill markup)
+                const _alignVal = (component.text_align || 'left').toString().trim().toLowerCase();
+                const _stimulus_final = (_alignVal === 'center' || _alignVal === 'right')
+                    ? `<div style='text-align: ${_alignVal};'>${_stimulus}</div>`
+                    : _stimulus;
             const instructionsComponent = {
                 type: component.type,
-                stimulus: component.stimulus,
-                choices: component.choices,
+                   stimulus: _stimulus_final,
+                   choices: component.choices || 'ALL_KEYS',
                 prompt: component.prompt,
                 stimulus_duration: component.stimulus_duration,
                 trial_duration: component.trial_duration,
@@ -9063,6 +9246,7 @@ class JsonBuilder {
         if (resolvedComponentType === 'rdm-trial') {
             addWindow('coherence', blockComponent.coherence_min, blockComponent.coherence_max);
             addWindow('speed', blockComponent.speed_min, blockComponent.speed_max);
+            addWindow('lifetime_frames', blockComponent.lifetime_frames_min, blockComponent.lifetime_frames_max);
 
             const dirs = parseNumberList(blockComponent.direction_options, { min: 0, max: 359 });
             if (dirs.length > 0) {
@@ -9075,6 +9259,7 @@ class JsonBuilder {
         } else if (resolvedComponentType === 'rdm-practice') {
             addWindow('coherence', blockComponent.practice_coherence_min, blockComponent.practice_coherence_max);
             addWindow('feedback_duration', blockComponent.practice_feedback_duration_min, blockComponent.practice_feedback_duration_max);
+            addWindow('lifetime_frames', blockComponent.lifetime_frames_min, blockComponent.lifetime_frames_max);
 
             const dirs = parseNumberList(blockComponent.practice_direction_options, { min: 0, max: 359 });
             if (dirs.length > 0) {
@@ -9087,6 +9272,7 @@ class JsonBuilder {
         } else if (resolvedComponentType === 'rdm-adaptive') {
             addWindow('initial_coherence', blockComponent.adaptive_initial_coherence_min, blockComponent.adaptive_initial_coherence_max);
             addWindow('step_size', blockComponent.adaptive_step_size_min, blockComponent.adaptive_step_size_max);
+            addWindow('lifetime_frames', blockComponent.lifetime_frames_min, blockComponent.lifetime_frames_max);
 
             const algo = blockComponent.adaptive_algorithm;
             if (typeof algo === 'string' && algo.trim() !== '') {
@@ -9107,6 +9293,7 @@ class JsonBuilder {
 
             addWindow('group_2_coherence', blockComponent.group_2_coherence_min, blockComponent.group_2_coherence_max);
             addWindow('group_2_speed', blockComponent.group_2_speed_min, blockComponent.group_2_speed_max);
+            addWindow('lifetime_frames', blockComponent.lifetime_frames_min, blockComponent.lifetime_frames_max);
 
             const g1Dirs = parseNumberList(blockComponent.group_1_direction_options, { min: 0, max: 359 });
             if (g1Dirs.length > 0) {
@@ -9207,11 +9394,17 @@ class JsonBuilder {
             };
 
             const digits = parseIntList(blockComponent.sart_digit_options);
+            const nogo = Number.parseInt(blockComponent.sart_nogo_digit, 10);
+            const _nogoProb = Number.parseFloat(blockComponent.sart_nogo_probability);
+
+            if (Number.isFinite(_nogoProb) && _nogoProb > 0 && _nogoProb < 1) {
+                values.nogo_probability = _nogoProb;
+            }
+
             if (digits.length > 0) {
                 values.digit = Array.from(new Set(digits));
             }
 
-            const nogo = Number.parseInt(blockComponent.sart_nogo_digit, 10);
             if (Number.isFinite(nogo)) {
                 values.nogo_digit = nogo;
             }
@@ -10703,18 +10896,35 @@ class JsonBuilder {
     }
 
     /**
-     * Save current configuration as template
+     * Save current configuration as template.
+     * Serialises the DOM timeline so that all components (including those added
+     * via the component library) are captured correctly.
      */
     saveTemplate() {
         const name = prompt('Enter template name:');
         if (name) {
+            const container = document.getElementById('timelineComponents');
+            const savedComponents = container
+                ? Array.from(container.querySelectorAll('.timeline-component')).map(el => {
+                    const raw = JSON.parse(el.dataset.componentData || '{}');
+                    const { type: _t, name: _n, label: _l, ...params } = raw;
+                    return {
+                        type: el.dataset.componentType || _t || '',
+                        builderComponentId: el.dataset.builderComponentId || null,
+                        name: _n || el.dataset.componentType || 'Component',
+                        label: _l || '',
+                        parameters: params
+                    };
+                })
+                : [];
+
             this.templates[name] = {
-                timeline: [...this.timeline],
+                timeline: savedComponents,
                 experimentType: this.experimentType,
                 dataCollection: { ...this.dataCollection },
                 taskType: document.getElementById('taskType')?.value || 'rdm'
             };
-            
+
             // Save to localStorage
             localStorage.setItem('cogflow_templates', JSON.stringify(this.templates));
             localStorage.setItem('psychjson_templates', JSON.stringify(this.templates));
@@ -10723,46 +10933,67 @@ class JsonBuilder {
     }
 
     /**
-     * Load template
+     * Load template.
+     * Restores the DOM timeline from the saved component data.
      */
     loadTemplate() {
         // Load templates from localStorage
         const saved = localStorage.getItem('cogflow_templates') || localStorage.getItem('psychjson_templates');
         if (saved) {
-            this.templates = JSON.parse(saved);
+            try { this.templates = JSON.parse(saved); } catch { this.templates = {}; }
         }
-        
+
         const templateNames = Object.keys(this.templates);
         if (templateNames.length === 0) {
             this.showValidationResult('warning', 'No saved templates found');
             return;
         }
-        
+
         // Show template selection (simple prompt for now, could be enhanced with modal)
         const selection = prompt(`Select template:\n${templateNames.map((name, i) => `${i + 1}. ${name}`).join('\n')}\n\nEnter number:`);
         const index = parseInt(selection) - 1;
-        
+
         if (index >= 0 && index < templateNames.length) {
             const templateName = templateNames[index];
             const template = this.templates[templateName];
-            
-            this.timeline = [...template.timeline];
+
+            // Restore metadata
             this.experimentType = template.experimentType;
             this.dataCollection = { ...template.dataCollection };
-
-            // Restore task type dropdown (if present)
             if (template.taskType) {
                 this.setElementValue('taskType', template.taskType);
             }
-            
-            // Update UI
+
+            // Restore timeline DOM from saved component objects
+            const container = document.getElementById('timelineComponents');
+            if (container) {
+                container.querySelectorAll('.timeline-component').forEach(el => el.remove());
+
+                const savedComponents = Array.isArray(template.timeline) ? template.timeline : [];
+                // Only restore if the saved format is the new DOM-based format
+                // (old empty-array templates are silently ignored).
+                const isNewFormat = savedComponents.length > 0 && savedComponents[0] && typeof savedComponents[0].type === 'string';
+                if (isNewFormat) {
+                    for (const comp of savedComponents) {
+                        const el = this.timelineBuilder.createComponentElementNew(comp, 0);
+                        if (comp.builderComponentId) {
+                            el.dataset.builderComponentId = comp.builderComponentId;
+                        }
+                        container.appendChild(el);
+                    }
+                }
+
+                const emptyState = container.querySelector('.empty-timeline');
+                if (emptyState) {
+                    emptyState.style.display = (isNewFormat && savedComponents.length > 0) ? 'none' : 'block';
+                }
+            }
+
             this.updateExperimentTypeUI();
-            this.timelineBuilder.renderTimeline();
             this.updateJSON();
             this.showValidationResult('success', `Template "${templateName}" loaded successfully!`);
         }
     }
-
     /**
      * Load default RDM template and populate UI
      */
@@ -11257,9 +11488,9 @@ class JsonBuilder {
             componentType = this.currentEditingComponent.dataset.componentType;
         }
 
-        // Survey-response has a custom editor (questions list) and cannot be previewed
+        // Survey-response / mw-probe have a custom editor (questions list) and cannot be previewed
         // by scraping generic input ids.
-        if (componentType === 'survey-response') {
+        if (componentType === 'survey-response' || componentType === 'mw-probe') {
             if (!this.timelineBuilder || typeof this.timelineBuilder.collectSurveyResponseFromModal !== 'function') {
                 console.error('TimelineBuilder survey collector not available');
                 return;
@@ -11268,7 +11499,7 @@ class JsonBuilder {
             const survey = this.timelineBuilder.collectSurveyResponseFromModal(modalBody);
             const previewData = {
                 type: 'survey-response',
-                name: componentName || storedData?.name || 'Survey Response',
+                name: componentName || storedData?.name || (componentType === 'mw-probe' ? 'Mind Wandering Probe' : 'Survey Response'),
                 ...(storedData && typeof storedData === 'object' ? storedData : {}),
                 ...survey
             };

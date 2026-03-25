@@ -3,20 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CogFlow Builder — Platform Edition</title>
-
-    <!-- ═══════════════════════════════════════════════════════════════════
-         CogFlow Platform configuration.
-         These values are injected by the platform's Django view (or set
-         manually during local development).  COGFLOW_PLATFORM_URL enables
-         the publish button; leave it empty to use local/JATOS mode.
-         ═══════════════════════════════════════════════════════════════════ -->
-    <script>
-        window.COGFLOW_PLATFORM_URL    = '';   // e.g. 'http://localhost:8000'
-        window.COGFLOW_STUDY_SLUG      = '';   // e.g. 'my-rdm-study'
-        window.COGFLOW_STUDY_NAME      = '';   // Human-readable name
-        window.COGFLOW_CONFIG_VERSION  = '';   // e.g. 'v1.0'
-    </script>
+    <title>CogFlow Builder - Cognitive Task Flow Parameter Generator</title>
     <link rel="icon" type="image/png" href="img/favico.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -60,6 +47,11 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
+
+    <!-- Platform URL placeholder — replaced by the Django BuilderAppView before serving.
+         Leave as empty string here; set via window.COGFLOW_PLATFORM_URL before loading
+         the builder to activate the Publish button. -->
+    <script>window.COGFLOW_PLATFORM_URL    = '';</script>
 </head>
 <body>
     <nav class="navbar navbar-dark bg-primary">
@@ -83,8 +75,14 @@
                 <button class="btn btn-outline-light me-2" id="importLocalJsonBtn">
                     <i class="fas fa-file-arrow-up"></i> Import JSON(s)
                 </button>
+                <button class="btn btn-outline-light me-2" id="prepJatosPropsBtn">
+                    <i class="fas fa-clipboard"></i> JATOS Props
+                </button>
                 <button class="btn btn-warning me-2" id="platformPublishBtn" style="display:none" title="Publish config to CogFlow Platform">
                     <i class="fas fa-server"></i> Publish
+                </button>
+                <button class="btn btn-success" id="exportJsonBtn">
+                    <i class="fas fa-cloud-arrow-up"></i> Export
                 </button>
 
                 <!-- Hidden input: local JSON import for Token Store uploads -->
@@ -435,7 +433,7 @@
     </script>
 
     <!-- Cache-bust local scripts -->
-    <script src="src/JsonBuilder.js?v=20260309-1"></script>
+    <script src="src/JsonBuilder.js?v=20260325-1"></script>
     <script src="src/modules/DataCollectionModules.js?v=20260114-1"></script>
     <script src="src/modules/TrialManager.js?v=20260113-10"></script>
     <script src="src/modules/TimelineBuilder.js?v=20260309-1"></script>
@@ -512,6 +510,21 @@
             installDebugRemnantCleaner();
 
             const jsonBuilder = new JsonBuilder();
+            // Prevent scroll-wheel from accidentally changing the value of a focused
+            // number input. Attach / detach the wheel-blocker only while the input is
+            // focused, so normal page scrolling is never blocked.
+            const _blockWheelOnNumber = (e) => e.preventDefault();
+            document.addEventListener('focusin', (e) => {
+                if (e.target && e.target.type === 'number') {
+                    e.target.addEventListener('wheel', _blockWheelOnNumber, { passive: false });
+                }
+            });
+            document.addEventListener('focusout', (e) => {
+                if (e.target && e.target.type === 'number') {
+                    e.target.removeEventListener('wheel', _blockWheelOnNumber);
+                }
+            });
+
             jsonBuilder.initialize();
             
             // Store globally for access from other functions
@@ -535,6 +548,7 @@
             
             // Initialize timeline sortable functionality
             initializeTimelineSorting();
+            initializeLoopUI();
             
             // Initialize RDM-specific UI components
             initializeRDMInterface();
@@ -563,12 +577,402 @@
                         if (window.jsonBuilderInstance) {
                             window.jsonBuilderInstance.updateJSON();
                         }
+                        if (window.refreshLoopUI) {
+                            window.refreshLoopUI();
+                        }
                     }
                 });
                 console.log('Sortable instance created:', window.timelineSortable);
             } else {
                 console.warn('Failed to initialize sortable - container:', timelineContainer, 'Sortable:', window.Sortable);
             }
+        }
+
+        function initializeLoopUI() {
+            const timelineContainer = document.getElementById('timelineComponents');
+            if (!timelineContainer || timelineContainer.dataset.loopUiBound === '1') return;
+
+            timelineContainer.dataset.loopUiBound = '1';
+            timelineContainer.classList.add('cf-loop-ui-enabled');
+
+            const state = {
+                loopMap: new Map(),
+                draw: null,
+                resize: null,
+                layerEl: null,
+                gutterEl: null
+            };
+
+            const parseComponentData = (el) => {
+                try { return JSON.parse(el?.dataset?.componentData || '{}') || {}; }
+                catch { return {}; }
+            };
+
+            const isLoopStartMarker = (el) => {
+                const data = parseComponentData(el);
+                return data.type === 'loop-start';
+            };
+
+            const isLoopEndMarker = (el) => {
+                const data = parseComponentData(el);
+                return data.type === 'loop-end';
+            };
+
+            const isLoopMarker = (el) => isLoopStartMarker(el) || isLoopEndMarker(el);
+
+            const getTimelineCards = () => Array.from(timelineContainer.querySelectorAll(':scope > .timeline-component'));
+            const getVisibleCards = () => getTimelineCards().filter((el) => !isLoopMarker(el));
+
+            const normalizeMarkerVisibility = () => {
+                getTimelineCards().forEach((el) => {
+                    if (isLoopMarker(el)) el.classList.add('cf-loop-marker-hidden');
+                    else el.classList.remove('cf-loop-marker-hidden');
+                });
+            };
+
+            const getLoopPairs = () => {
+                const cards = getTimelineCards();
+                const stack = [];
+                const pairs = [];
+
+                const loopIdOf = (el) => (parseComponentData(el).loop_id ?? '').toString().trim();
+
+                for (let idx = 0; idx < cards.length; idx++) {
+                    const el = cards[idx];
+                    if (isLoopStartMarker(el)) {
+                        const data = parseComponentData(el);
+                        const rawIter = Number.parseInt(data.iterations ?? data.loop_iterations ?? '1', 10);
+                        const iterations = Number.isFinite(rawIter) ? Math.max(1, Math.min(10000, rawIter)) : 1;
+                        stack.push({
+                            startEl: el,
+                            startIdx: idx,
+                            loopId: loopIdOf(el),
+                            iterations,
+                            label: (data.label ?? '').toString(),
+                            depth: stack.length
+                        });
+                        continue;
+                    }
+
+                    if (isLoopEndMarker(el)) {
+                        if (stack.length === 0) continue;
+                        const endId = loopIdOf(el);
+
+                        let matchPos = -1;
+                        if (endId) {
+                            for (let i = stack.length - 1; i >= 0; i--) {
+                                if ((stack[i].loopId || '') === endId) {
+                                    matchPos = i;
+                                    break;
+                                }
+                            }
+                        } else {
+                            matchPos = stack.length - 1;
+                        }
+                        if (matchPos < 0) continue;
+
+                        const matched = stack.splice(matchPos, 1)[0];
+                        pairs.push({
+                            ...matched,
+                            endEl: el,
+                            endIdx: idx
+                        });
+                    }
+                }
+
+                return pairs;
+            };
+
+            const getVisibleIndexFromY = (clientY) => {
+                const cards = getVisibleCards();
+                if (cards.length === 0) return -1;
+                let bestIdx = 0;
+                let bestDist = Number.POSITIVE_INFINITY;
+                cards.forEach((el, idx) => {
+                    const r = el.getBoundingClientRect();
+                    const mid = r.top + (r.height / 2);
+                    const dist = Math.abs(clientY - mid);
+                    if (dist < bestDist) {
+                        bestDist = dist;
+                        bestIdx = idx;
+                    }
+                });
+                return bestIdx;
+            };
+
+            const ensureLayer = () => {
+                if (!state.layerEl || !state.layerEl.isConnected) {
+                    const layer = document.createElement('div');
+                    layer.className = 'timeline-loop-layer';
+                    timelineContainer.appendChild(layer);
+                    state.layerEl = layer;
+                }
+                if (!state.gutterEl || !state.gutterEl.isConnected) {
+                    const gutter = document.createElement('div');
+                    gutter.className = 'timeline-loop-gutter-hitbox';
+                    timelineContainer.appendChild(gutter);
+                    state.gutterEl = gutter;
+                }
+            };
+
+            const createLoopMarkerElement = (type, loopId, iterations) => {
+                const el = document.createElement('div');
+                el.className = 'timeline-component card mb-2 cf-loop-marker-hidden';
+                el.dataset.componentType = type;
+
+                const data = {
+                    type,
+                    name: type === 'loop-start' ? 'Loop Start' : 'Loop End',
+                    loop_id: loopId
+                };
+                if (type === 'loop-start') {
+                    data.iterations = Number.isFinite(Number(iterations)) ? Math.max(1, Math.floor(Number(iterations))) : 2;
+                }
+                el.dataset.componentData = JSON.stringify(data);
+                el.innerHTML = '<div class="card-body"></div>';
+                return el;
+            };
+
+            const createLoopFromVisibleRange = (startVisibleIdx, endVisibleIdx) => {
+                const cards = getVisibleCards();
+                if (cards.length === 0) return;
+                const lo = Math.max(0, Math.min(startVisibleIdx, endVisibleIdx));
+                const hi = Math.min(cards.length - 1, Math.max(startVisibleIdx, endVisibleIdx));
+                const startCard = cards[lo];
+                const endCard = cards[hi];
+                if (!startCard || !endCard) return;
+
+                const loopId = `loop_${Date.now()}_${Math.floor(Math.random() * 1000000)}`;
+                const startMarker = createLoopMarkerElement('loop-start', loopId, 2);
+                const endMarker = createLoopMarkerElement('loop-end', loopId);
+
+                timelineContainer.insertBefore(startMarker, startCard);
+                if (endCard.nextSibling) timelineContainer.insertBefore(endMarker, endCard.nextSibling);
+                else timelineContainer.appendChild(endMarker);
+
+                if (window.jsonBuilderInstance) window.jsonBuilderInstance.updateJSON();
+            };
+
+            const moveLoopBoundaryToVisibleIndex = (loop, handleType, targetVisibleIdx) => {
+                const cards = getVisibleCards();
+                if (cards.length === 0) return;
+                const idx = Math.max(0, Math.min(cards.length - 1, targetVisibleIdx));
+                const target = cards[idx];
+                if (!target) return;
+
+                if (handleType === 'top') {
+                    timelineContainer.insertBefore(loop.startEl, target);
+                } else {
+                    if (target.nextSibling) timelineContainer.insertBefore(loop.endEl, target.nextSibling);
+                    else timelineContainer.appendChild(loop.endEl);
+                }
+            };
+
+            const renderDraftBracket = () => {
+                if (!state.draw || !state.layerEl) return;
+                const cards = getVisibleCards();
+                if (cards.length === 0) return;
+
+                const lo = Math.max(0, Math.min(state.draw.startIdx, state.draw.currentIdx));
+                const hi = Math.min(cards.length - 1, Math.max(state.draw.startIdx, state.draw.currentIdx));
+                const startCard = cards[lo];
+                const endCard = cards[hi];
+                if (!startCard || !endCard) return;
+
+                const containerRect = timelineContainer.getBoundingClientRect();
+                const top = startCard.offsetTop;
+                const bottom = endCard.offsetTop + endCard.offsetHeight;
+
+                const draft = document.createElement('div');
+                draft.className = 'timeline-loop-bracket is-draft';
+                draft.style.left = '8px';
+                draft.style.top = `${top}px`;
+                draft.style.height = `${Math.max(8, bottom - top)}px`;
+                draft.title = 'Release to create loop';
+                state.layerEl.appendChild(draft);
+                void containerRect; // keep lint quiet in non-strict environments
+            };
+
+            const refresh = () => {
+                ensureLayer();
+                normalizeMarkerVisibility();
+
+                state.layerEl.innerHTML = '';
+                state.loopMap.clear();
+
+                const pairs = getLoopPairs();
+                const cards = getTimelineCards();
+
+                pairs.forEach((loop, idx) => {
+                    const visibleWithin = cards
+                        .slice(loop.startIdx + 1, loop.endIdx)
+                        .filter((el) => !isLoopMarker(el));
+
+                    if (visibleWithin.length === 0) return;
+                    const startCard = visibleWithin[0];
+                    const endCard = visibleWithin[visibleWithin.length - 1];
+
+                    const top = startCard.offsetTop;
+                    const bottom = endCard.offsetTop + endCard.offsetHeight;
+                    const left = 8 + (loop.depth * 10);
+                    const key = `${loop.loopId || 'loop'}:${loop.startIdx}:${loop.endIdx}:${idx}`;
+
+                    const bracket = document.createElement('div');
+                    bracket.className = 'timeline-loop-bracket';
+                    bracket.style.left = `${left}px`;
+                    bracket.style.top = `${top}px`;
+                    bracket.style.height = `${Math.max(8, bottom - top)}px`;
+                    bracket.dataset.loopKey = key;
+                    bracket.title = `Loop x${loop.iterations}${loop.label ? ` (${loop.label})` : ''}`;
+
+                    const topHandle = document.createElement('div');
+                    topHandle.className = 'timeline-loop-handle top';
+                    topHandle.dataset.loopKey = key;
+                    topHandle.dataset.handle = 'top';
+
+                    const bottomHandle = document.createElement('div');
+                    bottomHandle.className = 'timeline-loop-handle bottom';
+                    bottomHandle.dataset.loopKey = key;
+                    bottomHandle.dataset.handle = 'bottom';
+
+                    bracket.appendChild(topHandle);
+                    bracket.appendChild(bottomHandle);
+                    state.layerEl.appendChild(bracket);
+
+                    state.loopMap.set(key, {
+                        ...loop,
+                        visibleStartIdx: getVisibleCards().indexOf(startCard),
+                        visibleEndIdx: getVisibleCards().indexOf(endCard)
+                    });
+                });
+
+                renderDraftBracket();
+            };
+
+            const onDocumentMouseMove = (e) => {
+                if (state.draw) {
+                    state.draw.currentIdx = getVisibleIndexFromY(e.clientY);
+                    refresh();
+                    return;
+                }
+
+                if (state.resize) {
+                    const loop = state.loopMap.get(state.resize.loopKey);
+                    if (!loop) return;
+                    const idxRaw = getVisibleIndexFromY(e.clientY);
+                    if (idxRaw < 0) return;
+
+                    let idx = idxRaw;
+                    if (state.resize.handleType === 'top') {
+                        idx = Math.min(idx, loop.visibleEndIdx);
+                    } else {
+                        idx = Math.max(idx, loop.visibleStartIdx);
+                    }
+
+                    if (idx !== state.resize.lastIdx) {
+                        moveLoopBoundaryToVisibleIndex(loop, state.resize.handleType, idx);
+                        state.resize.lastIdx = idx;
+                        refresh();
+                    }
+                }
+            };
+
+            const onDocumentMouseUp = () => {
+                let didMutate = false;
+
+                if (state.draw) {
+                    const startIdx = state.draw.startIdx;
+                    const endIdx = state.draw.currentIdx;
+                    if (startIdx >= 0 && endIdx >= 0) {
+                        createLoopFromVisibleRange(startIdx, endIdx);
+                        didMutate = true;
+                    }
+                    state.draw = null;
+                }
+
+                if (state.resize) {
+                    didMutate = true;
+                    state.resize = null;
+                }
+
+                refresh();
+                if (didMutate && window.jsonBuilderInstance) {
+                    window.jsonBuilderInstance.updateJSON();
+                }
+
+                document.removeEventListener('mousemove', onDocumentMouseMove);
+                document.removeEventListener('mouseup', onDocumentMouseUp);
+            };
+
+            timelineContainer.addEventListener('mousedown', (e) => {
+                const handleEl = e.target.closest('.timeline-loop-handle');
+                if (handleEl) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const loopKey = handleEl.dataset.loopKey;
+                    const handleType = handleEl.dataset.handle;
+                    if (!loopKey || !handleType) return;
+                    state.resize = { loopKey, handleType, lastIdx: -1 };
+                    document.addEventListener('mousemove', onDocumentMouseMove);
+                    document.addEventListener('mouseup', onDocumentMouseUp);
+                    return;
+                }
+
+                const bracketEl = e.target.closest('.timeline-loop-bracket');
+                if (bracketEl) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const loopKey = bracketEl.dataset.loopKey;
+                    const loop = state.loopMap.get(loopKey || '');
+                    if (!loop) return;
+
+                    const startData = parseComponentData(loop.startEl);
+                    const currentIter = Number.parseInt(startData.iterations ?? loop.iterations ?? '1', 10) || 1;
+                    const next = window.prompt('Loop iterations', String(currentIter));
+                    if (next === null) return;
+                    const parsed = Number.parseInt(next, 10);
+                    if (!Number.isFinite(parsed) || parsed < 1) {
+                        window.alert('Iterations must be an integer >= 1.');
+                        return;
+                    }
+
+                    const updated = {
+                        ...startData,
+                        type: 'loop-start',
+                        iterations: Math.min(10000, parsed)
+                    };
+                    loop.startEl.dataset.componentData = JSON.stringify(updated);
+                    if (window.jsonBuilderInstance) {
+                        window.jsonBuilderInstance.updateJSON();
+                    }
+                    refresh();
+                    return;
+                }
+
+                const containerRect = timelineContainer.getBoundingClientRect();
+                const relX = e.clientX - containerRect.left;
+                if (relX > 26) return;
+                if (e.target.closest('.timeline-component')) return;
+
+                const startIdx = getVisibleIndexFromY(e.clientY);
+                if (startIdx < 0) return;
+
+                e.preventDefault();
+                state.draw = { startIdx, currentIdx: startIdx };
+                refresh();
+
+                document.addEventListener('mousemove', onDocumentMouseMove);
+                document.addEventListener('mouseup', onDocumentMouseUp);
+            });
+
+            const observer = new MutationObserver(() => {
+                refresh();
+            });
+            observer.observe(timelineContainer, { childList: true });
+
+            window.addEventListener('resize', refresh);
+            window.refreshLoopUI = refresh;
+            refresh();
         }
         
         function initializeRDMInterface() {
@@ -738,6 +1142,9 @@
             // Initialize sortable functionality after first component is added
             if (!window.timelineSortable) {
                 initializeTimelineSorting();
+            }
+            if (window.refreshLoopUI) {
+                window.refreshLoopUI();
             }
         }
         
@@ -1395,6 +1802,9 @@
             if (window.jsonBuilderInstance) {
                 window.jsonBuilderInstance.updateJSON();
             }
+            if (window.refreshLoopUI) {
+                window.refreshLoopUI();
+            }
         }
         
         function removeComponent(button) {
@@ -1426,6 +1836,9 @@
             // Update JSON
             if (window.jsonBuilderInstance) {
                 window.jsonBuilderInstance.updateJSON();
+            }
+            if (window.refreshLoopUI) {
+                window.refreshLoopUI();
             }
         }
 

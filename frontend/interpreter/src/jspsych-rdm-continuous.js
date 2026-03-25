@@ -53,6 +53,22 @@
     return 'both';
   }
 
+  function isRdmDebugEnabled() {
+    try {
+      if (typeof window !== 'undefined' && window.COGFLOW_RDM_DEBUG === true) return true;
+      if (typeof window !== 'undefined' && window.COGFLOW_RDM_DEBUG === false) return false;
+      if (typeof window !== 'undefined' && window.localStorage?.getItem('cogflow_rdm_debug_overlay') === '1') return true;
+      if (typeof window !== 'undefined' && window.location && typeof window.location.search === 'string') {
+        const q = new URLSearchParams(window.location.search);
+        const raw = (q.get('rdm_debug') || '').toString().trim().toLowerCase();
+        if (raw === '1' || raw === 'true' || raw === 'on' || raw === 'yes') return true;
+      }
+    } catch {
+      // ignore
+    }
+    return false;
+  }
+
   function computeCorrectSide(rdmParams) {
     return window.RDMEngine.computeCorrectSide(rdmParams);
   }
@@ -132,14 +148,23 @@
         <div id="rdm-wrap" style="width:100%; display:flex; justify-content:center; align-items:center; flex-direction:column; gap:10px;">
           <canvas id="rdm-canvas" width="${canvasW}" height="${canvasH}" style="border: 1px solid rgba(255,255,255,0.15);"></canvas>
           <div id="rdm-feedback" style="min-height: 24px;"></div>
+          <pre id="rdm-debug-panel" style="display:none; margin:0; width:min(980px,95vw); max-height:30vh; overflow:auto; box-sizing:border-box; padding:8px 10px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.58); color:#cfe9ff; font:12px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;"></pre>
         </div>
       `;
 
       const canvas = display_element.querySelector('#rdm-canvas');
       const feedbackEl = display_element.querySelector('#rdm-feedback');
+      const debugPanelEl = display_element.querySelector('#rdm-debug-panel');
 
       const engine = new window.RDMEngine(canvas, firstRdm);
       engine.start();
+      let debugPanelEnabled = isRdmDebugEnabled();
+      if (typeof engine.setDebugOverlayEnabled === 'function') {
+        engine.setDebugOverlayEnabled(debugPanelEnabled, { persist: false });
+      }
+      if (debugPanelEl) {
+        debugPanelEl.style.display = debugPanelEnabled ? 'block' : 'none';
+      }
 
       let frameIndex = 0;
       let segmentStart = nowMs();
@@ -257,6 +282,43 @@
         window.setTimeout(() => {
           feedbackEl.innerHTML = '';
         }, duration);
+      };
+
+      const updateDebugPanel = () => {
+        if (!debugPanelEl || !debugPanelEnabled) return;
+
+        const frame = getFrame(frameIndex);
+        const rdm = (frame && frame.rdm) ? frame.rdm : {};
+        const timing = (frame && frame.timing) ? frame.timing : {};
+        const response = (frame && frame.response) ? frame.response : {};
+        const elapsed = Math.max(0, Math.round(nowMs() - segmentStart));
+        const deadline = Math.round(safeNum(timing.response_deadline, safeNum(timing.stimulus_duration, updateInterval)));
+        const snap = (engine && typeof engine.getDebugSnapshot === 'function') ? engine.getDebugSnapshot() : null;
+
+        const measuredCohPct = (snap && Number.isFinite(Number(snap.coherent_ratio)))
+          ? (Number(snap.coherent_ratio) * 100)
+          : null;
+        const measuredSpeed = (snap && Number.isFinite(Number(snap.avg_speed)))
+          ? Number(snap.avg_speed)
+          : null;
+        const measuredDir = (snap && Number.isFinite(Number(snap.mean_direction_deg)))
+          ? Number(snap.mean_direction_deg)
+          : null;
+        const targetCohPct = Number.isFinite(Number(rdm.coherence)) ? (Number(rdm.coherence) * 100) : null;
+        const targetSpeed = Number.isFinite(Number(rdm.speed)) ? Number(rdm.speed) : null;
+        const targetDir = Number.isFinite(Number(rdm.direction ?? rdm.coherent_direction)) ? Number(rdm.direction ?? rdm.coherent_direction) : null;
+
+        const lines = [
+          'RDM DEBUG PANEL  (Ctrl+Shift+D toggles, ?rdm_debug=1 enables on load)',
+          `frame ${frameIndex + 1}/${frames.length}  elapsed=${elapsed}ms  deadline=${deadline}ms  transition=${transitionType}  transition_ms=${Math.round(transitionDuration)}`,
+          `noise=${snap ? snap.noise_type : String(rdm.noise_type || '')}  lifetime=${snap ? snap.lifetime_frames : Number(rdm.lifetime_frames || 0)}  dots=${snap ? snap.total_dots : Number(rdm.total_dots || 0)} coherent=${snap ? snap.coherent_dots : 'n/a'}`,
+          `fps=${snap && Number.isFinite(snap.fps) ? snap.fps.toFixed(1) : 'n/a'}  reseeds/s=${snap ? snap.reseeds_per_sec : 'n/a'}  noise-jumps/s=${snap ? snap.noise_jumps_per_sec : 'n/a'}`,
+          `coherence target=${targetCohPct !== null ? targetCohPct.toFixed(1) + '%' : 'n/a'} measured=${measuredCohPct !== null ? measuredCohPct.toFixed(1) + '%' : 'n/a'}`,
+          `speed target=${targetSpeed !== null ? targetSpeed : 'n/a'} measured=${measuredSpeed !== null ? measuredSpeed.toFixed(2) : 'n/a'}  dir target=${targetDir !== null ? targetDir : 'n/a'} measured=${measuredDir !== null ? measuredDir.toFixed(1) : 'n/a'}`,
+          `response_device=${String(response.response_device || 'keyboard')} end_on_response=${response.end_condition_on_response === true}`,
+          `source_version=20260325-rdm-debug-1`
+        ];
+        debugPanelEl.textContent = lines.join('\n');
       };
 
       const advanceFrame = (reason) => {
@@ -395,6 +457,8 @@
           }
         }
 
+        updateDebugPanel();
+
         requestAnimationFrame(tick);
       };
 
@@ -402,6 +466,7 @@
       let keyListenerId = null;
       let mouseListener = null;
       let mouseListenerEvent = null;
+      let debugToggleListener = null;
 
       const handleResponse = (side, key, meta) => {
         if (ended) return;
@@ -653,14 +718,32 @@
         // only re-attaches if the current frame uses that device.
         setKeyboardListenerForCurrentFrame();
         setPointerListenerForCurrentFrame();
+
+        debugToggleListener = (e) => {
+          if (!e) return;
+          const key = (e.key || '').toLowerCase();
+          if (key !== 'd' || !e.ctrlKey || !e.shiftKey) return;
+          e.preventDefault();
+          debugPanelEnabled = !debugPanelEnabled;
+          if (typeof engine.setDebugOverlayEnabled === 'function') {
+            engine.setDebugOverlayEnabled(debugPanelEnabled, { persist: true });
+          }
+          if (debugPanelEl) {
+            debugPanelEl.style.display = debugPanelEnabled ? 'block' : 'none';
+          }
+          updateDebugPanel();
+        };
+        window.addEventListener('keydown', debugToggleListener);
       };
 
       const cleanupListeners = () => {
         if (keyListenerId) this.jsPsych.pluginAPI.cancelKeyboardResponse(keyListenerId);
         if (mouseListener && mouseListenerEvent) canvas.removeEventListener(mouseListenerEvent, mouseListener);
+        if (debugToggleListener) window.removeEventListener('keydown', debugToggleListener);
         keyListenerId = null;
         mouseListener = null;
         mouseListenerEvent = null;
+        debugToggleListener = null;
       };
 
       // Kick off
@@ -677,6 +760,7 @@
 
       // Ensure pointer listener matches the first frame.
       setPointerListenerForCurrentFrame();
+      updateDebugPanel();
 
       requestAnimationFrame(tick);
     }

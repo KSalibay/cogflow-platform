@@ -15,6 +15,29 @@
     return (typeof v === 'string' && v.trim() !== '') ? v : fallback;
   }
 
+  function normalizeNoiseType(raw) {
+    const t = (typeof raw === 'string') ? raw.trim().toLowerCase() : '';
+    if (t === 'random_position' || t === 'random-position' || t === 'randompos') return 'random_position';
+    if (t === 'random_walk' || t === 'random-walk' || t === 'brownian' || t === 'correlated_noise') return 'random_walk';
+    return 'random_direction';
+  }
+
+  function isGlobalRdmDebugEnabled() {
+    try {
+      if (typeof window !== 'undefined' && window.COGFLOW_RDM_DEBUG === true) return true;
+      if (typeof window !== 'undefined' && window.COGFLOW_RDM_DEBUG === false) return false;
+      if (typeof window !== 'undefined' && window.localStorage?.getItem('cogflow_rdm_debug_overlay') === '1') return true;
+      if (typeof window !== 'undefined' && window.location && typeof window.location.search === 'string') {
+        const q = new URLSearchParams(window.location.search);
+        const raw = (q.get('rdm_debug') || '').toString().trim().toLowerCase();
+        if (raw === '1' || raw === 'true' || raw === 'on' || raw === 'yes') return true;
+      }
+    } catch {
+      // ignore
+    }
+    return false;
+  }
+
   function parseColorToRgb(raw, fallbackRgb) {
     const s = (typeof raw === 'string') ? raw.trim() : '';
     if (!s) return fallbackRgb;
@@ -126,17 +149,9 @@
       this.apertureShape = (p.aperture_shape === 'square') ? 'square' : 'circle';
       this.apertureSize = Number(p.aperture_size ?? Math.min(w, h) / 2);
       this.apertureRadius = this.apertureShape === 'circle' ? (this.apertureSize / 2) : null;
-      this.noiseType = typeof p.noise_type === 'string' ? p.noise_type : 'random_direction';
+      this.noiseType = normalizeNoiseType(p.noise_type);
 
-      const globalDebug = (() => {
-        try {
-          if (typeof window === 'undefined') return false;
-          if (window.COGFLOW_RDM_DEBUG === true) return true;
-          return window.localStorage?.getItem('cogflow_rdm_debug_overlay') === '1';
-        } catch {
-          return false;
-        }
-      })();
+      const globalDebug = isGlobalRdmDebugEnabled();
       this.debugOverlayEnabled = (p.debug_overlay === true) || globalDebug;
 
       this.lifetimeFrames = Math.max(1, Number.parseInt(p.lifetime_frames ?? 60, 10) || 60);
@@ -159,8 +174,7 @@
         'aperture_shape',
         'aperture_size',
         'total_dots',
-        'dot_size',
-        'lifetime_frames'
+        'dot_size'
       ];
 
       for (const k of keys) {
@@ -231,10 +245,13 @@
         const g2Color = doColor ? rgbToCss(lerpRgb(aG2Color, bG2Color, t)) : pickColor(b.group_2_color, pickColor(a.group_2_color, '#0066FF'));
         const g1Speed = doSpeed ? lerp(Number(aG1Speed), Number(bG1Speed), t) : Number(bG1Speed);
         const g2Speed = doSpeed ? lerp(Number(aG2Speed), Number(bG2Speed), t) : Number(bG2Speed);
-        const g1Coh = doSpeed ? lerp(aG1Coh, bG1Coh, t) : bG1Coh;
-        const g2Coh = doSpeed ? lerp(aG2Coh, bG2Coh, t) : bG2Coh;
-        const g1Dir = doSpeed ? lerpAngleDeg(aG1Dir, bG1Dir, t) : bG1Dir;
-        const g2Dir = doSpeed ? lerpAngleDeg(aG2Dir, bG2Dir, t) : bG2Dir;
+        // Keep motion-definition fields exact per frame for behavioral fidelity.
+        // We only interpolate visual/kinematic fields (color/speed), not
+        // coherence or direction.
+        const g1Coh = bG1Coh;
+        const g2Coh = bG2Coh;
+        const g1Dir = bG1Dir;
+        const g2Dir = bG2Dir;
 
         // keep cue border behavior current
         this.params = { ...(this.params || {}), ...(b || {}) };
@@ -282,6 +299,10 @@
             d.coherence = g2Coh;
             d.direction = g2Dir;
           }
+          const dir = d.isCoherent ? Number(d.direction ?? 0) : Number(d.noiseDirection ?? (this.rng() * 360));
+          const r = degToRad(dir);
+          d.vx = Math.cos(r) * Number(d.speed ?? 0);
+          d.vy = Math.sin(r) * Number(d.speed ?? 0);
         }
         return;
       }
@@ -298,17 +319,28 @@
 
       const dotColor = doColor ? rgbToCss(lerpRgb(aColor, bColor, t)) : pickColor(b.dot_color, pickColor(a.dot_color, '#ffffff'));
       const speed = doSpeed ? lerp(Number(aSpeed), Number(bSpeed), t) : Number(bSpeed);
-      const coherence = doSpeed ? lerp(aCoh, bCoh, t) : bCoh;
-      const direction = doSpeed ? lerpAngleDeg(aDir, bDir, t) : bDir;
+      // Keep coherence/direction exact (no transition blending), so reported
+      // and observed motion parameters match compiled frame values.
+      const coherence = bCoh;
+      const direction = bDir;
 
       this.params = { ...(this.params || {}), ...(b || {}) };
-      this.noiseType = typeof b.noise_type === 'string' ? b.noise_type : (typeof this.noiseType === 'string' ? this.noiseType : 'random_direction');
+      this.noiseType = normalizeNoiseType((b.noise_type !== undefined) ? b.noise_type : this.noiseType);
+
+      const nextLifetime = Number.parseInt((b.lifetime_frames !== undefined) ? b.lifetime_frames : this.lifetimeFrames, 10);
+      if (Number.isFinite(nextLifetime) && nextLifetime > 0) {
+        this.lifetimeFrames = Math.max(1, nextLifetime);
+      }
 
       for (const d of this.dots) {
         d.color = dotColor;
         d.speed = speed;
         d.coherence = coherence;
         d.direction = direction;
+        const dir = d.isCoherent ? Number(d.direction ?? 0) : Number(d.noiseDirection ?? (this.rng() * 360));
+        const r = degToRad(dir);
+        d.vx = Math.cos(r) * Number(d.speed ?? 0);
+        d.vy = Math.sin(r) * Number(d.speed ?? 0);
       }
     }
 
@@ -446,9 +478,11 @@
     _tick(ts) {
       if (!this.running) return;
       this.frameCount++;
+      let dtMs = 1000 / 60;
       if (this.lastTs > 0) {
         const dt = ts - this.lastTs;
         if (dt > 0) {
+          dtMs = dt;
           const instFps = 1000 / dt;
           this.fps = this.fps > 0 ? (this.fps * 0.85 + instFps * 0.15) : instFps;
         }
@@ -458,7 +492,7 @@
         this._debugLastSecTs = ts;
       }
       this.lastTs = ts;
-      this.step();
+      this.step(dtMs);
 
       // Accumulate after step() so the current frame's counters are included.
       this._debugAccReseeds += this._debugFrameReseeds;
@@ -475,13 +509,15 @@
       this.raf = requestAnimationFrame(this._tick);
     }
 
-    step() {
+    step(dtMs) {
       this._debugFrameReseeds = 0;
       this._debugFrameNoiseJumps = 0;
+      const dt = Number.isFinite(Number(dtMs)) && Number(dtMs) > 0 ? Number(dtMs) : (1000 / 60);
+      const lifeStep = dt / (1000 / 60);
 
       for (let i = 0; i < this.dots.length; i++) {
         const d = this.dots[i];
-        d.life++;
+        d.life += lifeStep;
         if (d.life >= this.lifetimeFrames) {
           this._reseedDot(d);
           continue;
@@ -663,6 +699,55 @@
       }
 
       this._renderDebugOverlay();
+    }
+
+    setDebugOverlayEnabled(enabled, options) {
+      const on = enabled === true;
+      const persist = !options || options.persist !== false;
+      this.debugOverlayEnabled = on;
+      try {
+        if (typeof window !== 'undefined') {
+          window.COGFLOW_RDM_DEBUG = on;
+          if (persist && window.localStorage) {
+            window.localStorage.setItem('cogflow_rdm_debug_overlay', on ? '1' : '0');
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    getDebugSnapshot() {
+      let coherentDots = 0;
+      let speedSum = 0;
+      let meanDirX = 0;
+      let meanDirY = 0;
+      for (const d of this.dots) {
+        if (d && d.isCoherent === true) coherentDots += 1;
+        const sp = Number(d && d.speed);
+        if (Number.isFinite(sp)) speedSum += sp;
+        const dir = Number(d && d.direction);
+        if (Number.isFinite(dir)) {
+          const r = degToRad(dir);
+          meanDirX += Math.cos(r);
+          meanDirY += Math.sin(r);
+        }
+      }
+      const nDots = Math.max(1, this.dots.length);
+      const meanDirDeg = ((Math.atan2(meanDirY, meanDirX) * 180) / Math.PI + 360) % 360;
+      return {
+        fps: this.fps,
+        noise_type: this.noiseType,
+        lifetime_frames: this.lifetimeFrames,
+        total_dots: this.dots.length,
+        coherent_dots: coherentDots,
+        coherent_ratio: coherentDots / nDots,
+        avg_speed: speedSum / nDots,
+        mean_direction_deg: meanDirDeg,
+        reseeds_per_sec: this._debugSecReseeds,
+        noise_jumps_per_sec: this._debugSecNoiseJumps,
+        debug_overlay_enabled: this.debugOverlayEnabled === true
+      };
     }
 
     _drawFeedbackArrow() {

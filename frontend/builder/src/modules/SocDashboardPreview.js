@@ -416,10 +416,13 @@
     const highlightSubdomains = !!(subtask?.highlight_subdomains ?? true);
     const targetColor = (subtask?.target_highlight_color ?? '#22c55e').toString();
     const distractorColor = (subtask?.distractor_highlight_color ?? '#ef4444').toString();
-    const goCondition = (subtask?.go_condition ?? 'target').toString();
+    let goCondition = (subtask?.go_condition ?? 'block').toString().trim().toLowerCase();
+    // Backward compatibility: map old values (target/distractor) to new (allow/block)
+    if (goCondition === 'target') goCondition = 'allow';
+    if (goCondition === 'distractor') goCondition = 'block';
 
     // Keep action outcomes consistent within a run.
-    const triageActionOnGo = (goCondition.toString().trim().toLowerCase() === 'distractor') ? 'BLOCK' : 'ALLOW';
+    const triageActionOnGo = (goCondition === 'block') ? 'BLOCK' : 'ALLOW';
 
     const targets = parseList(subtask?.target_subdomains);
     const distractors = parseList(subtask?.distractor_subdomains);

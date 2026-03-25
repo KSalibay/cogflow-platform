@@ -185,7 +185,7 @@ class TimelineBuilder {
         console.log('Component type:', component.type);
 
         // Custom editor for survey forms (complex nested question structure)
-        if (component.type === 'survey-response') {
+        if (component.type === 'survey-response' || component.type === 'mw-probe') {
             this.showSurveyResponseParameterModal(component, componentElement, { modal, modalBody, modalTitle });
             return;
         }
@@ -872,6 +872,9 @@ class TimelineBuilder {
         const allowEmptyOnTimeout = !!(component.allow_empty_on_timeout ?? component.parameters?.allow_empty_on_timeout ?? false);
         const timeoutMs = (component.timeout_ms ?? component.parameters?.timeout_ms ?? null);
         const questions = component.questions ?? component.parameters?.questions ?? [];
+        const isMwProbe = component.type === 'mw-probe';
+        const minIntervalMs = component.min_interval_ms ?? component.parameters?.min_interval_ms ?? 0;
+        const maxIntervalMs = component.max_interval_ms ?? component.parameters?.max_interval_ms ?? 0;
 
         modalBody.innerHTML = `
             <div class="mb-3">
@@ -906,6 +909,24 @@ class TimelineBuilder {
                     </div>
                 </div>
             </div>
+
+            ${isMwProbe ? `<hr />
+            <div class="mb-3">
+                <h6 class="fw-bold">Probe Timing (Jitter)</h6>
+                <div class="row g-2">
+                    <div class="col-md-4">
+                        <label class="form-label">Min interval from block start (ms)</label>
+                        <input type="number" class="form-control" id="mw_min_interval_ms" min="0" value="${this.escapeHtmlAttr(String(minIntervalMs))}" placeholder="0">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Max interval from block start (ms)</label>
+                        <input type="number" class="form-control" id="mw_max_interval_ms" min="0" value="${this.escapeHtmlAttr(String(maxIntervalMs))}" placeholder="0">
+                    </div>
+                    <div class="col-md-4 d-flex align-items-end pb-1">
+                        <small class="text-muted">When placed before a block, the probe onset is jittered to a random time within [min, max] and interrupts the block at the nearest trial boundary.</small>
+                    </div>
+                </div>
+            </div>` : ''}
 
             <hr />
 
@@ -1168,7 +1189,12 @@ class TimelineBuilder {
             questions.push(q);
         });
 
-        return { title, instructions, submit_label, allow_empty_on_timeout, timeout_ms, questions };
+        const minIntervalRaw = modalBody.querySelector('#mw_min_interval_ms')?.value;
+        const maxIntervalRaw = modalBody.querySelector('#mw_max_interval_ms')?.value;
+        const min_interval_ms = (minIntervalRaw !== undefined && minIntervalRaw !== null && minIntervalRaw !== '') ? Number(minIntervalRaw) : null;
+        const max_interval_ms = (maxIntervalRaw !== undefined && maxIntervalRaw !== null && maxIntervalRaw !== '') ? Number(maxIntervalRaw) : null;
+
+        return { title, instructions, submit_label, allow_empty_on_timeout, timeout_ms, questions, min_interval_ms, max_interval_ms };
     }
 
     generateParameterFormFromComponentDefinitions(component) {
@@ -3589,6 +3615,7 @@ class TimelineBuilder {
             const type = (component?.type ?? '').toString();
             if (type === 'detection-response-task-start') {
                 const overrideEl = formContainer.querySelector('#param_override_iso_standard');
+                const displayModeEl = formContainer.querySelector('#param_drt_display_mode');
                 const isoFields = [
                     { name: 'min_iti_ms', value: 3000 },
                     { name: 'max_iti_ms', value: 5000 },
@@ -3613,6 +3640,27 @@ class TimelineBuilder {
                     overrideEl.addEventListener('change', applyIsoLockState);
                 }
                 applyIsoLockState();
+
+                const setParamVisibility = (paramName, visible) => {
+                    const groupEl = formContainer.querySelector(`[data-param-name="${CSS.escape(paramName)}"]`);
+                    const inputEl = formContainer.querySelector(`#${CSS.escape(`param_${paramName}`)}`);
+                    if (groupEl) groupEl.style.display = visible ? '' : 'none';
+                    if (inputEl) inputEl.disabled = !visible;
+                };
+
+                const applyDisplayModeVisibility = () => {
+                    const mode = (displayModeEl?.value ?? 'corner_dot').toString().trim().toLowerCase();
+                    const isBorderMode = mode === 'screen_border';
+
+                    // Border mode uses color + size_px (as thickness); dot-specific shape/location are ignored.
+                    setParamVisibility('stimulus_type', !isBorderMode);
+                    setParamVisibility('location', !isBorderMode);
+                };
+
+                if (displayModeEl) {
+                    displayModeEl.addEventListener('change', applyDisplayModeVisibility);
+                }
+                applyDisplayModeVisibility();
             }
         } catch {
             // ignore
@@ -3870,11 +3918,11 @@ class TimelineBuilder {
         }
 
         // Survey editor uses a custom DOM (not param_* inputs)
-        if (currentData.type === 'survey-response') {
+        if (currentData.type === 'survey-response' || currentData.type === 'mw-probe') {
             const survey = this.collectSurveyResponseFromModal(modalBody);
             const updatedData = {
                 type: currentData.type,
-                name: currentData.name || 'Survey Response',
+                name: currentData.name || (currentData.type === 'mw-probe' ? 'Mind Wandering Probe' : 'Survey Response'),
                 ...currentData,
                 ...survey,
                 label: this._readLabelFromModal(modalBody)
@@ -4009,6 +4057,15 @@ class TimelineBuilder {
                     newParameters.stimulus_duration_ms = 1000;
                     newParameters.min_rt_ms = 100;
                     newParameters.max_rt_ms = 2500;
+                }
+
+                const displayMode = (newParameters.drt_display_mode ?? currentData.drt_display_mode ?? 'corner_dot').toString().trim().toLowerCase();
+                newParameters.drt_display_mode = (displayMode === 'screen_border') ? 'screen_border' : 'corner_dot';
+
+                // Tidy JSON output: remove fields that are ignored by the selected display mode.
+                if (newParameters.drt_display_mode === 'screen_border') {
+                    delete newParameters.stimulus_type;
+                    delete newParameters.location;
                 }
             }
         } catch {
@@ -4281,6 +4338,30 @@ class TimelineBuilder {
                 if (Object.prototype.hasOwnProperty.call(updatedData.parameters, 'detection_response_task_enabled')) {
                     delete updatedData.parameters.detection_response_task_enabled;
                 }
+            }
+
+            // DRT Start: keep saved JSON tidy by removing fields ignored by display mode.
+            try {
+                if ((updatedData.type || '') === 'detection-response-task-start') {
+                    const modeRaw = (updatedData.drt_display_mode ?? updatedData.parameters?.drt_display_mode ?? 'corner_dot').toString().trim().toLowerCase();
+                    const mode = (modeRaw === 'screen_border') ? 'screen_border' : 'corner_dot';
+
+                    updatedData.drt_display_mode = mode;
+                    if (updatedData.parameters && typeof updatedData.parameters === 'object') {
+                        updatedData.parameters.drt_display_mode = mode;
+                    }
+
+                    if (mode === 'screen_border') {
+                        if (Object.prototype.hasOwnProperty.call(updatedData, 'stimulus_type')) delete updatedData.stimulus_type;
+                        if (Object.prototype.hasOwnProperty.call(updatedData, 'location')) delete updatedData.location;
+                        if (updatedData.parameters && typeof updatedData.parameters === 'object') {
+                            if (Object.prototype.hasOwnProperty.call(updatedData.parameters, 'stimulus_type')) delete updatedData.parameters.stimulus_type;
+                            if (Object.prototype.hasOwnProperty.call(updatedData.parameters, 'location')) delete updatedData.parameters.location;
+                        }
+                    }
+                }
+            } catch {
+                // ignore
             }
 
             // WCST-like: keep output clean when toggling response device.

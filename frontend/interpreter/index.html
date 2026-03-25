@@ -3,18 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>CogFlow Interpreter — Platform Edition</title>
-
-  <!-- ═══════════════════════════════════════════════════════════════════
-       CogFlow Platform configuration.
-       Set COGFLOW_PLATFORM_URL to activate the Django runtime backend.
-       When empty, the interpreter falls back to JATOS / local-download mode.
-       ═══════════════════════════════════════════════════════════════════ -->
-  <script>
-    window.COGFLOW_PLATFORM_URL    = '';   // e.g. 'http://localhost:8000'
-    window.COGFLOW_STUDY_SLUG      = '';   // e.g. 'my-rdm-study'
-    window.COGFLOW_PARTICIPANT_ID  = '';   // optional participant code
-  </script>
+  <title>CogFlow Interpreter</title>
 
   <link rel="icon" href="data:," />
 
@@ -320,9 +309,9 @@
     window.COGFLOW_TOKEN_STORE_BASE_URL = 'https://cool-star-379d.kami-salibayeva.workers.dev';
   </script>
   <script src="src/drtEngine.js?v=20260223-3"></script>
-  <script src="src/rdmEngine.js?v=20260324-3"></script>
+  <script src="src/rdmEngine.js?v=20260325-2"></script>
   <script src="src/jspsych-rdm.js?v=20260324-2"></script>
-  <script src="src/jspsych-rdm-continuous.js?v=20260324-2"></script>
+  <script src="src/jspsych-rdm-continuous.js?v=20260325-2"></script>
   <script src="src/jspsych-survey-response.js?v=20260207"></script>
   <script src="src/jspsych-flanker.js?v=20260207"></script>
   <script src="src/jspsych-sart.js?v=20260207"></script>
@@ -339,7 +328,7 @@
   <script src="src/jspsych-soc-dashboard.js?v=20260224a"></script>
   <script src="src/eyeTrackingWebgazer.js?v=20260207"></script>
   <script src="src/configLoader.js?v=20260207"></script>
-  <script src="src/timelineCompiler.js?v=20260305-2"></script>
+  <script src="src/timelineCompiler.js?v=20260325-2"></script>
   <script src="src/djangoRuntimeBackend.js"></script>
   <script src="src/main.js?v=20260324-2"></script>
 </body>

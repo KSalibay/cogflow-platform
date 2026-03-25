@@ -177,6 +177,37 @@
       border-color: rgba(0, 0, 0, 0.0);
       color: var(--cf-ash-grey);
     }
+
+    /* ── Eye-tracking calibration dot screen ─────────────────────────── */
+    .psy-fullscreen {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+      background: var(--psy-bg);
+      color: var(--psy-fg);
+      overflow: hidden;
+    }
+    .psy-calibration-dot {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--psy-accent);
+      box-shadow: 0 0 0 6px rgba(255, 59, 59, 0.25);
+    }
+    html[data-psy-theme="light"] .psy-calibration-dot {
+      box-shadow: 0 0 0 6px rgba(217, 28, 28, 0.20);
+    }
+    .psy-bottom-hint {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 24px;
+      text-align: center;
+      opacity: 0.9;
+    }
   </style>
 </head>
 <body>
@@ -264,9 +295,9 @@
 
       const scripts = [
         'src/drtEngine.js?v=20260223-3',
-        'src/rdmEngine.js?v=20260324-3',
+        'src/rdmEngine.js?v=20260325-2',
         'src/jspsych-rdm.js?v=20260324-2',
-        'src/jspsych-rdm-continuous.js?v=20260324-2',
+        'src/jspsych-rdm-continuous.js?v=20260325-2',
         'src/jspsych-survey-response.js?v=20260207',
         'src/jspsych-flanker.js?v=20260207',
         'src/jspsych-sart.js?v=20260207',
@@ -276,14 +307,14 @@
         'src/jspsych-simon.js?v=20260218',
         'src/jspsych-task-switching.js?v=20260306-3',
         'src/jspsych-pvt.js?v=20260219',
+        'src/jspsych-mot.js?v=20260323-1',
         'src/jspsych-nback.js?v=20260222',
         'src/jspsych-nback-continuous.js?v=20260222',
         'src/jspsych-visual-angle-calibration.js?v=20260210',
         'src/jspsych-soc-dashboard.js?v=20260224a',
         'src/eyeTrackingWebgazer.js?v=20260207',
         'src/configLoader.js?v=20260207',
-        'src/timelineCompiler.js?v=20260305-2',
-        'src/djangoRuntimeBackend.js',
+        'src/timelineCompiler.js?v=20260325-2',
         'src/main.js?v=20260324-2'
       ];
 

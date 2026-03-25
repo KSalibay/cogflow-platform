@@ -772,6 +772,33 @@
         t[k] = sampleFromValues(v);
       }
 
+      if (baseType === 'sart-trial') {
+        const digitOptions = Array.isArray(values.digit)
+          ? values.digit
+              .map(v => Number.parseInt(v, 10))
+              .filter(v => Number.isFinite(v))
+          : [];
+        const nogoDigit = Number.parseInt(t.nogo_digit, 10);
+        const nogoProbability = Number(t.nogo_probability);
+        const useWeighted = digitOptions.length > 0
+          && Number.isFinite(nogoDigit)
+          && Number.isFinite(nogoProbability)
+          && nogoProbability > 0
+          && nogoProbability < 1;
+
+        if (useWeighted) {
+          const goDigits = digitOptions.filter(d => d !== nogoDigit);
+          if (goDigits.length > 0 && rng() < nogoProbability) {
+            t.digit = nogoDigit;
+          } else if (goDigits.length > 0) {
+            const idx = Math.floor(rng() * goDigits.length);
+            t.digit = goDigits[Math.max(0, Math.min(goDigits.length - 1, idx))];
+          } else {
+            t.digit = nogoDigit;
+          }
+        }
+      }
+
       // Apply sampled windows
       for (const [k, w] of Object.entries(windows)) {
         if (!isObject(w)) continue;
@@ -1212,13 +1239,129 @@
     const inTl = Array.isArray(rawTimeline) ? rawTimeline : [];
     const out = [];
 
+    const normalizeLoopIterations = (raw) => {
+      const n = Number.parseInt(raw ?? '', 10);
+      if (!Number.isFinite(n)) return 1;
+      return Math.max(1, Math.min(10000, n));
+    };
+
+    const normalizeLoopTreeFromMarkers = (list) => {
+      const src = Array.isArray(list) ? list : [];
+      const root = [];
+      const stack = [{ items: root, loopId: null }];
+
+      const toLoopId = (raw) => (raw ?? '').toString().trim();
+
+      for (const item of src) {
+        if (!isObject(item)) continue;
+        const t = (item.type ?? '').toString();
+
+        if (t === 'loop-start') {
+          const loopId = toLoopId(item.loop_id);
+          const loopNode = {
+            type: 'loop',
+            ...(loopId ? { loop_id: loopId } : {}),
+            iterations: normalizeLoopIterations(item.iterations ?? item.loop_iterations ?? 1),
+            items: []
+          };
+          if (item.label !== undefined && item.label !== null && item.label !== '') {
+            loopNode.label = item.label;
+          }
+          stack[stack.length - 1].items.push(loopNode);
+          stack.push({ items: loopNode.items, loopId });
+          continue;
+        }
+
+        if (t === 'loop-end') {
+          if (stack.length <= 1) continue;
+
+          const closingId = toLoopId(item.loop_id);
+          if (!closingId) {
+            stack.pop();
+            continue;
+          }
+
+          let matchedIndex = -1;
+          for (let i = stack.length - 1; i >= 1; i--) {
+            if ((stack[i].loopId || '') === closingId) {
+              matchedIndex = i;
+              break;
+            }
+          }
+          if (matchedIndex === -1) continue;
+          while (stack.length - 1 >= matchedIndex) {
+            stack.pop();
+          }
+          continue;
+        }
+
+        stack[stack.length - 1].items.push(item);
+      }
+
+      return root;
+    };
+
+    const inTlNormalized = normalizeLoopTreeFromMarkers(inTl);
+
     const preserveFor = (() => {
       const list = (opts && Array.isArray(opts.preserveBlocksForComponentTypes)) ? opts.preserveBlocksForComponentTypes : [];
       return new Set(list.map(x => (x ?? '').toString().trim()).filter(Boolean));
     })();
 
-    for (const item of inTl) {
+    const sampleMwProbeIntervalMs = (probeItem) => {
+      const minRaw = Number(probeItem && probeItem.min_interval_ms);
+      const maxRaw = Number(probeItem && probeItem.max_interval_ms);
+      const minMs = Number.isFinite(minRaw) ? Math.max(0, minRaw) : 0;
+      const maxMs = Number.isFinite(maxRaw) ? Math.max(0, maxRaw) : minMs;
+      const lo = Math.min(minMs, maxMs);
+      const hi = Math.max(minMs, maxMs);
+      return Math.round(lo + Math.random() * (hi - lo));
+    };
+
+    const estimateTrialDurationMs = (trial) => {
+      if (!isObject(trial)) return 0;
+
+      const candidates = [
+        trial.trial_duration_ms,
+        trial.trial_duration,
+        trial.duration_ms,
+        trial.stimulus_duration_ms,
+        trial.stimulus_duration
+      ];
+
+      for (const raw of candidates) {
+        const n = Number(raw);
+        if (Number.isFinite(n) && n > 0) return n;
+      }
+
+      const stimMs = Number(trial.stimulus_duration_ms);
+      const isiMs = Number(trial.isi_duration_ms);
+      if (Number.isFinite(stimMs) && stimMs > 0 && Number.isFinite(isiMs) && isiMs >= 0) {
+        return stimMs + isiMs;
+      }
+
+      const fallback = Number(opts && opts.defaultGeneratedTrialDurationMs);
+      if (Number.isFinite(fallback) && fallback > 0) return fallback;
+
+      return 0;
+    };
+
+    for (const item of inTlNormalized) {
       if (!isObject(item)) continue;
+
+      if (item.type === 'loop') {
+        const iterations = normalizeLoopIterations(item.iterations ?? item.loop_iterations ?? 1);
+        const childItems = Array.isArray(item.items)
+          ? item.items
+          : (Array.isArray(item.timeline)
+            ? item.timeline
+            : (Array.isArray(item.components) ? item.components : []));
+
+        for (let i = 0; i < iterations; i++) {
+          out.push(...expandTimeline(childItems, opts));
+        }
+        continue;
+      }
 
       if (item.type === 'nback-trial-sequence') {
         const expandNback = opts && opts.expandNbackSequences === true;
@@ -1246,6 +1389,79 @@
       }
 
       out.push(item);
+    }
+
+    // mw-probe jitter scheduling:
+    // Place probes inside surrounding generated block trials (before and/or after
+    // the marker position), so each loop iteration can sample a fresh interruption point.
+    for (let i = 0; i < out.length; i++) {
+      const probe = out[i];
+      if (!isObject(probe) || probe.type !== 'mw-probe') continue;
+
+      const maxRaw = Number(probe.max_interval_ms);
+      const minRaw = Number(probe.min_interval_ms);
+      const maxMs = Number.isFinite(maxRaw) ? Math.max(0, maxRaw) : (Number.isFinite(minRaw) ? Math.max(0, minRaw) : 0);
+
+      let runStart = i;
+      while (runStart - 1 >= 0) {
+        const candidate = out[runStart - 1];
+        if (!isObject(candidate) || candidate._generated_from_block !== true) break;
+        runStart -= 1;
+      }
+
+      let runEnd = i + 1;
+      while (runEnd < out.length) {
+        const candidate = out[runEnd];
+        if (!isObject(candidate) || candidate._generated_from_block !== true) break;
+        runEnd += 1;
+      }
+
+      const generatedIdx = [];
+      let totalDurationMs = 0;
+      for (let k = runStart; k < runEnd; k++) {
+        if (k === i) continue;
+        const trial = out[k];
+        if (!isObject(trial) || trial._generated_from_block !== true) continue;
+        generatedIdx.push(k);
+        totalDurationMs += estimateTrialDurationMs(trial);
+      }
+
+      if (!generatedIdx.length) continue;
+
+      let targetMs;
+      if (maxMs > 0) {
+        targetMs = sampleMwProbeIntervalMs(probe);
+      } else if (totalDurationMs > 0) {
+        // Default behavior when min/max are 0: sample around the middle half
+        // of the surrounding generated run to avoid edge-biased probe placement.
+        const lo = totalDurationMs * 0.25;
+        const hi = totalDurationMs * 0.75;
+        targetMs = Math.round(lo + Math.random() * Math.max(0, hi - lo));
+      } else {
+        targetMs = null;
+      }
+
+      let insertAt;
+      if (targetMs === null) {
+        const pick = generatedIdx[Math.floor(Math.random() * generatedIdx.length)];
+        insertAt = Number.isFinite(pick) ? pick : generatedIdx[generatedIdx.length - 1];
+      } else {
+        let accMs = 0;
+        insertAt = generatedIdx[generatedIdx.length - 1];
+        for (const k of generatedIdx) {
+          accMs += estimateTrialDurationMs(out[k]);
+          if (accMs >= targetMs) {
+            insertAt = k;
+            break;
+          }
+        }
+      }
+
+      out.splice(i, 1);
+      if (insertAt > i) insertAt -= 1;
+      out.splice(insertAt, 0, probe);
+
+      i = insertAt;
     }
 
     return out;
@@ -1411,9 +1627,26 @@
       'gabor-learning'
     ];
 
+    const defaultGeneratedTrialDurationMs = (() => {
+      const tp = isObject(config.timing_parameters) ? config.timing_parameters : {};
+      const candidates = [
+        tp.response_deadline,
+        tp.stimulus_duration,
+        tp.trial_duration,
+        config.default_trial_duration,
+        config.update_interval
+      ];
+      for (const raw of candidates) {
+        const n = Number(raw);
+        if (Number.isFinite(n) && n > 0) return n;
+      }
+      return 1000;
+    })();
+
     const expandedRaw = expandTimeline(config.timeline, {
       preserveBlocksForComponentTypes: preserveBlocksFor,
       expandNbackSequences: experimentType === 'trial-based',
+      defaultGeneratedTrialDurationMs,
       nbackDefaults,
       taskSwitchingDefaults
     });
@@ -2076,6 +2309,22 @@
           continue;
         }
 
+        if (type === 'mw-probe') {
+          pushRdmContinuousSegment();
+          const SurveyResponse = requirePlugin('survey-response (window.jsPsychSurveyResponse)', window.jsPsychSurveyResponse);
+          timeline.push({
+            type: SurveyResponse,
+            title: item.title || 'Thought Probe',
+            instructions: item.instructions || '',
+            submit_label: item.submit_label || 'Continue',
+            allow_empty_on_timeout: item.allow_empty_on_timeout !== false,
+            timeout_ms: (item.timeout_ms === null || item.timeout_ms === undefined) ? null : Number(item.timeout_ms),
+            questions: Array.isArray(item.questions) ? item.questions : [],
+            data: { plugin_type: 'mw-probe' }
+          });
+          continue;
+        }
+
         if (typeof type === 'string' && type.startsWith('rdm-')) {
           const itemCopy = { ...item };
           delete itemCopy.response_parameters_override;
@@ -2488,6 +2737,21 @@
           timeout_ms: (item.timeout_ms === null || item.timeout_ms === undefined) ? null : Number(item.timeout_ms),
           questions: Array.isArray(item.questions) ? item.questions : [],
           data: { plugin_type: type }
+        });
+        continue;
+      }
+
+      if (type === 'mw-probe') {
+        const SurveyResponse = requirePlugin('survey-response (window.jsPsychSurveyResponse)', window.jsPsychSurveyResponse);
+        timeline.push({
+          type: SurveyResponse,
+          title: item.title || 'Thought Probe',
+          instructions: item.instructions || '',
+          submit_label: item.submit_label || 'Continue',
+          allow_empty_on_timeout: item.allow_empty_on_timeout !== false,
+          timeout_ms: (item.timeout_ms === null || item.timeout_ms === undefined) ? null : Number(item.timeout_ms),
+          questions: Array.isArray(item.questions) ? item.questions : [],
+          data: { plugin_type: 'mw-probe' }
         });
         continue;
       }

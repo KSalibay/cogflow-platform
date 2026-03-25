@@ -650,7 +650,12 @@
       const responseDevice = ((o.response_device ?? 'keyboard').toString().trim().toLowerCase() === 'mouse') ? 'mouse' : 'keyboard';
       const goKey = normalizeKeyName(o.go_key ?? 'space');
       const goButton = ((o.go_button ?? 'action').toString().trim().toLowerCase() === 'change') ? 'change' : 'action';
-      const goCondition = ((o.go_condition ?? 'target').toString().trim().toLowerCase() === 'distractor') ? 'distractor' : 'target';
+      let goCondition = (o.go_condition ?? 'block').toString().trim().toLowerCase();
+      // Backward compatibility: normalize old values (target/distractor) to new (allow/block)
+      if (goCondition === 'target') goCondition = 'allow';
+      if (goCondition === 'distractor') goCondition = 'block';
+      // Ensure only valid values remain
+      goCondition = (goCondition === 'allow' || goCondition === 'block') ? goCondition : 'block';
 
       const showMarkers = (o.show_markers !== undefined) ? !!o.show_markers : false;
 
@@ -3137,7 +3142,7 @@
         ? `Go key: ${cfg.go_key === ' ' ? 'SPACE' : escHtml(cfg.go_key)}`
         : `Click "${cfg.go_button === 'change' ? 'Change' : 'Action'}" on the highlighted row`;
 
-      const goRule = (cfg.go_condition === 'target')
+      const goRule = (cfg.go_condition === 'allow')
         ? 'GO on TARGET entries; withhold otherwise.'
         : 'GO on DISTRACTOR entries; withhold otherwise.';
 
@@ -3161,8 +3166,8 @@
       const statusEl = host.querySelector(`#soc_sart_status_${i}`);
 
       const shouldGoFor = (entryClass) => {
-        if (cfg.go_condition === 'target') return entryClass === 'target';
-        if (cfg.go_condition === 'distractor') return entryClass === 'distractor';
+        if (cfg.go_condition === 'allow') return entryClass === 'target';
+        if (cfg.go_condition === 'block') return entryClass === 'distractor';
         return false;
       };
 
@@ -3227,9 +3232,9 @@
         if (!entry) return;
         // Semantics: GO commits a triage decision.
         // To avoid mixing ALLOW/BLOCK in the same run, bind the action to the configured GO rule:
-        // - GO on target  => ALLOW (even if a participant responds on a distractor)
-        // - GO on distractor => BLOCK (even if a participant responds on a target)
-        entry.triage_action = (cfg.go_condition === 'distractor') ? 'BLOCK' : 'ALLOW';
+        // - GO on target (allow mode)  => ALLOW (even if a participant responds on a distractor)
+        // - GO on distractor (block mode) => BLOCK (even if a participant responds on a target)
+        entry.triage_action = (cfg.go_condition === 'block') ? 'BLOCK' : 'ALLOW';
       };
 
       const renderRows = () => {

@@ -150,7 +150,7 @@ class JSPsychSchemas {
                     },
                     instructions: {
                         type: this.parameterTypes.HTML_STRING,
-                        default: '<p>Please press <b>{{GO_CONTROL}}</b> to filter through login attempts.</p>\n<p>Press <b>{{GO_CONTROL}}</b> to allow safe logins, and block harmful ones.</p>\n<p><b>Harmful (targets)</b>: {{TARGETS}}</p>\n<p><b>Benign (distractors)</b>: {{DISTRACTORS}}</p>\n<p><i>Click this popup to begin.</i></p>',
+                           default: '<p>Log entries will stream past. Your job is to triage each one:</p>\n<p>Press <b>{{GO_CONTROL}}</b> when the current entry matches the class configured for a response in this subtask.</p>\n<p><b>Withhold</b> your response for the other class.</p>\n<p><b>Harmful:</b> {{TARGETS}}</p>\n<p><b>Benign:</b> {{DISTRACTORS}}</p>\n<p><i>Click this popup to begin.</i></p>',
                         description: 'Optional instructions shown in a popup before this subtask begins (closing the popup marks the subtask start time)'
                     },
                     instructions_title: {
@@ -210,9 +210,9 @@ class JSPsychSchemas {
                     },
                     go_condition: {
                         type: this.parameterTypes.SELECT,
-                        default: 'target',
-                        options: ['target', 'distractor'],
-                        description: 'Which class requires a Go response'
+                        default: 'block',
+                        options: ['block', 'allow'],
+                        description: 'Response condition: "block" to respond to distractors, "allow" to respond to targets'
                     },
                     highlight_subdomains: {
                         type: this.parameterTypes.BOOL,

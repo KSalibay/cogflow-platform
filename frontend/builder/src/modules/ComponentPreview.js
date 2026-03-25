@@ -3644,9 +3644,20 @@ class ComponentPreview {
             };
 
             const digits = parseIntList(blockData.sart_digit_options);
-            sampled.digit = pickFromList(digits, 1);
-
             const nogo = Number.parseInt(blockData.sart_nogo_digit, 10);
+            const nogoProb = Number.parseFloat(blockData.sart_nogo_probability);
+            const useWeighted = Number.isFinite(nogoProb) && nogoProb > 0 && nogoProb < 1 && Number.isFinite(nogo);
+            if (useWeighted) {
+                const goDigits = digits.filter(d => d !== nogo);
+                if (goDigits.length > 0 && Math.random() < nogoProb) {
+                    sampled.digit = nogo;
+                } else {
+                    sampled.digit = pickFromList(goDigits.length > 0 ? goDigits : digits, 1);
+                }
+            } else {
+                sampled.digit = pickFromList(digits, 1);
+            }
+
             if (Number.isFinite(nogo)) sampled.nogo_digit = nogo;
 
             sampled.go_key = (blockData.sart_go_key || 'space').toString();
