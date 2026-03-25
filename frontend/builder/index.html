@@ -823,7 +823,7 @@
                     bracket.style.top = `${top}px`;
                     bracket.style.height = `${Math.max(8, bottom - top)}px`;
                     bracket.dataset.loopKey = key;
-                    bracket.title = `Loop x${loop.iterations}${loop.label ? ` (${loop.label})` : ''}`;
+                    bracket.title = `Loop x${loop.iterations}${loop.label ? ` (${loop.label})` : ''} • click to edit (enter 0 to remove)`;
 
                     const topHandle = document.createElement('div');
                     topHandle.className = 'timeline-loop-handle top';
@@ -928,9 +928,20 @@
 
                     const startData = parseComponentData(loop.startEl);
                     const currentIter = Number.parseInt(startData.iterations ?? loop.iterations ?? '1', 10) || 1;
-                    const next = window.prompt('Loop iterations', String(currentIter));
+                    const next = window.prompt('Loop iterations (>=1). Enter 0 to remove this loop.', String(currentIter));
                     if (next === null) return;
                     const parsed = Number.parseInt(next, 10);
+                    if (Number.isFinite(parsed) && parsed === 0) {
+                        const ok = window.confirm('Remove this loop?');
+                        if (!ok) return;
+                        loop.startEl.remove();
+                        loop.endEl.remove();
+                        if (window.jsonBuilderInstance) {
+                            window.jsonBuilderInstance.updateJSON();
+                        }
+                        refresh();
+                        return;
+                    }
                     if (!Number.isFinite(parsed) || parsed < 1) {
                         window.alert('Iterations must be an integer >= 1.');
                         return;
