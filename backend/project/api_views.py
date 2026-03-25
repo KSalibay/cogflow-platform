@@ -8,7 +8,7 @@ from django.contrib.auth.models import User
 from django.core import signing
 from django.core.mail import send_mail
 from django.db import transaction
-from django.db.models import Count, Max
+from django.db.models import Count, Max, Q
 from django.shortcuts import render
 from django.utils.decorators import method_decorator
 from django.utils import timezone
@@ -20,7 +20,7 @@ from rest_framework.views import APIView
 from apps.audit.models import AuditEvent
 from apps.configs.models import ConfigVersion
 from apps.runs.models import RunSession
-from apps.studies.models import Study
+from apps.studies.models import Study, StudyResearcherAccess
 from apps.users.models import UserProfile
 from apps.users.services import get_or_create_profile
 from apps.results.services import (
@@ -34,6 +34,7 @@ from project.api_serializers import (
     AdminUpdateUserActivationRequestSerializer,
     AdminUpdateUserRoleRequestSerializer,
     AssignStudyOwnerRequestSerializer,
+    ShareStudyRequestSerializer,
     AuthLoginRequestSerializer,
     AuthRegisterRequestSerializer,
     CreateParticipantLinkRequestSerializer,
@@ -115,6 +116,15 @@ def _get_study_owner_username(study: Study) -> str | None:
     if study.owner_user_id:
         return study.owner_user.username
 
+    shared_owner = (
+        StudyResearcherAccess.objects.filter(study=study)
+        .select_related("user")
+        .order_by("id")
+        .first()
+    )
+    if shared_owner:
+        return shared_owner.user.username
+
     evt = (
         AuditEvent.objects.filter(
             action="publish_config",
@@ -125,6 +135,37 @@ def _get_study_owner_username(study: Study) -> str | None:
         .first()
     )
     return evt.actor if evt else None
+
+
+def _get_study_owner_usernames(study: Study) -> list[str]:
+    names: list[str] = []
+    if study.owner_user_id:
+        names.append(study.owner_user.username)
+
+    for username in (
+        StudyResearcherAccess.objects.filter(study=study)
+        .select_related("user")
+        .values_list("user__username", flat=True)
+    ):
+        if username and username not in names:
+            names.append(username)
+
+    if not names:
+        fallback = _get_study_owner_username(study)
+        if fallback:
+            names.append(fallback)
+
+    return names
+
+
+def _has_study_access(study: Study, user, profile) -> bool:
+    if not user or not getattr(user, "is_authenticated", False):
+        return False
+    if profile.role == profile.ROLE_ADMIN:
+        return True
+    if study.owner_user_id == user.id:
+        return True
+    return StudyResearcherAccess.objects.filter(study=study, user=user).exists()
 
 
 def _issue_launch_token(payload: dict) -> str:
@@ -690,7 +731,9 @@ class StudiesListView(APIView):
         if request.user.is_authenticated:
             profile = get_or_create_profile(request.user)
             if profile.role == profile.ROLE_RESEARCHER:
-                studies_qs = studies_qs.filter(owner_user=request.user)
+                studies_qs = studies_qs.filter(
+                    Q(owner_user=request.user) | Q(researcher_access__user=request.user)
+                ).distinct()
 
         studies_qs = studies_qs.annotate(
             run_count_agg=Count("run_sessions", distinct=True),
@@ -705,6 +748,7 @@ class StudiesListView(APIView):
                     "study_name": study.name,
                     "runtime_mode": study.runtime_mode,
                     "owner_username": _get_study_owner_username(study),
+                    "owner_usernames": _get_study_owner_usernames(study),
                     "latest_config_version": last_config.version_label if last_config else None,
                     "dashboard_url": f"/portal/studies/{study.slug}",
                     "run_count": study.run_count_agg,
@@ -730,7 +774,7 @@ class StudyRunsView(APIView):
         if not study:
             return Response({"error": "Study not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        if profile.role != profile.ROLE_ADMIN and study.owner_user_id and study.owner_user_id != request.user.id:
+        if not _has_study_access(study, request.user, profile):
             return Response({"error": "Study is not owned by the current researcher"}, status=status.HTTP_403_FORBIDDEN)
 
         runs = []
@@ -755,6 +799,7 @@ class StudyRunsView(APIView):
                 "study_slug": study.slug,
                 "study_name": study.name,
                 "owner_username": _get_study_owner_username(study),
+                "owner_usernames": _get_study_owner_usernames(study),
                 "runs": runs,
             },
             status=status.HTTP_200_OK,
@@ -780,9 +825,20 @@ class PublishConfigView(APIView):
         if request.user.is_authenticated:
             profile = get_or_create_profile(request.user)
             if _can_manage_researcher_resources(request, profile):
+                if study.owner_user_id and not _has_study_access(study, request.user, profile):
+                    return Response(
+                        {"error": "Study is not shared with the current researcher"},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
                 if not study.owner_user_id or study.owner_user_id == request.user.id or profile.role == profile.ROLE_ADMIN:
                     study.owner_user = request.user
                     study.save(update_fields=["owner_user"])
+                elif study.owner_user_id != request.user.id:
+                    StudyResearcherAccess.objects.get_or_create(
+                        study=study,
+                        user=request.user,
+                        defaults={"granted_by": request.user},
+                    )
 
         config_version, _ = ConfigVersion.objects.update_or_create(
             study=study,
@@ -810,6 +866,7 @@ class PublishConfigView(APIView):
                 "config_version_id": config_version.id,
                 "study_slug": study.slug,
                 "owner_username": _get_study_owner_username(study),
+                "owner_usernames": _get_study_owner_usernames(study),
                 "dashboard_url": f"/portal/studies/{study.slug}",
             },
             status=status.HTTP_201_CREATED,
@@ -833,7 +890,7 @@ class CreateParticipantLinkView(APIView):
             return Response({"error": "Study not found"}, status=status.HTTP_404_NOT_FOUND)
 
         owner_username = _get_study_owner_username(study)
-        if profile.role != profile.ROLE_ADMIN and study.owner_user_id and study.owner_user_id != request.user.id:
+        if not _has_study_access(study, request.user, profile):
             return Response({"error": "Study is not owned by the current researcher"}, status=status.HTTP_403_FORBIDDEN)
 
         serializer = CreateParticipantLinkRequestSerializer(data=request.data)
@@ -895,6 +952,7 @@ class CreateParticipantLinkView(APIView):
                 },
                 "expires_at": expires_at,
                 "owner_username": owner_username or request.user.username,
+                "owner_usernames": _get_study_owner_usernames(study),
             },
             status=status.HTTP_201_CREATED,
         )
@@ -942,6 +1000,77 @@ class AssignStudyOwnerView(APIView):
             {
                 "study_slug": study.slug,
                 "owner_username": new_owner.username,
+                "owner_usernames": _get_study_owner_usernames(study),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class ShareStudyView(APIView):
+    """Share a study with another researcher by username."""
+
+    @transaction.atomic
+    def post(self, request, study_slug: str):
+        if not request.user.is_authenticated:
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        profile = get_or_create_profile(request.user)
+        if not _can_manage_researcher_resources(request, profile):
+            return Response({"error": "Insufficient role permissions"}, status=status.HTTP_403_FORBIDDEN)
+
+        study = Study.objects.filter(slug=study_slug, is_active=True).first()
+        if not study:
+            return Response({"error": "Study not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if not _has_study_access(study, request.user, profile):
+            return Response({"error": "Study is not owned by the current researcher"}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = ShareStudyRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        target_username = serializer.validated_data["username"].strip()
+
+        target_user = User.objects.filter(username=target_username).first()
+        if not target_user:
+            return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+        if not target_user.is_active:
+            return Response({"error": "User account is inactive"}, status=status.HTTP_400_BAD_REQUEST)
+
+        target_profile = get_or_create_profile(target_user)
+        if target_profile.role not in {target_profile.ROLE_RESEARCHER, target_profile.ROLE_ADMIN}:
+            return Response(
+                {"error": "Only researcher/admin accounts can be study owners"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        already_owner = study.owner_user_id == target_user.id
+        created = False
+        if not already_owner:
+            _, created = StudyResearcherAccess.objects.get_or_create(
+                study=study,
+                user=target_user,
+                defaults={"granted_by": request.user},
+            )
+
+        record_audit(
+            action="share_study",
+            resource_type="study",
+            resource_id=study.id,
+            actor=request.user.username,
+            metadata={
+                "study_slug": study.slug,
+                "shared_with": target_user.username,
+                "already_owner": already_owner,
+                "created": created,
+            },
+        )
+
+        return Response(
+            {
+                "ok": True,
+                "study_slug": study.slug,
+                "shared_with": target_user.username,
+                "already_shared": already_owner or (not created),
+                "owner_usernames": _get_study_owner_usernames(study),
             },
             status=status.HTTP_200_OK,
         )

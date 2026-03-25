@@ -22,6 +22,7 @@ from project.api_views import (
     InterpreterAppView,
     PortalDashboardView,
     PublishConfigView,
+    ShareStudyView,
     StartRunView,
     StudyRunsView,
     SubmitResultView,
@@ -82,6 +83,11 @@ urlpatterns = [
         "api/v1/studies/<slug:study_slug>/owner",
         AssignStudyOwnerView.as_view(),
         name="studies-assign-owner",
+    ),
+    path(
+        "api/v1/studies/<slug:study_slug>/share",
+        ShareStudyView.as_view(),
+        name="studies-share",
     ),
     path(
         "api/v1/studies/<slug:study_slug>/runs",

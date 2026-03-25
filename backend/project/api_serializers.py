@@ -79,6 +79,10 @@ class AssignStudyOwnerRequestSerializer(serializers.Serializer):
     owner_username = serializers.CharField(max_length=150)
 
 
+class ShareStudyRequestSerializer(serializers.Serializer):
+    username = serializers.CharField(max_length=150)
+
+
 class AdminCreateUserRequestSerializer(serializers.Serializer):
     username = serializers.CharField(max_length=150)
     password = serializers.CharField(max_length=128)

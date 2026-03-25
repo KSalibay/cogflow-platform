@@ -948,7 +948,7 @@
                   <thead>
                     <tr>
                       <th>Study</th>
-                      <th>Owner</th>
+                      <th>Owners</th>
                       <th>Runtime</th>
                       <th>Config</th>
                       <th>Runs</th>
@@ -1599,13 +1599,19 @@
 
       for (const s of studies) {
         const state = getStudyState(s.study_slug);
+        const ownersText = Array.isArray(s.owner_usernames) && s.owner_usernames.length
+          ? s.owner_usernames.join(", ")
+          : (s.owner_username || "—");
+        const reassignBtn = currentUser?.role === "platform_admin"
+          ? `<button class="btn btn-ghost btn-xs" data-action="reassign" data-slug="${esc(s.study_slug)}">Reassign</button>`
+          : "";
         const tr = document.createElement("tr");
         tr.innerHTML = `
           <td>
             <div><strong>${esc(s.study_name || s.study_slug || "—")}</strong></div>
             <div class="mono" style="color:var(--muted);font-size:.78em;">${esc(s.study_slug || "")}</div>
           </td>
-          <td>${esc(s.owner_username || "—")}</td>
+          <td>${esc(ownersText)}</td>
           <td><span class="pill">${esc(s.runtime_mode || "—")}</span></td>
           <td class="mono">${esc(s.latest_config_version || "—")}</td>
           <td>${typeof s.run_count === "number" ? s.run_count : "—"}</td>
@@ -1613,9 +1619,10 @@
           <td>
             <div style="display:flex;gap:5px;flex-wrap:wrap;">
               <button class="btn btn-ghost btn-xs" data-action="gen-link"       data-slug="${esc(s.study_slug)}">Generate Links</button>
+              <button class="btn btn-ghost btn-xs" data-action="share-study"    data-slug="${esc(s.study_slug)}">Share</button>
               <button class="btn btn-ghost btn-xs" data-action="toggle-details" data-slug="${esc(s.study_slug)}">${state.expanded ? "Hide" : "Show Results"}</button>
               <button class="btn btn-ghost btn-xs" data-action="open-preview"   data-slug="${esc(s.study_slug)}">Preview ▶</button>
-              <button class="btn btn-ghost btn-xs" data-action="reassign"       data-slug="${esc(s.study_slug)}">Reassign</button>
+              ${reassignBtn}
             </div>
           </td>`;
         tbody.appendChild(tr);
@@ -1636,6 +1643,12 @@
       );
       tbody.querySelectorAll("[data-action='toggle-details']").forEach(b =>
         b.addEventListener("click", () => toggleDetails(b.getAttribute("data-slug")))
+      );
+      tbody.querySelectorAll("[data-action='share-study']").forEach(b =>
+        b.addEventListener("click", () => {
+          const username = window.prompt("Share with username:", "") || "";
+          if (username.trim()) shareStudy(b.getAttribute("data-slug"), username.trim());
+        })
       );
       tbody.querySelectorAll("[data-action='open-preview']").forEach(b =>
         b.addEventListener("click", () => {
@@ -1774,7 +1787,7 @@
           <div class="detail-header">
             <div>
               <h3 class="detail-title">${esc(study.study_name || study.study_slug || "Study")}</h3>
-              <p class="detail-subtitle">${esc(study.study_slug || "")} · ${esc(study.owner_username || "")} · ${esc(study.runtime_mode || "")}</p>
+              <p class="detail-subtitle">${esc(study.study_slug || "")} · ${esc((Array.isArray(study.owner_usernames) && study.owner_usernames.length) ? study.owner_usernames.join(", ") : (study.owner_username || ""))} · ${esc(study.runtime_mode || "")}</p>
             </div>
             <button class="btn btn-ghost btn-xs" data-action="collapse" data-slug="${slug}">Close ✕</button>
           </div>
@@ -1839,6 +1852,27 @@
         loadStudies();
       } catch (err) {
         sb.className = "status-bar error"; sb.textContent = `Reassign failed: ${err?.message || err}`;
+      }
+    }
+
+    async function shareStudy(slug, username) {
+      const sb = document.getElementById("studiesStatus");
+      sb.className = "status-bar"; sb.textContent = `Sharing ${slug} with ${username}…`;
+      try {
+        const r = await fetch(`${API}/api/v1/studies/${encodeURIComponent(slug)}/share`, postOpts({ username }));
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+        const owners = Array.isArray(d.owner_usernames) && d.owner_usernames.length
+          ? d.owner_usernames.join(", ")
+          : username;
+        sb.className = "status-bar ok";
+        sb.textContent = d.already_shared
+          ? `${username} already has access. Owners: ${owners}`
+          : `Study shared with ${username}. Owners: ${owners}`;
+        loadStudies();
+      } catch (err) {
+        sb.className = "status-bar error";
+        sb.textContent = `Share failed: ${err?.message || err}`;
       }
     }
 
