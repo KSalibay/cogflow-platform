@@ -6,6 +6,7 @@ import pyotp
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import User
 from django.core import signing
+from django.core.mail import send_mail
 from django.db import transaction
 from django.db.models import Count, Max
 from django.shortcuts import render
@@ -32,6 +33,7 @@ from project.api_serializers import (
     AdminUpdateUserRoleRequestSerializer,
     AssignStudyOwnerRequestSerializer,
     AuthLoginRequestSerializer,
+    AuthRegisterRequestSerializer,
     CreateParticipantLinkRequestSerializer,
     DecryptResultRequestSerializer,
     PublishConfigRequestSerializer,
@@ -168,6 +170,75 @@ class AuthLoginView(APIView):
                 "mfa_enabled": profile.mfa_enabled,
             },
             status=status.HTTP_200_OK,
+        )
+
+
+class AuthRegisterView(APIView):
+    """Self-service registration endpoint (account starts inactive)."""
+
+    @transaction.atomic
+    def post(self, request):
+        if request.user.is_authenticated:
+            return Response({"error": "Already authenticated"}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = AuthRegisterRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        username = data["username"].strip()
+        email = data["email"].strip().lower()
+        password = data["password"]
+
+        if not username:
+            return Response({"error": "Username is required"}, status=status.HTTP_400_BAD_REQUEST)
+        if len(password) < 8:
+            return Response({"error": "Password must be at least 8 characters"}, status=status.HTTP_400_BAD_REQUEST)
+        if User.objects.filter(username=username).exists():
+            return Response({"error": "Username already exists"}, status=status.HTTP_400_BAD_REQUEST)
+        if User.objects.filter(email__iexact=email).exists():
+            return Response({"error": "Email is already in use"}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = User.objects.create_user(username=username, email=email, password=password)
+        user.is_active = False
+        user.save(update_fields=["is_active"])
+
+        profile = get_or_create_profile(user)
+        profile.role = profile.ROLE_RESEARCHER
+        profile.save(update_fields=["role"])
+
+        record_audit(
+            action="auth_register_requested",
+            resource_type="user",
+            resource_id=user.id,
+            actor=username,
+            metadata={"email": email, "default_role": profile.role},
+        )
+
+        # Registration mail should not block account creation if SMTP is temporarily unavailable.
+        portal_url = os.getenv("COGFLOW_PLATFORM_URL", "").strip() or request.build_absolute_uri("/portal/")
+        try:
+            send_mail(
+                "CogFlow registration received",
+                (
+                    "Your CogFlow account request has been received.\n\n"
+                    "An admin must activate your account before first sign-in.\n"
+                    f"Portal URL: {portal_url}\n"
+                    "If you did not request this account, you can ignore this email."
+                ),
+                os.getenv("DEFAULT_FROM_EMAIL", "noreply@localhost"),
+                [email],
+                fail_silently=True,
+            )
+        except Exception:
+            pass
+
+        return Response(
+            {
+                "ok": True,
+                "pending_approval": True,
+                "message": "Registration submitted. An admin must activate your account.",
+            },
+            status=status.HTTP_201_CREATED,
         )
 
 

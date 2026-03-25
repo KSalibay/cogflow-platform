@@ -56,6 +56,12 @@ class AuthLoginRequestSerializer(serializers.Serializer):
     password = serializers.CharField(max_length=128)
 
 
+class AuthRegisterRequestSerializer(serializers.Serializer):
+    username = serializers.CharField(max_length=150)
+    email = serializers.EmailField()
+    password = serializers.CharField(max_length=128)
+
+
 class TotpSetupRequestSerializer(serializers.Serializer):
     regenerate = serializers.BooleanField(required=False, default=False)
 
