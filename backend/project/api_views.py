@@ -10,7 +10,9 @@ from django.core.mail import send_mail
 from django.db import transaction
 from django.db.models import Count, Max
 from django.shortcuts import render
+from django.utils.decorators import method_decorator
 from django.utils import timezone
+from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -672,6 +674,7 @@ class InterpreterAppView(APIView):
         return HttpResponse(html, content_type="text/html; charset=utf-8")
 
 
+@method_decorator(ensure_csrf_cookie, name="dispatch")
 class PortalDashboardView(APIView):
     """Serve the portal dashboard draft as a Django template."""
 
