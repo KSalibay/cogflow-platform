@@ -303,70 +303,70 @@ class AuthRegisterView(APIView):
             metadata={"email": email, "default_role": profile.role},
         )
 
-                # Registration mail should not block account creation if SMTP is temporarily unavailable.
-                platform_base = (os.getenv("COGFLOW_PLATFORM_URL", "").strip() or request.build_absolute_uri("/")).rstrip("/")
-                portal_url = f"{platform_base}/portal/"
+        # Registration mail should not block account creation if SMTP is temporarily unavailable.
+        platform_base = (os.getenv("COGFLOW_PLATFORM_URL", "").strip() or request.build_absolute_uri("/")).rstrip("/")
+        portal_url = f"{platform_base}/portal/"
         verify_token = _issue_email_verification_token(user)
-                verify_url = f"{platform_base}/api/v1/auth/register/verify?{urlencode({'token': verify_token})}"
+        verify_url = f"{platform_base}/api/v1/auth/register/verify?{urlencode({'token': verify_token})}"
         try:
-                        subject = "Verify your CogFlow email"
-                        text_body = (
-                                "Your CogFlow account has been created.\n\n"
-                                "Please verify your email to activate sign-in:\n"
-                                f"{verify_url}\n\n"
-                                f"Portal URL: {portal_url}\n"
-                                "If you did not request this account, you can ignore this email."
-                        )
-                        html_body = f"""
-                        <html>
-                            <body style=\"margin:0;padding:0;background:#f3f5f8;font-family:Arial,sans-serif;color:#1f2937;\">
-                                <table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"padding:24px 0;\">
-                                    <tr>
-                                        <td align=\"center\">
-                                            <table role=\"presentation\" width=\"560\" cellspacing=\"0\" cellpadding=\"0\" style=\"background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;padding:24px;\">
-                                                <tr>
-                                                    <td align=\"center\" style=\"padding-bottom:16px;\">
-                                                        <img src=\"cid:cogflow-logo\" alt=\"CogFlow\" style=\"max-width:220px;height:auto;display:block;\" />
-                                                    </td>
-                                                </tr>
-                                                <tr>
-                                                    <td style=\"font-size:15px;line-height:1.6;\">
-                                                        <p style=\"margin:0 0 12px;\">Your CogFlow account has been created.</p>
-                                                        <p style=\"margin:0 0 16px;\">Please verify your email to activate sign-in:</p>
-                                                        <p style=\"margin:0 0 20px;\">
-                                                            <a href=\"{verify_url}\" style=\"display:inline-block;background:#30334a;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:8px;font-weight:600;\">Verify Email</a>
-                                                        </p>
-                                                        <p style=\"margin:0 0 10px;word-break:break-all;\"><a href=\"{verify_url}\" style=\"color:#30334a;\">{verify_url}</a></p>
-                                                        <p style=\"margin:0 0 10px;\">Portal: <a href=\"{portal_url}\" style=\"color:#30334a;\">{portal_url}</a></p>
-                                                        <p style=\"margin:0;color:#6b7280;\">If you did not request this account, you can ignore this email.</p>
-                                                    </td>
-                                                </tr>
-                                            </table>
-                                        </td>
-                                    </tr>
-                                </table>
-                            </body>
-                        </html>
-                        """
+                subject = "Verify your CogFlow email"
+                text_body = (
+                        "Your CogFlow account has been created.\n\n"
+                        "Please verify your email to activate sign-in:\n"
+                        f"{verify_url}\n\n"
+                        f"Portal URL: {portal_url}\n"
+                        "If you did not request this account, you can ignore this email."
+                )
+                html_body = f"""
+                <html>
+                    <body style=\"margin:0;padding:0;background:#f3f5f8;font-family:Arial,sans-serif;color:#1f2937;\">
+                        <table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"padding:24px 0;\">
+                            <tr>
+                                <td align=\"center\">
+                                    <table role=\"presentation\" width=\"560\" cellspacing=\"0\" cellpadding=\"0\" style=\"background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;padding:24px;\">
+                                        <tr>
+                                            <td align=\"center\" style=\"padding-bottom:16px;\">
+                                                <img src=\"cid:cogflow-logo\" alt=\"CogFlow\" style=\"max-width:220px;height:auto;display:block;\" />
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td style=\"font-size:15px;line-height:1.6;\">
+                                                <p style=\"margin:0 0 12px;\">Your CogFlow account has been created.</p>
+                                                <p style=\"margin:0 0 16px;\">Please verify your email to activate sign-in:</p>
+                                                <p style=\"margin:0 0 20px;\">
+                                                    <a href=\"{verify_url}\" style=\"display:inline-block;background:#30334a;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:8px;font-weight:600;\">Verify Email</a>
+                                                </p>
+                                                <p style=\"margin:0 0 10px;word-break:break-all;\"><a href=\"{verify_url}\" style=\"color:#30334a;\">{verify_url}</a></p>
+                                                <p style=\"margin:0 0 10px;\">Portal: <a href=\"{portal_url}\" style=\"color:#30334a;\">{portal_url}</a></p>
+                                                <p style=\"margin:0;color:#6b7280;\">If you did not request this account, you can ignore this email.</p>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </td>
+                            </tr>
+                        </table>
+                    </body>
+                </html>
+                """
 
-                        msg = EmailMultiAlternatives(
-                                subject=subject,
-                                body=text_body,
-                                from_email=os.getenv("DEFAULT_FROM_EMAIL", "noreply@localhost"),
-                                to=[email],
-                        )
-                        msg.attach_alternative(html_body, "text/html")
+                msg = EmailMultiAlternatives(
+                        subject=subject,
+                        body=text_body,
+                        from_email=os.getenv("DEFAULT_FROM_EMAIL", "noreply@localhost"),
+                        to=[email],
+                )
+                msg.attach_alternative(html_body, "text/html")
 
-                        logo_path = settings.BASE_DIR.parent / "frontend" / "builder" / "img" / "logo_dark.png"
-                        if logo_path.exists():
-                                with logo_path.open("rb") as fh:
-                                        logo = MIMEImage(fh.read())
-                                logo.add_header("Content-ID", "<cogflow-logo>")
-                                logo.add_header("Content-Disposition", "inline", filename="logo_dark.png")
-                                msg.mixed_subtype = "related"
-                                msg.attach(logo)
+                logo_path = settings.BASE_DIR.parent / "frontend" / "builder" / "img" / "logo_dark.png"
+                if logo_path.exists():
+                        with logo_path.open("rb") as fh:
+                                logo = MIMEImage(fh.read())
+                        logo.add_header("Content-ID", "<cogflow-logo>")
+                        logo.add_header("Content-Disposition", "inline", filename="logo_dark.png")
+                        msg.mixed_subtype = "related"
+                        msg.attach(logo)
 
-                        msg.send(fail_silently=True)
+                msg.send(fail_silently=True)
         except Exception:
             pass
 
