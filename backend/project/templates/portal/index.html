@@ -1410,6 +1410,11 @@
       if (id === "admin" && currentUser?.role === "platform_admin" && !adminUsersLoaded) {
         loadAdminUsers();
       }
+
+      // Keep study-dependent views fresh without requiring full-page reload.
+      if (id === "studies" || id === "preview" || id === "integrations") {
+        loadStudies();
+      }
     }
 
     // Listen for postMessage from Builder (study published)
