@@ -13,9 +13,50 @@
     <script>
         // Apply Accessibility Mode + Theme early to avoid flash of wrong styling
         (function () {
+            const normalizeA11yMode = (raw) => {
+                const mode = (raw || '').toString().trim().toLowerCase();
+                if (mode === 'contrast' || mode === 'large' || mode === 'contrast-large') return mode;
+                return 'standard';
+            };
+
+            const getUserScope = () => {
+                try {
+                    const params = new URLSearchParams(window.location.search || '');
+                    const fromQuery = (params.get('builder_user') || '').trim();
+                    if (fromQuery) {
+                        localStorage.setItem('cogflow_builder_user', fromQuery);
+                        return fromQuery;
+                    }
+                } catch (e) {
+                    // ignore
+                }
+                try {
+                    return (localStorage.getItem('cogflow_builder_user') || 'default').trim() || 'default';
+                } catch (e) {
+                    return 'default';
+                }
+            };
+
+            const applyA11yMode = (modeRaw) => {
+                const mode = normalizeA11yMode(modeRaw);
+                const html = document.documentElement;
+                html.classList.remove('cf-a11y', 'cf-a11y-contrast', 'cf-a11y-large');
+                if (mode === 'contrast') html.classList.add('cf-a11y-contrast');
+                if (mode === 'large') html.classList.add('cf-a11y-large');
+                if (mode === 'contrast-large') html.classList.add('cf-a11y-contrast', 'cf-a11y-large');
+            };
+
             try {
-                const enabled = localStorage.getItem('cogflow_builder_a11y') === '1';
-                if (enabled) document.documentElement.classList.add('cf-a11y');
+                const scope = getUserScope();
+                const modeKey = `cogflow_builder_a11y_mode::${scope}`;
+                const mode = normalizeA11yMode(localStorage.getItem(modeKey));
+                if (mode !== 'standard') {
+                    applyA11yMode(mode);
+                } else {
+                    // Legacy compatibility: old boolean toggle becomes contrast mode.
+                    const legacyEnabled = localStorage.getItem('cogflow_builder_a11y') === '1';
+                    if (legacyEnabled) applyA11yMode('contrast');
+                }
             } catch (e) {
                 // Ignore storage errors (privacy mode, etc.)
             }
@@ -41,7 +82,7 @@
     <link href="vendor/quill.snow.css" rel="stylesheet">
 
     <!-- App theme + Bootstrap overrides (must load AFTER Bootstrap) -->
-    <link rel="stylesheet" href="css/style.css?v=20260324-1">
+    <link rel="stylesheet" href="css/style.css?v=20260326-1">
 
     <!-- Prevent aggressive caching when opened via file:// or a simple static server -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
@@ -390,9 +431,16 @@
     <footer class="cf-footer">
         <div class="container-fluid cf-footer-inner">
             <div class="cf-footer-a11y">
-                <div class="form-check form-switch">
-                    <input class="form-check-input" type="checkbox" role="switch" id="accessibilityModeToggle">
-                    <label class="form-check-label" for="accessibilityModeToggle">Accessibility Mode</label>
+                <div class="dropup">
+                    <button class="btn btn-outline-light btn-sm dropdown-toggle" type="button" id="accessibilityModeDropdownButton" data-bs-toggle="dropdown" aria-expanded="false">
+                        Accessibility Mode: <span id="accessibilityModeLabel">Standard</span>
+                    </button>
+                    <ul class="dropdown-menu" aria-labelledby="accessibilityModeDropdownButton">
+                        <li><button class="dropdown-item" type="button" data-a11y-mode="standard">Standard</button></li>
+                        <li><button class="dropdown-item" type="button" data-a11y-mode="contrast">High Contrast</button></li>
+                        <li><button class="dropdown-item" type="button" data-a11y-mode="large">Large Text</button></li>
+                        <li><button class="dropdown-item" type="button" data-a11y-mode="contrast-large">High Contrast + Large Text</button></li>
+                    </ul>
                 </div>
             </div>
             <div class="cf-footer-spacer"></div>
@@ -427,7 +475,7 @@
     </script>
 
     <!-- Cache-bust local scripts -->
-    <script src="src/JsonBuilder.js?v=20260325-1"></script>
+    <script src="src/JsonBuilder.js?v=20260326-1"></script>
     <script src="src/modules/DataCollectionModules.js?v=20260114-1"></script>
     <script src="src/modules/TrialManager.js?v=20260113-10"></script>
     <script src="src/modules/TimelineBuilder.js?v=20260309-1"></script>

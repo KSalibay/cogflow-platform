@@ -50,6 +50,7 @@
     --bs-focus-ring-color: rgba(174, 140, 163, 0.35);
     --bs-link-color: var(--cf-twilight-indigo);
     --bs-link-hover-color: #2f3551;
+    --cf-font-scale: 1;
 }
 
 /* Manual page theme selection (independent from OS settings) */
@@ -78,8 +79,9 @@ html, body {
     height: 100%;
 }
 
-/* Accessibility mode (high contrast + Atkinson Hyperlegible) */
-html.cf-a11y {
+/* Accessibility modes */
+html.cf-a11y,
+html.cf-a11y-contrast {
     --bs-body-font-family: 'Atkinson Hyperlegible', 'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
 
     /* Higher-contrast semantic tokens */
@@ -94,10 +96,14 @@ html.cf-a11y {
     --bs-focus-ring-color: rgba(95, 105, 149, 0.45);
 }
 
+html.cf-a11y-large {
+    --cf-font-scale: 1.125;
+}
+
 body {
     font-family: var(--bs-body-font-family);
     background-color: var(--bs-body-bg);
-    font-size: 0.875rem; /* Reduced from default 16px to 14px */
+    font-size: calc(0.875rem * var(--cf-font-scale)); /* Reduced base size, scalable via accessibility mode */
     min-width: 1200px; /* Prevent layout collapse */
     margin: 0;
 
@@ -304,6 +310,23 @@ html[data-cf-theme="dark"] #publishMetadataModal .modal-footer {
     display: flex;
     align-items: center;
     gap: 10px;
+}
+
+.cf-footer-a11y .dropdown-menu {
+    --bs-dropdown-bg: var(--cf-surface);
+    --bs-dropdown-color: var(--cf-text);
+    --bs-dropdown-link-color: var(--cf-text);
+    --bs-dropdown-link-hover-bg: rgba(58, 64, 90, 0.12);
+    --bs-dropdown-link-hover-color: var(--cf-text);
+    --bs-dropdown-border-color: var(--cf-border);
+    --bs-dropdown-min-width: 240px;
+    font-size: 0.8rem;
+}
+
+.cf-footer-a11y .dropdown-item.active,
+.cf-footer-a11y .dropdown-item:active {
+    background: rgba(95, 105, 149, 0.28);
+    color: var(--cf-text);
 }
 
 .cf-footer-a11y .form-check {

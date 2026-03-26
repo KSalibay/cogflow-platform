@@ -799,11 +799,79 @@ class JsonBuilder {
         console.log('CogFlow Builder initialized successfully');
     }
 
-    setAccessibilityMode(enabled) {
-        const on = !!enabled;
-        document.documentElement.classList.toggle('cf-a11y', on);
+    getBuilderUserScope() {
         try {
-            localStorage.setItem('cogflow_builder_a11y', on ? '1' : '0');
+            const params = new URLSearchParams(window.location.search || '');
+            const fromQuery = (params.get('builder_user') || '').trim();
+            if (fromQuery) {
+                localStorage.setItem('cogflow_builder_user', fromQuery);
+                return fromQuery;
+            }
+        } catch (e) {
+            // ignore
+        }
+        try {
+            return (localStorage.getItem('cogflow_builder_user') || 'default').trim() || 'default';
+        } catch (e) {
+            return 'default';
+        }
+    }
+
+    getA11yStorageKey() {
+        const scope = this.getBuilderUserScope();
+        return `cogflow_builder_a11y_mode::${scope}`;
+    }
+
+    normalizeA11yMode(rawMode) {
+        const mode = (rawMode || '').toString().trim().toLowerCase();
+        if (mode === 'contrast' || mode === 'large' || mode === 'contrast-large') return mode;
+        return 'standard';
+    }
+
+    getCurrentA11yMode() {
+        const root = document.documentElement;
+        const contrast = root.classList.contains('cf-a11y') || root.classList.contains('cf-a11y-contrast');
+        const large = root.classList.contains('cf-a11y-large');
+        if (contrast && large) return 'contrast-large';
+        if (contrast) return 'contrast';
+        if (large) return 'large';
+        return 'standard';
+    }
+
+    getA11yModeLabel(modeRaw) {
+        const mode = this.normalizeA11yMode(modeRaw);
+        if (mode === 'contrast') return 'High Contrast';
+        if (mode === 'large') return 'Large Text';
+        if (mode === 'contrast-large') return 'High Contrast + Large Text';
+        return 'Standard';
+    }
+
+    setAccessibilityMode(modeRaw) {
+        const mode = this.normalizeA11yMode(modeRaw);
+        const root = document.documentElement;
+        root.classList.remove('cf-a11y', 'cf-a11y-contrast', 'cf-a11y-large');
+
+        if (mode === 'contrast') root.classList.add('cf-a11y-contrast');
+        if (mode === 'large') root.classList.add('cf-a11y-large');
+        if (mode === 'contrast-large') {
+            root.classList.add('cf-a11y-contrast');
+            root.classList.add('cf-a11y-large');
+        }
+
+        const modeLabel = document.getElementById('accessibilityModeLabel');
+        if (modeLabel) modeLabel.textContent = this.getA11yModeLabel(mode);
+
+        document.querySelectorAll('[data-a11y-mode]').forEach((item) => {
+            const selected = this.normalizeA11yMode(item.getAttribute('data-a11y-mode')) === mode;
+            item.classList.toggle('active', selected);
+            if (selected) item.setAttribute('aria-current', 'true');
+            else item.removeAttribute('aria-current');
+        });
+
+        try {
+            localStorage.setItem(this.getA11yStorageKey(), mode);
+            // Keep legacy key in sync for backwards compatibility.
+            localStorage.setItem('cogflow_builder_a11y', (mode === 'contrast' || mode === 'contrast-large') ? '1' : '0');
         } catch (e) {
             // Ignore storage errors
         }
@@ -828,14 +896,24 @@ class JsonBuilder {
      * Set up event listeners for UI interactions
      */
     setupEventListeners() {
-        // Accessibility Mode toggle (footer)
-        const a11yToggle = document.getElementById('accessibilityModeToggle');
-        if (a11yToggle && a11yToggle.dataset.bound !== '1') {
-            a11yToggle.dataset.bound = '1';
-            a11yToggle.checked = document.documentElement.classList.contains('cf-a11y');
+        // Accessibility Mode dropdown (footer)
+        const a11yItems = Array.from(document.querySelectorAll('[data-a11y-mode]'));
+        if (a11yItems.length) {
+            const savedMode = (() => {
+                try {
+                    return this.normalizeA11yMode(localStorage.getItem(this.getA11yStorageKey()));
+                } catch (e) {
+                    return this.getCurrentA11yMode();
+                }
+            })();
+            this.setAccessibilityMode(savedMode);
 
-            a11yToggle.addEventListener('change', () => {
-                this.setAccessibilityMode(!!a11yToggle.checked);
+            a11yItems.forEach((item) => {
+                if (item.dataset.bound === '1') return;
+                item.dataset.bound = '1';
+                item.addEventListener('click', () => {
+                    this.setAccessibilityMode(item.getAttribute('data-a11y-mode'));
+                });
             });
         }
 
