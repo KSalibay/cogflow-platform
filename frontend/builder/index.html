@@ -47,14 +47,20 @@
             };
 
             try {
+                const params = new URLSearchParams(window.location.search || '');
+                const fromQuery = normalizeA11yMode((params.get('a11y_mode') || '').trim());
+                if (fromQuery !== 'standard') {
+                    applyA11yMode(fromQuery);
+                }
+
                 const scope = getUserScope();
                 const modeKey = `cogflow_builder_a11y_mode::${scope}`;
                 const mode = normalizeA11yMode(localStorage.getItem(modeKey));
-                if (mode !== 'standard') {
+                if (fromQuery === 'standard' && mode !== 'standard') {
                     applyA11yMode(mode);
                 } else {
                     // Legacy compatibility: old boolean toggle becomes contrast mode.
-                    const legacyEnabled = localStorage.getItem('cogflow_builder_a11y') === '1';
+                    const legacyEnabled = fromQuery === 'standard' && localStorage.getItem('cogflow_builder_a11y') === '1';
                     if (legacyEnabled) applyA11yMode('contrast');
                 }
             } catch (e) {
@@ -431,17 +437,7 @@
     <footer class="cf-footer">
         <div class="container-fluid cf-footer-inner">
             <div class="cf-footer-a11y">
-                <div class="dropup">
-                    <button class="btn btn-outline-light btn-sm dropdown-toggle" type="button" id="accessibilityModeDropdownButton" data-bs-toggle="dropdown" aria-expanded="false">
-                        Accessibility Mode: <span id="accessibilityModeLabel">Standard</span>
-                    </button>
-                    <ul class="dropdown-menu" aria-labelledby="accessibilityModeDropdownButton">
-                        <li><button class="dropdown-item" type="button" data-a11y-mode="standard">Standard</button></li>
-                        <li><button class="dropdown-item" type="button" data-a11y-mode="contrast">High Contrast</button></li>
-                        <li><button class="dropdown-item" type="button" data-a11y-mode="large">Large Text</button></li>
-                        <li><button class="dropdown-item" type="button" data-a11y-mode="contrast-large">High Contrast + Large Text</button></li>
-                    </ul>
-                </div>
+                <span style="font-size:.75rem;opacity:.9;">Accessibility is managed from the Portal top bar.</span>
             </div>
             <div class="cf-footer-spacer"></div>
             <div class="cf-footer-text">
@@ -546,6 +542,9 @@
                 if (!e || e.origin !== window.location.origin) return;
                 if (e.data && e.data.type === 'cogflow:set-theme') {
                     setBuilderTheme(e.data.theme);
+                }
+                if (e.data && e.data.type === 'cogflow:set-a11y' && window.jsonBuilderInstance && typeof window.jsonBuilderInstance.setAccessibilityMode === 'function') {
+                    window.jsonBuilderInstance.setAccessibilityMode(e.data.mode || 'standard');
                 }
             });
 

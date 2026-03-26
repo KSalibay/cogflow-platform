@@ -1,7 +1,10 @@
 import os
+import json
 import hashlib
 from datetime import timedelta
 from urllib.parse import quote, urlencode
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
 from email.mime.image import MIMEImage
 
 import pyotp
@@ -41,6 +44,7 @@ from project.api_serializers import (
     ShareStudyRequestSerializer,
     AuthLoginRequestSerializer,
     AuthRegisterRequestSerializer,
+    FeedbackSubmitRequestSerializer,
     CreateParticipantLinkRequestSerializer,
     DecryptResultRequestSerializer,
     PublishConfigRequestSerializer,
@@ -623,12 +627,122 @@ class AuthMeView(APIView):
             {
                 "authenticated": True,
                 "username": request.user.username,
+                "email": request.user.email or "",
                 "role": profile.role,
                 "mfa_enabled": profile.mfa_enabled,
                 "mfa_verified_at": mfa_verified_at,
             },
             status=status.HTTP_200_OK,
         )
+
+
+class FeedbackSubmitView(APIView):
+    """Submit in-portal feedback (Resend preferred, SMTP fallback)."""
+
+    @transaction.atomic
+    def post(self, request):
+        if not request.user.is_authenticated:
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        serializer = FeedbackSubmitRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        category = (data.get("category") or "other").strip().lower() or "other"
+        subject = (data.get("subject") or "").strip()
+        message = (data.get("message") or "").strip()
+        contact_email = (data.get("contact_email") or "").strip()
+
+        if not message:
+            return Response({"error": "Message is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        username = request.user.username
+        user_email = (request.user.email or "").strip()
+        effective_contact = contact_email or user_email or "(not provided)"
+        subject_line = subject or f"CogFlow Portal Feedback ({category})"
+
+        portal_url = os.getenv("COGFLOW_PLATFORM_URL", "").strip()
+        metadata_lines = [
+            f"User: {username}",
+            f"User email: {user_email or '(none)'}",
+            f"Contact email: {effective_contact}",
+            f"Category: {category}",
+            f"Portal URL: {portal_url or '(not set)'}",
+            f"Timestamp (UTC): {timezone.now().isoformat()}",
+        ]
+        text_body = (
+            "CogFlow Portal feedback submission\n\n"
+            + "\n".join(metadata_lines)
+            + "\n\nMessage\n-------\n"
+            + message
+            + "\n"
+        )
+
+        to_email = (
+            os.getenv("FEEDBACK_TO_EMAIL", "").strip()
+            or os.getenv("DEFAULT_FROM_EMAIL", "").strip()
+            or "noreply@localhost"
+        )
+        from_email = (
+            os.getenv("FEEDBACK_FROM_EMAIL", "").strip()
+            or os.getenv("DEFAULT_FROM_EMAIL", "").strip()
+            or "noreply@localhost"
+        )
+
+        delivered_via = None
+        resend_api_key = os.getenv("RESEND_API_KEY", "").strip()
+        if resend_api_key:
+            payload = {
+                "from": from_email,
+                "to": [to_email],
+                "subject": subject_line,
+                "text": text_body,
+                "reply_to": effective_contact if "@" in effective_contact else None,
+            }
+            if payload.get("reply_to") is None:
+                payload.pop("reply_to", None)
+
+            req = Request(
+                "https://api.resend.com/emails",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={
+                    "Authorization": f"Bearer {resend_api_key}",
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
+            try:
+                with urlopen(req, timeout=10) as resp:
+                    if 200 <= getattr(resp, "status", 0) < 300:
+                        delivered_via = "resend"
+            except (HTTPError, URLError, TimeoutError, ValueError):
+                delivered_via = None
+
+        if not delivered_via:
+            msg = EmailMultiAlternatives(
+                subject=subject_line,
+                body=text_body,
+                from_email=from_email,
+                to=[to_email],
+                reply_to=[effective_contact] if "@" in effective_contact else None,
+            )
+            msg.send(fail_silently=False)
+            delivered_via = "smtp"
+
+        record_audit(
+            action="feedback_submitted",
+            resource_type="user",
+            resource_id=request.user.id,
+            actor=username,
+            metadata={
+                "category": category,
+                "delivery": delivered_via,
+                "contact_email": effective_contact,
+                "subject_present": bool(subject),
+            },
+        )
+
+        return Response({"ok": True, "delivery": delivered_via}, status=status.HTTP_200_OK)
 
 
 class AdminUsersView(APIView):

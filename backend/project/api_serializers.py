@@ -99,3 +99,14 @@ class AdminUpdateUserRoleRequestSerializer(serializers.Serializer):
 
 class AdminUpdateUserActivationRequestSerializer(serializers.Serializer):
     is_active = serializers.BooleanField()
+
+
+class FeedbackSubmitRequestSerializer(serializers.Serializer):
+    category = serializers.ChoiceField(
+        choices=["bug", "feature", "ux", "other"],
+        required=False,
+        default="other",
+    )
+    subject = serializers.CharField(max_length=180, required=False, allow_blank=True)
+    message = serializers.CharField(max_length=5000)
+    contact_email = serializers.EmailField(required=False, allow_blank=True)

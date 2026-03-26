@@ -46,6 +46,20 @@
         --warn-bg:   rgba(165, 63, 63, 0.25);
       }
 
+      html.cf-a11y-contrast {
+        --line: rgba(35, 39, 66, 0.34);
+        --muted: rgba(35, 39, 66, 0.9);
+      }
+
+      html[data-cf-theme="dark"].cf-a11y-contrast {
+        --line: rgba(223, 232, 225, 0.34);
+        --muted: rgba(223, 232, 225, 0.95);
+      }
+
+      html.cf-a11y-large {
+        font-size: 112.5%;
+      }
+
       *, *::before, *::after { box-sizing: border-box; }
 
       body {
@@ -232,6 +246,16 @@
 
       .theme-btn {
         min-width: 108px;
+      }
+
+      .a11y-select {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 5px 9px;
+        font-size: 0.78rem;
+        font-family: inherit;
+        color: var(--ink);
+        background: var(--bg);
       }
 
       .topbar .btn-ghost {
@@ -852,6 +876,12 @@
         <div class="topbar-spacer"></div>
         <div class="topbar-user">
           <button class="btn btn-ghost btn-sm theme-btn" id="portalThemeToggle">Theme: Light</button>
+          <select id="portalA11ySelect" class="a11y-select" aria-label="Accessibility mode">
+            <option value="standard">A11y: Standard</option>
+            <option value="contrast">A11y: High Contrast</option>
+            <option value="large">A11y: Large Text</option>
+            <option value="contrast-large">A11y: Contrast + Large</option>
+          </select>
           <span id="topbarUsername" class="mono"></span>
           <span id="topbarRole" class="role-pill"></span>
           <a id="dbAdminBtn"
@@ -1096,10 +1126,38 @@
 
           <!-- VIEW: Feedback -->
           <div class="view" id="viewFeedback">
-            <div class="placeholder-pane">
-              <div class="placeholder-icon">💬</div>
-              <h2 class="placeholder-title">Feedback form coming soon</h2>
-              <p class="placeholder-desc">An in-portal feedback form will be available here. For now, please report issues and suggestions via your institution's designated CogFlow contact.</p>
+            <div class="view-scroll">
+              <h1 class="view-title" style="margin:0 0 4px;">Feedback</h1>
+              <p class="view-subtitle" style="margin:0 0 20px;">Send product feedback directly from the portal.</p>
+
+              <div class="account-section">
+                <h3>Share Feedback</h3>
+                <div id="feedbackMsg" class="inline-note" style="display:none;margin-bottom:12px;"></div>
+                <div class="account-field">
+                  <label for="feedbackCategory">Category</label>
+                  <select id="feedbackCategory" style="border:1.5px solid var(--line);border-radius:8px;padding:7px 11px;font-size:.88rem;font-family:inherit;outline:none;background:var(--bg);color:var(--ink);max-width:320px;">
+                    <option value="bug">Bug report</option>
+                    <option value="feature">Feature request</option>
+                    <option value="ux">UX / design feedback</option>
+                    <option value="other" selected>Other</option>
+                  </select>
+                </div>
+                <div class="account-field">
+                  <label for="feedbackSubject">Subject (optional)</label>
+                  <input type="text" id="feedbackSubject" maxlength="180" placeholder="Short summary" />
+                </div>
+                <div class="account-field">
+                  <label for="feedbackContact">Contact email (optional)</label>
+                  <input type="email" id="feedbackContact" maxlength="255" placeholder="you@example.com" />
+                </div>
+                <div class="account-field" style="grid-template-columns:160px minmax(0,1fr);align-items:start;">
+                  <label for="feedbackMessage" style="padding-top:8px;">Message</label>
+                  <textarea id="feedbackMessage" rows="8" maxlength="5000" style="border:1.5px solid var(--line);border-radius:8px;padding:9px 11px;font-size:.88rem;font-family:inherit;outline:none;background:var(--bg);color:var(--ink);width:100%;resize:vertical;" placeholder="Tell us what happened, what you expected, and any context that helps."></textarea>
+                </div>
+                <div class="account-actions">
+                  <button class="btn btn-primary btn-sm" id="sendFeedbackBtn">Send Feedback</button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1362,6 +1420,17 @@
       return theme === "dark" ? "dark" : "light";
     }
 
+    function normalizeA11yMode(mode) {
+      const m = (mode || "").toString().trim().toLowerCase();
+      if (m === "contrast" || m === "large" || m === "contrast-large") return m;
+      return "standard";
+    }
+
+    function getPortalA11yStorageKey() {
+      const username = (currentUser?.username || "default").toString().trim() || "default";
+      return `cogflow_portal_a11y::${username}`;
+    }
+
     function getStoredPortalTheme() {
       try {
         return normalizeTheme(localStorage.getItem("cogflow_portal_theme") || "light");
@@ -1371,12 +1440,14 @@
     }
 
     let currentTheme = getStoredPortalTheme();
+    let currentA11yMode = "standard";
 
     function builderThemeUrl(theme) {
       const t = normalizeTheme(theme);
       const user = (currentUser?.username || "").toString().trim();
       const userPart = user ? `&builder_user=${encodeURIComponent(user)}` : "";
-      return `/builder/?theme=${encodeURIComponent(t)}${userPart}&v=20260324-1`;
+      const a11yPart = `&a11y_mode=${encodeURIComponent(normalizeA11yMode(currentA11yMode))}`;
+      return `/builder/?theme=${encodeURIComponent(t)}${userPart}${a11yPart}&v=20260324-1`;
     }
 
     function notifyBuilderTheme(theme) {
@@ -1384,6 +1455,16 @@
       if (!frame || !frame.contentWindow) return;
       try {
         frame.contentWindow.postMessage({ type: "cogflow:set-theme", theme: normalizeTheme(theme) }, location.origin);
+      } catch {
+        // ignore
+      }
+    }
+
+    function notifyBuilderA11y(mode) {
+      const frame = document.getElementById("builderFrame");
+      if (!frame || !frame.contentWindow) return;
+      try {
+        frame.contentWindow.postMessage({ type: "cogflow:set-a11y", mode: normalizeA11yMode(mode) }, location.origin);
       } catch {
         // ignore
       }
@@ -1406,7 +1487,43 @@
       if (builderLoaded) notifyBuilderTheme(currentTheme);
     }
 
+    function applyPortalA11y(mode, persist = true) {
+      currentA11yMode = normalizeA11yMode(mode);
+      const html = document.documentElement;
+      html.classList.remove("cf-a11y-contrast", "cf-a11y-large");
+      if (currentA11yMode === "contrast") html.classList.add("cf-a11y-contrast");
+      if (currentA11yMode === "large") html.classList.add("cf-a11y-large");
+      if (currentA11yMode === "contrast-large") {
+        html.classList.add("cf-a11y-contrast");
+        html.classList.add("cf-a11y-large");
+      }
+
+      const sel = document.getElementById("portalA11ySelect");
+      if (sel) sel.value = currentA11yMode;
+
+      if (persist) {
+        try {
+          localStorage.setItem(getPortalA11yStorageKey(), currentA11yMode);
+        } catch {
+          // ignore
+        }
+      }
+
+      if (builderLoaded) notifyBuilderA11y(currentA11yMode);
+    }
+
+    function loadPortalA11yPreference() {
+      let mode = "standard";
+      try {
+        mode = normalizeA11yMode(localStorage.getItem(getPortalA11yStorageKey()) || "standard");
+      } catch {
+        mode = "standard";
+      }
+      applyPortalA11y(mode, false);
+    }
+
     applyPortalTheme(currentTheme, false);
+    applyPortalA11y("standard", false);
 
     function activateView(id) {
       VIEWS.forEach(v => {
@@ -1441,7 +1558,10 @@
     window.addEventListener("message", e => {
       if (e.origin !== location.origin) return;
       if (e.data?.type === "cogflow:study-published") loadStudies();
-      if (e.data?.type === "cogflow:builder-ready") notifyBuilderTheme(currentTheme);
+      if (e.data?.type === "cogflow:builder-ready") {
+        notifyBuilderTheme(currentTheme);
+        notifyBuilderA11y(currentA11yMode);
+      }
     });
 
     // Sidebar collapse toggle
@@ -1463,13 +1583,17 @@
       }
     });
 
+    document.getElementById("portalA11ySelect")?.addEventListener("change", (e) => {
+      applyPortalA11y(e.target?.value || "standard", true);
+    });
+
     // ── Session check ──────────────────────────────────────────
     async function checkSession() {
       try {
         const r = await fetch(`${API}/api/v1/auth/me`, { credentials: "include" });
         if (r.ok) {
           const d = await r.json();
-          currentUser = { username: d.username, role: d.role,
+          currentUser = { username: d.username, role: d.role, email: d.email || "",
                           mfa_enabled: !!d.mfa_enabled,
                           mfa_verified: !!(d.mfa_enabled && d.mfa_verified_at),
                           mfa_verified_at: d.mfa_verified_at || null };
@@ -1483,6 +1607,7 @@
     function showLogin(msg) {
       document.getElementById("appShell").classList.add("hidden");
       document.getElementById("loginOverlay").classList.remove("hidden");
+      applyPortalA11y("standard", false);
       document.getElementById("loginStep1").style.display = "";
       document.getElementById("loginStepRegister").style.display = "none";
       document.getElementById("loginStep2").style.display = "none";
@@ -1514,6 +1639,9 @@
       document.getElementById("sidebarAvatar").textContent   = (u.username || "?")[0].toUpperCase();
       document.getElementById("dbAdminBtn").style.display    = isAdmin ? "" : "none";
       document.getElementById("navAdmin").style.display      = isAdmin ? "" : "none";
+      const feedbackContact = document.getElementById("feedbackContact");
+      if (feedbackContact) feedbackContact.value = (u.email || "").toString().trim();
+      loadPortalA11yPreference();
       renderMfaStatusBlock();
       loadStudies();
       if (isAdmin) {
@@ -2386,6 +2514,43 @@
     });
 
     document.getElementById("generateSonaLinksBtn")?.addEventListener("click", generateSonaLinksFromIntegrations);
+
+    document.getElementById("sendFeedbackBtn")?.addEventListener("click", async () => {
+      const category = (document.getElementById("feedbackCategory")?.value || "other").trim();
+      const subject = (document.getElementById("feedbackSubject")?.value || "").trim();
+      const message = (document.getElementById("feedbackMessage")?.value || "").trim();
+      const contact = (document.getElementById("feedbackContact")?.value || "").trim();
+      const msgEl = document.getElementById("feedbackMsg");
+      const btn = document.getElementById("sendFeedbackBtn");
+
+      if (!message) {
+        inlineMsg(msgEl, "Please enter a feedback message.", "err");
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = "Sending…";
+      try {
+        const r = await fetch(`${API}/api/v1/feedback/submit`, postOpts({
+          category,
+          subject,
+          message,
+          contact_email: contact || null,
+        }));
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+        inlineMsg(msgEl, "Feedback sent. Thank you.", "ok");
+        const msgBox = document.getElementById("feedbackMessage");
+        const subjBox = document.getElementById("feedbackSubject");
+        if (msgBox) msgBox.value = "";
+        if (subjBox) subjBox.value = "";
+      } catch (err) {
+        inlineMsg(msgEl, `Feedback failed: ${err?.message || err}`, "err");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Send Feedback";
+      }
+    });
 
     // ── Account: change password ───────────────────────────────
     document.getElementById("changePwdBtn").addEventListener("click", async () => {
