@@ -992,10 +992,49 @@
 
           <!-- VIEW: Integrations -->
           <div class="view" id="viewIntegrations">
-            <div class="placeholder-pane">
-              <div class="placeholder-icon">🔗</div>
-              <h2 class="placeholder-title">Integrations coming soon</h2>
-              <p class="placeholder-desc">Prolific, SONA, and other recruitment platform integrations will appear here. You will be able to link completion URLs and automate credit granting per study.</p>
+            <div class="view-scroll">
+              <h1 class="view-title" style="margin:0 0 4px;">Integrations</h1>
+              <p class="view-subtitle" style="margin:0 0 20px;">Generate recruitment-platform launch links and completion redirects per study.</p>
+
+              <div class="panel panel-pad" style="margin-bottom:14px;">
+                <h3 style="margin:0 0 10px;">SONA Link Generator</h3>
+                <p class="inline-note" style="margin:0 0 12px;">Create SONA-friendly launch links that return participants to SONA after completion.</p>
+
+                <div class="account-field">
+                  <label for="integrationStudySelect">Study</label>
+                  <select id="integrationStudySelect" style="border:1.5px solid var(--line);border-radius:8px;padding:7px 11px;font-size:.88rem;font-family:inherit;outline:none;background:var(--bg);color:var(--ink);max-width:380px;">
+                    <option value="">— Select study —</option>
+                  </select>
+                </div>
+
+                <div class="account-field">
+                  <label for="integrationParticipantId">Participant ID (optional)</label>
+                  <input type="text" id="integrationParticipantId" placeholder="participant code or leave blank" />
+                </div>
+
+                <div class="account-field">
+                  <label for="integrationCompletionUrl">SONA completion URL</label>
+                  <input type="text" id="integrationCompletionUrl" placeholder="https://.../webstudy_credit.aspx?survey_code={participant_external_id}" />
+                </div>
+
+                <div class="account-field">
+                  <label for="integrationAbortUrl">SONA abort URL (optional)</label>
+                  <input type="text" id="integrationAbortUrl" placeholder="https://.../webstudy_credit.aspx?status=incomplete" />
+                </div>
+
+                <div class="inline-note" style="margin:2px 0 12px;">Supported placeholders: <span class="mono">{participant_external_id}</span>, <span class="mono">{participant_key}</span>, <span class="mono">{run_session_id}</span></div>
+
+                <div class="account-actions">
+                  <button class="btn btn-primary btn-sm" id="generateSonaLinksBtn">Generate SONA Links</button>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div id="integrationsStatus" class="status-bar">Pick a study and generate links.</div>
+                <div id="integrationsOutput" class="panel-pad" style="padding-top:14px;">
+                  <p class="result-message" style="margin:0;">No SONA links generated yet.</p>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1179,6 +1218,7 @@
     let currentUser   = null;
     let mfaSetupState = null;
     let studiesList   = [];
+    let integrationsRollout = null;
     const studyUiState = {};
 
     function getStudyState(slug) {
@@ -1602,6 +1642,7 @@
         studiesList = d.studies || [];
         renderStudyRows(studiesList);
         populatePreviewSelect(studiesList);
+        populateIntegrationsStudySelect(studiesList);
         statusEl.className = "status-bar ok";
         statusEl.textContent = `${studiesList.length} ${studiesList.length === 1 ? "study" : "studies"} — refreshed ${new Date().toLocaleTimeString()}.`;
       } catch (err) {
@@ -1619,6 +1660,20 @@
       for (const s of studies) {
         const o = document.createElement("option");
         o.value = s.study_slug; o.textContent = s.study_name || s.study_slug;
+        sel.appendChild(o);
+      }
+      if (prev) sel.value = prev;
+    }
+
+    function populateIntegrationsStudySelect(studies) {
+      const sel = document.getElementById("integrationStudySelect");
+      if (!sel) return;
+      const prev = sel.value;
+      sel.innerHTML = '<option value="">— Select study —</option>';
+      for (const s of studies) {
+        const o = document.createElement("option");
+        o.value = s.study_slug;
+        o.textContent = s.study_name || s.study_slug;
         sel.appendChild(o);
       }
       if (prev) sel.value = prev;
@@ -1675,15 +1730,7 @@
       tbody.querySelectorAll("[data-action='gen-link']").forEach(b =>
         b.addEventListener("click", () => {
           const pid = window.prompt("Participant external ID (optional):", "") || "";
-          const completionRedirect = window.prompt(
-            "SONA completion redirect URL (optional). Use {participant_external_id}, {participant_key}, {run_session_id} placeholders if needed:",
-            ""
-          ) || "";
-          const abortRedirect = window.prompt(
-            "SONA abort/incomplete redirect URL (optional):",
-            ""
-          ) || "";
-          generateLink(b.getAttribute("data-slug"), pid, completionRedirect, abortRedirect);
+          generateLink(b.getAttribute("data-slug"), pid);
         })
       );
       tbody.querySelectorAll("[data-action='toggle-details']").forEach(b =>
@@ -1887,6 +1934,95 @@
       } catch (err) {
         sb.className = "status-bar error"; sb.textContent = `Link generation failed: ${err?.message || err}`;
         loadStudies();
+      }
+    }
+
+    function renderIntegrationsRollout(rollout) {
+      const out = document.getElementById("integrationsOutput");
+      if (!out) return;
+
+      if (!rollout) {
+        out.innerHTML = '<p class="result-message" style="margin:0;">No SONA links generated yet.</p>';
+        return;
+      }
+
+      const opts = rollout.launch_options || {};
+      const multi = opts.multi_use || {};
+      const single = opts.single_use || {};
+      const completionRedirect = rollout.completion_redirect_url || multi.completion_redirect_url || "";
+      const abortRedirect = rollout.abort_redirect_url || multi.abort_redirect_url || "";
+
+      out.innerHTML = `
+        <div class="detail-grid">
+          <article class="detail-card">
+            <h3 style="margin:0 0 12px;">Multi-use launch</h3>
+            ${rfRow("Launch URL", absUrl(multi.launch_url || rollout.launch_url || ""))}
+            ${rfRow("Launch token", multi.launch_token || rollout.launch_token || "")}
+          </article>
+          <article class="detail-card">
+            <h3 style="margin:0 0 12px;">Single-use launch</h3>
+            ${rfRow("Launch URL", absUrl(single.launch_url || ""))}
+            ${rfRow("Launch token", single.launch_token || "")}
+          </article>
+        </div>
+        <article class="detail-card" style="margin-top:12px;">
+          <h3 style="margin:0 0 12px;">Redirects</h3>
+          ${completionRedirect ? rfRow("Completion redirect", completionRedirect) : '<p class="result-message" style="margin:0 0 8px;">No completion redirect set.</p>'}
+          ${abortRedirect ? rfRow("Abort redirect", abortRedirect) : '<p class="result-message" style="margin:0;">No abort redirect set.</p>'}
+          <p class="rollout-meta" style="margin-top:10px;">Expires ${esc(fmt(rollout.expires_at))}.</p>
+        </article>`;
+
+      out.querySelectorAll("[data-copy]").forEach(b =>
+        b.addEventListener("click", () => copyText(b.getAttribute("data-copy"), b))
+      );
+    }
+
+    async function generateSonaLinksFromIntegrations() {
+      const statusEl = document.getElementById("integrationsStatus");
+      const btn = document.getElementById("generateSonaLinksBtn");
+      const slug = (document.getElementById("integrationStudySelect")?.value || "").trim();
+      const pid = (document.getElementById("integrationParticipantId")?.value || "").trim();
+      const completionUrl = (document.getElementById("integrationCompletionUrl")?.value || "").trim();
+      const abortUrl = (document.getElementById("integrationAbortUrl")?.value || "").trim();
+
+      if (!slug) {
+        statusEl.className = "status-bar error";
+        statusEl.textContent = "Choose a study first.";
+        return;
+      }
+      if (!completionUrl) {
+        statusEl.className = "status-bar error";
+        statusEl.textContent = "Completion URL is required for SONA link generation.";
+        return;
+      }
+
+      btn.disabled = true;
+      statusEl.className = "status-bar";
+      statusEl.textContent = `Generating SONA links for ${slug}…`;
+
+      try {
+        const r = await fetch(`${API}/api/v1/studies/${encodeURIComponent(slug)}/participant-links`, postOpts({
+          participant_external_id: pid || null,
+          expires_in_hours: 72,
+          completion_redirect_url: completionUrl,
+          abort_redirect_url: abortUrl || null,
+        }));
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+
+        integrationsRollout = d;
+        renderIntegrationsRollout(integrationsRollout);
+
+        const st = getStudyState(slug);
+        st.rollout = d;
+
+        statusEl.className = "status-bar ok";
+        statusEl.textContent = `SONA links generated for ${slug}.`;
+      } catch (err) {
+        statusEl.className = "status-bar error";
+        statusEl.textContent = `SONA link generation failed: ${err?.message || err}`;
+      } finally {
+        btn.disabled = false;
       }
     }
 
@@ -2223,6 +2359,8 @@
         btn.disabled = false; btn.textContent = "Launch Preview";
       }
     });
+
+    document.getElementById("generateSonaLinksBtn")?.addEventListener("click", generateSonaLinksFromIntegrations);
 
     // ── Account: change password ───────────────────────────────
     document.getElementById("changePwdBtn").addEventListener("click", async () => {
