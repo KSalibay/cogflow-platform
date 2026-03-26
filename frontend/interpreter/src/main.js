@@ -580,6 +580,44 @@
     }
   }
 
+  function getParticipantExternalIdForPlatform() {
+    const candidates = [
+      (typeof window.COGFLOW_PARTICIPANT_ID === 'string' && window.COGFLOW_PARTICIPANT_ID.trim()) || null,
+      getQueryParam('participant'),
+      getQueryParam('participant_id'),
+      getQueryParam('code'),
+      getQueryParam('sona_participant_id'),
+      getQueryParam('sona_id'),
+      getQueryParam('survey_code')
+    ];
+    for (const value of candidates) {
+      const normalized = (value === null || value === undefined) ? '' : String(value).trim();
+      if (normalized) return normalized;
+    }
+    return null;
+  }
+
+  function maybeRedirectAfterPlatformSubmit() {
+    try {
+      if (!window.DjangoRuntimeBackend || !window.DjangoRuntimeBackend.getRunInfo) return false;
+      const runInfo = window.DjangoRuntimeBackend.getRunInfo();
+      const completionRedirect = (runInfo && runInfo.completion_redirect_url) ? String(runInfo.completion_redirect_url).trim() : '';
+      if (!completionRedirect) return false;
+
+      renderBlockingStatus('Submitted to Platform', 'Results saved. Redirecting back to participant system...');
+      window.setTimeout(() => {
+        try {
+          window.location.assign(completionRedirect);
+        } catch {
+          window.location.href = completionRedirect;
+        }
+      }, 600);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   function getDebugMode() {
     try {
       const v = (getQueryParam('debug') || '').toString().trim().toLowerCase();
@@ -1913,11 +1951,7 @@
               (typeof configId === 'string' && configId.trim()) ||
               'unknown'
             );
-            const participantId = (
-              (typeof window.COGFLOW_PARTICIPANT_ID === 'string' && window.COGFLOW_PARTICIPANT_ID.trim()) ||
-              getQueryParam('code') ||
-              null
-            );
+            const participantId = getParticipantExternalIdForPlatform();
             if (!window.DjangoRuntimeBackend.hasActiveRun()) {
               await window.DjangoRuntimeBackend.startRun({
                 studySlug,
@@ -1925,7 +1959,9 @@
               });
             }
             await window.DjangoRuntimeBackend.submitResult(payload);
-            renderBlockingStatus('Submitted to Platform', 'Results saved to CogFlow Platform.');
+            if (!maybeRedirectAfterPlatformSubmit()) {
+              renderBlockingStatus('Submitted to Platform', 'Results saved to CogFlow Platform.');
+            }
           } catch (e) {
             console.error('[DjangoRuntimeBackend]', e);
             renderBlockingStatus('Platform submit failed', e && e.message ? e.message : String(e));
@@ -2328,11 +2364,7 @@
               (typeof code === 'string' && code.trim()) ||
               'unknown'
             );
-            const participantId = (
-              (typeof window.COGFLOW_PARTICIPANT_ID === 'string' && window.COGFLOW_PARTICIPANT_ID.trim()) ||
-              getQueryParam('code') ||
-              null
-            );
+            const participantId = getParticipantExternalIdForPlatform();
             if (!window.DjangoRuntimeBackend.hasActiveRun()) {
               await window.DjangoRuntimeBackend.startRun({
                 studySlug,
@@ -2340,7 +2372,9 @@
               });
             }
             await window.DjangoRuntimeBackend.submitResult(payload);
-            renderBlockingStatus('Submitted to Platform', 'Results saved to CogFlow Platform.');
+            if (!maybeRedirectAfterPlatformSubmit()) {
+              renderBlockingStatus('Submitted to Platform', 'Results saved to CogFlow Platform.');
+            }
           } catch (e) {
             console.error('[DjangoRuntimeBackend]', e);
             renderBlockingStatus('Platform submit failed', e && e.message ? e.message : String(e));
@@ -2465,12 +2499,7 @@
         return true;
       }
 
-      const participantId = (
-        (typeof window.COGFLOW_PARTICIPANT_ID === 'string' && window.COGFLOW_PARTICIPANT_ID.trim()) ||
-        getQueryParam('participant') ||
-        getQueryParam('code') ||
-        null
-      );
+      const participantId = getParticipantExternalIdForPlatform();
 
       setStatus('Starting run from launch link...');
       renderBlockingStatus('Starting', 'Claiming launch link and loading config from CogFlow Platform...');

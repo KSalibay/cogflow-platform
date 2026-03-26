@@ -1675,7 +1675,15 @@
       tbody.querySelectorAll("[data-action='gen-link']").forEach(b =>
         b.addEventListener("click", () => {
           const pid = window.prompt("Participant external ID (optional):", "") || "";
-          generateLink(b.getAttribute("data-slug"), pid);
+          const completionRedirect = window.prompt(
+            "SONA completion redirect URL (optional). Use {participant_external_id}, {participant_key}, {run_session_id} placeholders if needed:",
+            ""
+          ) || "";
+          const abortRedirect = window.prompt(
+            "SONA abort/incomplete redirect URL (optional):",
+            ""
+          ) || "";
+          generateLink(b.getAttribute("data-slug"), pid, completionRedirect, abortRedirect);
         })
       );
       tbody.querySelectorAll("[data-action='toggle-details']").forEach(b =>
@@ -1750,6 +1758,8 @@
         const opts   = state.rollout.launch_options || {};
         const multi  = opts.multi_use  || {};
         const single = opts.single_use || {};
+        const completionRedirect = state.rollout.completion_redirect_url || multi.completion_redirect_url || "";
+        const abortRedirect = state.rollout.abort_redirect_url || multi.abort_redirect_url || "";
         rolloutCard = `<article class="detail-card"><h3>Launch rollout</h3>
           <div class="detail-grid">
             <div>
@@ -1763,6 +1773,8 @@
               <p class="rollout-meta">Single-use launch. Owner: ${esc(state.rollout.owner_username || "—")}.</p>
             </div>
           </div>
+          ${completionRedirect ? rfRow("Completion redirect URL", completionRedirect) : ""}
+          ${abortRedirect ? rfRow("Abort redirect URL", abortRedirect) : ""}
         </article>`;
       } else {
         rolloutCard = `<article class="detail-card"><h3>Launch rollout</h3>
@@ -1853,14 +1865,19 @@
       }
     }
 
-    async function generateLink(slug, pid) {
+    async function generateLink(slug, pid, completionRedirect, abortRedirect) {
       const st = getStudyState(slug);
       st.expanded = true;
       const sb = document.getElementById("studiesStatus");
       sb.className = "status-bar"; sb.textContent = `Generating links for ${slug}…`;
       try {
         const r = await fetch(`${API}/api/v1/studies/${encodeURIComponent(slug)}/participant-links`,
-          postOpts({ participant_external_id: pid || null, expires_in_hours: 72 }));
+          postOpts({
+            participant_external_id: pid || null,
+            expires_in_hours: 72,
+            completion_redirect_url: completionRedirect || null,
+            abort_redirect_url: abortRedirect || null,
+          }));
         const d = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
         st.rollout = d;

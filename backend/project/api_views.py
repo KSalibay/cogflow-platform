@@ -1,7 +1,7 @@
 import os
 import hashlib
 from datetime import timedelta
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 from email.mime.image import MIMEImage
 
 import pyotp
@@ -182,6 +182,30 @@ def _read_launch_token(token: str) -> dict:
 
 def _launch_token_digest(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _resolve_redirect_url(
+    template: str | None,
+    participant_external_id: str,
+    participant_key: str,
+    run_session_id,
+) -> str | None:
+    raw = (template or "").strip()
+    if not raw:
+        return None
+
+    replacements = {
+        "participant_external_id": participant_external_id,
+        "participant_key": participant_key,
+        "run_session_id": str(run_session_id),
+    }
+
+    resolved = raw
+    for key, value in replacements.items():
+        encoded_value = quote((value or "").strip(), safe="")
+        resolved = resolved.replace("{" + key + "}", encoded_value)
+
+    return resolved
 
 
 def _issue_email_verification_token(user: User) -> str:
@@ -1035,11 +1059,15 @@ class CreateParticipantLinkView(APIView):
 
         expires_at = timezone.now() + timedelta(hours=data.get("expires_in_hours", 72))
         participant_external_id = (data.get("participant_external_id") or "").strip()
+        completion_redirect_url = (data.get("completion_redirect_url") or "").strip()
+        abort_redirect_url = (data.get("abort_redirect_url") or "").strip()
         base_payload = {
             "study_slug": study.slug,
             "researcher_username": request.user.username,
             "participant_external_id": participant_external_id,
             "expires_at": expires_at.isoformat(),
+            "completion_redirect_url": completion_redirect_url,
+            "abort_redirect_url": abort_redirect_url,
         }
         single_use_token = _issue_launch_token(
             {
@@ -1062,6 +1090,8 @@ class CreateParticipantLinkView(APIView):
             metadata={
                 "study_slug": study.slug,
                 "expires_at": expires_at.isoformat(),
+                "has_completion_redirect": bool(completion_redirect_url),
+                "has_abort_redirect": bool(abort_redirect_url),
                 "single_use_token_digest": _launch_token_digest(single_use_token),
                 "multi_use_token_digest": _launch_token_digest(multi_use_token),
             },
@@ -1074,16 +1104,22 @@ class CreateParticipantLinkView(APIView):
                 "study_slug": study.slug,
                 "launch_token": multi_use_token,
                 "launch_url": launch_url_multi,
+                "completion_redirect_url": completion_redirect_url,
+                "abort_redirect_url": abort_redirect_url,
                 "launch_options": {
                     "multi_use": {
                         "launch_mode": "multi_use",
                         "launch_token": multi_use_token,
                         "launch_url": launch_url_multi,
+                        "completion_redirect_url": completion_redirect_url,
+                        "abort_redirect_url": abort_redirect_url,
                     },
                     "single_use": {
                         "launch_mode": "single_use",
                         "launch_token": single_use_token,
                         "launch_url": launch_url_single,
+                        "completion_redirect_url": completion_redirect_url,
+                        "abort_redirect_url": abort_redirect_url,
                     },
                 },
                 "expires_at": expires_at,
@@ -1288,6 +1324,19 @@ class StartRunView(APIView):
             status="started",
         )
 
+        completion_redirect_url = _resolve_redirect_url(
+            token_payload.get("completion_redirect_url") if launch_token else None,
+            participant_external_id,
+            participant_key,
+            run_session.id,
+        )
+        abort_redirect_url = _resolve_redirect_url(
+            token_payload.get("abort_redirect_url") if launch_token else None,
+            participant_external_id,
+            participant_key,
+            run_session.id,
+        )
+
         record_audit(
             action="start_run",
             resource_type="run_session",
@@ -1297,6 +1346,8 @@ class StartRunView(APIView):
                 "owner_username": owner_name_response,
                 "launch_mode": launch_mode,
                 "launch_token_digest": launch_token_digest,
+                "has_completion_redirect": bool(completion_redirect_url),
+                "has_abort_redirect": bool(abort_redirect_url),
             },
         )
 
@@ -1308,6 +1359,8 @@ class StartRunView(APIView):
                 "config": config_version.config_json,
                 "participant_key": participant_key,
                 "owner_username": owner_name_response,
+                "completion_redirect_url": completion_redirect_url,
+                "abort_redirect_url": abort_redirect_url,
             },
             status=status.HTTP_201_CREATED,
         )
