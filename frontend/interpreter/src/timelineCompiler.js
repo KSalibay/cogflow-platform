@@ -624,6 +624,107 @@
       return arr[Math.max(0, Math.min(arr.length - 1, idx))];
     };
 
+    const directionTransitionMode = (values.direction_transition_mode ?? 'random_each_trial').toString().trim().toLowerCase();
+    const directionTransitionEveryNRaw = Number.parseInt(values.direction_transition_every_n_trials, 10);
+    const directionTransitionEveryN = Number.isFinite(directionTransitionEveryNRaw)
+      ? Math.max(1, directionTransitionEveryNRaw)
+      : 1;
+    const directionTransitionCountRaw = Number.parseInt(values.direction_transition_count, 10);
+    const directionTransitionCount = Number.isFinite(directionTransitionCountRaw)
+      ? Math.max(0, directionTransitionCountRaw)
+      : 0;
+
+    delete values.direction_transition_mode;
+    delete values.direction_transition_every_n_trials;
+    delete values.direction_transition_count;
+
+    const shouldScheduleDirectionTransitions =
+      directionTransitionMode === 'every_n_trials' || directionTransitionMode === 'exact_count';
+
+    const directionKeysForType = (type) => {
+      if (type === 'rdm-trial' || type === 'rdm-practice') return ['direction'];
+      if (type === 'rdm-dot-groups') return ['group_1_direction', 'group_2_direction'];
+      return [];
+    };
+
+    const buildSwitchIndices = (totalTrials, mode, everyN, count) => {
+      const maxSwitches = Math.max(0, totalTrials - 1);
+      const out = new Set();
+      if (!(maxSwitches > 0)) return out;
+
+      if (mode === 'every_n_trials') {
+        for (let idx = Math.max(1, everyN); idx < totalTrials; idx += Math.max(1, everyN)) {
+          out.add(idx);
+        }
+        return out;
+      }
+
+      if (mode === 'exact_count') {
+        const target = Math.max(0, Math.min(maxSwitches, count));
+        if (target === 0) return out;
+        if (target === maxSwitches) {
+          for (let idx = 1; idx < totalTrials; idx++) out.add(idx);
+          return out;
+        }
+
+        const candidates = Array.from({ length: maxSwitches }, (_, i) => i + 1);
+        for (let i = candidates.length - 1; i > 0; i--) {
+          const j = Math.floor(rng() * (i + 1));
+          const tmp = candidates[i];
+          candidates[i] = candidates[j];
+          candidates[j] = tmp;
+        }
+        const selected = candidates.slice(0, target).sort((a, b) => a - b);
+        for (const idx of selected) out.add(idx);
+      }
+
+      return out;
+    };
+
+    const pickDifferentOption = (current, options) => {
+      if (!Array.isArray(options) || options.length === 0) return current;
+      if (options.length === 1) return options[0];
+      const filtered = options.filter(o => o !== current);
+      const source = filtered.length > 0 ? filtered : options;
+      const idx = Math.floor(rng() * source.length);
+      return source[Math.max(0, Math.min(source.length - 1, idx))];
+    };
+
+    const directionSequences = (() => {
+      if (!shouldScheduleDirectionTransitions) return {};
+
+      const keys = directionKeysForType(baseType);
+      if (!Array.isArray(keys) || keys.length === 0) return {};
+
+      const switchIndices = buildSwitchIndices(length, directionTransitionMode, directionTransitionEveryN, directionTransitionCount);
+      const seqMap = {};
+
+      for (const key of keys) {
+        if (!Object.prototype.hasOwnProperty.call(values, key)) continue;
+
+        const options = normalizeOptions(values[key])
+          .map(v => (v === undefined || v === null) ? null : v)
+          .filter(v => v !== null);
+
+        if (options.length === 0) continue;
+
+        const seq = new Array(length);
+        let current = sampleFromOptions(options);
+        seq[0] = current;
+
+        for (let i = 1; i < length; i++) {
+          if (switchIndices.has(i)) {
+            current = pickDifferentOption(current, options);
+          }
+          seq[i] = current;
+        }
+
+        seqMap[key] = seq;
+      }
+
+      return seqMap;
+    })();
+
     // Adaptive / staircase support (trial-based). In continuous mode this isn't supported yet.
     let staircase = null;
     let adaptiveMeta = null;
@@ -770,6 +871,12 @@
       // Apply fixed values
       for (const [k, v] of Object.entries(values)) {
         t[k] = sampleFromValues(v);
+      }
+
+      for (const [k, seq] of Object.entries(directionSequences)) {
+        if (Array.isArray(seq) && i < seq.length) {
+          t[k] = seq[i];
+        }
       }
 
       if (baseType === 'sart-trial') {

@@ -2418,6 +2418,44 @@ class JSPsychSchemas {
                         description: 'Mouse response: how a segment selection is registered'
                     },
 
+                    // Shared RDM timing windows (set min=max for constant per-block timing)
+                    stimulus_duration_min: {
+                        type: this.parameterTypes.INT,
+                        default: 1500,
+                        blockTarget: 'rdm-*',
+                        description: 'RDM: stimulus duration min (ms)'
+                    },
+                    stimulus_duration_max: {
+                        type: this.parameterTypes.INT,
+                        default: 1500,
+                        blockTarget: 'rdm-*',
+                        description: 'RDM: stimulus duration max (ms)'
+                    },
+                    response_deadline_min: {
+                        type: this.parameterTypes.INT,
+                        default: 2500,
+                        blockTarget: 'rdm-*',
+                        description: 'RDM: response deadline min (ms)'
+                    },
+                    response_deadline_max: {
+                        type: this.parameterTypes.INT,
+                        default: 2500,
+                        blockTarget: 'rdm-*',
+                        description: 'RDM: response deadline max (ms)'
+                    },
+                    inter_trial_interval_min: {
+                        type: this.parameterTypes.INT,
+                        default: 1200,
+                        blockTarget: 'rdm-*',
+                        description: 'RDM: inter-trial interval min (ms)'
+                    },
+                    inter_trial_interval_max: {
+                        type: this.parameterTypes.INT,
+                        default: 1200,
+                        blockTarget: 'rdm-*',
+                        description: 'RDM: inter-trial interval max (ms)'
+                    },
+
                     // rdm-trial windows
                     coherence_min: {
                         type: this.parameterTypes.FLOAT,
@@ -2436,6 +2474,25 @@ class JSPsychSchemas {
                         default: '0,180',
                         blockTarget: 'rdm-trial',
                         description: 'RDM Trial: comma-separated directions (degrees; 0=right, 90=down, 180=left, 270=up) to sample from. Allowed range: 0 to 359.'
+                    },
+                    direction_transition_mode: {
+                        type: this.parameterTypes.SELECT,
+                        default: 'random_each_trial',
+                        options: ['random_each_trial', 'every_n_trials', 'exact_count'],
+                        blockTarget: 'rdm-trial,rdm-practice,rdm-dot-groups',
+                        description: 'Direction transition schedule within the block'
+                    },
+                    direction_transition_every_n_trials: {
+                        type: this.parameterTypes.INT,
+                        default: 1,
+                        blockTarget: 'rdm-trial,rdm-practice,rdm-dot-groups',
+                        description: 'When mode = every_n_trials, switch direction after this many generated trials'
+                    },
+                    direction_transition_count: {
+                        type: this.parameterTypes.INT,
+                        default: 0,
+                        blockTarget: 'rdm-trial,rdm-practice,rdm-dot-groups',
+                        description: 'When mode = exact_count, total number of direction transitions inside the block'
                     },
                     speed_min: {
                         type: this.parameterTypes.FLOAT,
