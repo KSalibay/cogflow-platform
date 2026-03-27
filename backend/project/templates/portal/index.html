@@ -885,7 +885,7 @@
           <span id="topbarUsername" class="mono"></span>
           <span id="topbarRole" class="role-pill"></span>
           <a id="dbAdminBtn"
-             href="http://localhost:8080/?pgsql=db&username=cogflow&db=cogflow_platform&ns=public"
+             href="{{ db_admin_url|default:'#' }}"
              class="btn btn-ghost btn-sm" style="display:none" target="_blank">DB ↗</a>
         </div>
       </header>

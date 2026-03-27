@@ -22,6 +22,7 @@ from django.utils import timezone
 from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework import status
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from apps.audit.models import AuditEvent
@@ -240,21 +241,24 @@ def _portal_auth_redirect(request, msg: str, mode: str = "login") -> HttpRespons
 class AuthLoginView(APIView):
     """Session login endpoint for portal user flows."""
 
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "auth_login"
+
     @transaction.atomic
     def post(self, request):
         serializer = AuthLoginRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        existing_user = User.objects.filter(username=data["username"]).only("is_active").first()
-        if existing_user and not existing_user.is_active:
-            return Response(
-                {"error": "Please verify your email before signing in."},
-                status=status.HTTP_401_UNAUTHORIZED,
-            )
-
         user = authenticate(request, username=data["username"], password=data["password"])
         if not user:
+            record_audit(
+                action="auth_login_failed",
+                resource_type="user",
+                resource_id="unknown",
+                actor=(data.get("username") or "unknown").strip() or "unknown",
+                metadata={"reason": "invalid_credentials_or_inactive"},
+            )
             return Response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
 
         login(request, user)
@@ -292,6 +296,9 @@ class AuthCsrfView(APIView):
 
 class AuthRegisterView(APIView):
     """Self-service registration endpoint (account activates by email verification)."""
+
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "auth_register"
 
     @transaction.atomic
     def post(self, request):
@@ -515,6 +522,9 @@ class TotpSetupView(APIView):
 class TotpVerifyView(APIView):
     """Verify a TOTP code and mark MFA as active for this session."""
 
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "auth_mfa_verify"
+
     @transaction.atomic
     def post(self, request):
         if not request.user.is_authenticated:
@@ -638,6 +648,9 @@ class AuthMeView(APIView):
 
 class FeedbackSubmitView(APIView):
     """Submit in-portal feedback (Resend preferred, SMTP fallback)."""
+
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "feedback_submit"
 
     @transaction.atomic
     def post(self, request):
@@ -996,7 +1009,15 @@ class PortalDashboardView(APIView):
     schema = None
 
     def get(self, request):
-        return render(request, "portal/index.html")
+        db_admin_url = (os.getenv("COGFLOW_DB_ADMIN_URL", "") or "").strip()
+        if not db_admin_url:
+            host = request.get_host().split(":", 1)[0]
+            adminer_port = (os.getenv("ADMINER_HOST_PORT", "8080") or "8080").strip() or "8080"
+            db_admin_url = (
+                f"{request.scheme}://{host}:{adminer_port}/"
+                "?pgsql=db&username=cogflow&db=cogflow_platform&ns=public"
+            )
+        return render(request, "portal/index.html", {"db_admin_url": db_admin_url})
 
 
 class StudiesListView(APIView):
