@@ -1094,7 +1094,7 @@
                   </select>
                 </div>
 
-                <div class="inline-note" style="margin:2px 0 12px;">The generated URL includes Prolific placeholders: <span class="mono">{{%PROLIFIC_PID%}}</span>, <span class="mono">{{%STUDY_ID%}}</span>, <span class="mono">{{%SESSION_ID%}}</span>.</div>
+                <div class="inline-note" style="margin:2px 0 12px;">The generated URL includes Prolific placeholders: <span class="mono">{% templatetag openvariable %}%PROLIFIC_PID%{% templatetag closevariable %}</span>, <span class="mono">{% templatetag openvariable %}%STUDY_ID%{% templatetag closevariable %}</span>, <span class="mono">{% templatetag openvariable %}%SESSION_ID%{% templatetag closevariable %}</span>.</div>
 
                 <div class="account-actions">
                   <button class="btn btn-primary btn-sm" id="generateProlificLinkBtn">Generate Prolific Link</button>
@@ -2162,9 +2162,9 @@
       if (!base || base === "-") return "";
 
       const placeholders = {
-        PROLIFIC_PID: "{{%PROLIFIC_PID%}}",
-        STUDY_ID: "{{%STUDY_ID%}}",
-        SESSION_ID: "{{%SESSION_ID%}}",
+        PROLIFIC_PID: "{% templatetag openvariable %}%PROLIFIC_PID%{% templatetag closevariable %}",
+        STUDY_ID: "{% templatetag openvariable %}%STUDY_ID%{% templatetag closevariable %}",
+        SESSION_ID: "{% templatetag openvariable %}%SESSION_ID%{% templatetag closevariable %}",
       };
 
       try {
@@ -2282,7 +2282,7 @@
 
       try {
         const r = await fetch(`${API}/api/v1/studies/${encodeURIComponent(slug)}/participant-links`, postOpts({
-          participant_external_id: "{{%PROLIFIC_PID%}}",
+          participant_external_id: "{% templatetag openvariable %}%PROLIFIC_PID%{% templatetag closevariable %}",
           expires_in_hours: 72,
           completion_redirect_url: completionRedirect,
           abort_redirect_url: null,
