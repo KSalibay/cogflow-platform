@@ -1077,10 +1077,29 @@
                 </div>
               </div>
 
+              <div class="panel panel-pad" style="margin-bottom:14px;">
+                <h3 style="margin:0 0 10px;">Prolific Link Generator</h3>
+                <p class="inline-note" style="margin:0 0 12px;">Generate a Prolific-ready external study URL for the selected study.</p>
+
+                <div class="account-field">
+                  <label for="prolificCompletionCode">Prolific completion code (optional)</label>
+                  <input type="text" id="prolificCompletionCode" placeholder="e.g. C123ABC" />
+                </div>
+
+                <div class="inline-note" style="margin:2px 0 12px;">The generated URL includes Prolific placeholders: <span class="mono">{{%PROLIFIC_PID%}}</span>, <span class="mono">{{%STUDY_ID%}}</span>, <span class="mono">{{%SESSION_ID%}}</span>.</div>
+
+                <div class="account-actions">
+                  <button class="btn btn-primary btn-sm" id="generateProlificLinkBtn">Generate Prolific Link</button>
+                </div>
+              </div>
+
               <div class="panel">
                 <div id="integrationsStatus" class="status-bar">Pick a study and generate links.</div>
                 <div id="integrationsOutput" class="panel-pad" style="padding-top:14px;">
                   <p class="result-message" style="margin:0;">No SONA links generated yet.</p>
+                </div>
+                <div id="prolificOutput" class="panel-pad" style="padding-top:0;border-top:1px solid var(--line);">
+                  <p class="result-message" style="margin:0;">No Prolific link generated yet.</p>
                 </div>
               </div>
             </div>
@@ -2130,6 +2149,51 @@
       );
     }
 
+    function buildProlificExternalStudyUrl(baseLaunchUrl) {
+      const base = absUrl(baseLaunchUrl || "");
+      if (!base || base === "-") return "";
+
+      const placeholders = {
+        PROLIFIC_PID: "{{%PROLIFIC_PID%}}",
+        STUDY_ID: "{{%STUDY_ID%}}",
+        SESSION_ID: "{{%SESSION_ID%}}",
+      };
+
+      try {
+        const u = new URL(base, location.origin);
+        Object.entries(placeholders).forEach(([k, v]) => u.searchParams.set(k, v));
+        return u.toString();
+      } catch {
+        const qp = Object.entries(placeholders)
+          .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+          .join("&");
+        return `${base}${base.includes("?") ? "&" : "?"}${qp}`;
+      }
+    }
+
+    function renderProlificOutput(payload) {
+      const out = document.getElementById("prolificOutput");
+      if (!out) return;
+
+      if (!payload) {
+        out.innerHTML = '<p class="result-message" style="margin:0;">No Prolific link generated yet.</p>';
+        return;
+      }
+
+      out.innerHTML = `
+        <article class="detail-card" style="margin-top:12px;">
+          <h3 style="margin:0 0 12px;">Prolific</h3>
+          ${rfRow("External Study URL", payload.externalStudyUrl || "")}
+          ${rfRow("Base launch URL", payload.baseLaunchUrl || "")}
+          ${payload.completionRedirect ? rfRow("Completion redirect", payload.completionRedirect) : '<p class="result-message" style="margin:0 0 8px;">No completion redirect set (code was left blank).</p>'}
+          <p class="rollout-meta" style="margin-top:10px;">Paste the External Study URL into Prolific. Placeholders will be resolved by Prolific at runtime.</p>
+        </article>`;
+
+      out.querySelectorAll("[data-copy]").forEach(b =>
+        b.addEventListener("click", () => copyText(b.getAttribute("data-copy"), b))
+      );
+    }
+
     async function generateSonaLinksFromIntegrations() {
       const statusEl = document.getElementById("integrationsStatus");
       const btn = document.getElementById("generateSonaLinksBtn");
@@ -2174,6 +2238,56 @@
       } catch (err) {
         statusEl.className = "status-bar error";
         statusEl.textContent = `SONA link generation failed: ${err?.message || err}`;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function generateProlificLinkFromIntegrations() {
+      const statusEl = document.getElementById("integrationsStatus");
+      const btn = document.getElementById("generateProlificLinkBtn");
+      const slug = (document.getElementById("integrationStudySelect")?.value || "").trim();
+      const completionCode = (document.getElementById("prolificCompletionCode")?.value || "").trim();
+
+      if (!slug) {
+        statusEl.className = "status-bar error";
+        statusEl.textContent = "Choose a study first.";
+        return;
+      }
+
+      const completionRedirect = completionCode
+        ? `https://app.prolific.com/submissions/complete?cc=${encodeURIComponent(completionCode)}`
+        : null;
+
+      btn.disabled = true;
+      statusEl.className = "status-bar";
+      statusEl.textContent = `Generating Prolific link for ${slug}…`;
+
+      try {
+        const r = await fetch(`${API}/api/v1/studies/${encodeURIComponent(slug)}/participant-links`, postOpts({
+          participant_external_id: "{{%PROLIFIC_PID%}}",
+          expires_in_hours: 72,
+          completion_redirect_url: completionRedirect,
+          abort_redirect_url: null,
+        }));
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+
+        const multi = d.launch_options?.multi_use || {};
+        const baseLaunchUrl = absUrl(multi.launch_url || d.launch_url || "");
+        const externalStudyUrl = buildProlificExternalStudyUrl(baseLaunchUrl);
+
+        renderProlificOutput({
+          externalStudyUrl,
+          baseLaunchUrl,
+          completionRedirect: completionRedirect || "",
+        });
+
+        statusEl.className = "status-bar ok";
+        statusEl.textContent = `Prolific link generated for ${slug}.`;
+      } catch (err) {
+        statusEl.className = "status-bar error";
+        statusEl.textContent = `Prolific link generation failed: ${err?.message || err}`;
       } finally {
         btn.disabled = false;
       }
@@ -2514,6 +2628,7 @@
     });
 
     document.getElementById("generateSonaLinksBtn")?.addEventListener("click", generateSonaLinksFromIntegrations);
+    document.getElementById("generateProlificLinkBtn")?.addEventListener("click", generateProlificLinkFromIntegrations);
 
     document.getElementById("sendFeedbackBtn")?.addEventListener("click", async () => {
       const category = (document.getElementById("feedbackCategory")?.value || "other").trim();
