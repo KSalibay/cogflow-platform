@@ -13,56 +13,9 @@
     <script>
         // Apply Accessibility Mode + Theme early to avoid flash of wrong styling
         (function () {
-            const normalizeA11yMode = (raw) => {
-                const mode = (raw || '').toString().trim().toLowerCase();
-                if (mode === 'contrast' || mode === 'large' || mode === 'contrast-large') return mode;
-                return 'standard';
-            };
-
-            const getUserScope = () => {
-                try {
-                    const params = new URLSearchParams(window.location.search || '');
-                    const fromQuery = (params.get('builder_user') || '').trim();
-                    if (fromQuery) {
-                        localStorage.setItem('cogflow_builder_user', fromQuery);
-                        return fromQuery;
-                    }
-                } catch (e) {
-                    // ignore
-                }
-                try {
-                    return (localStorage.getItem('cogflow_builder_user') || 'default').trim() || 'default';
-                } catch (e) {
-                    return 'default';
-                }
-            };
-
-            const applyA11yMode = (modeRaw) => {
-                const mode = normalizeA11yMode(modeRaw);
-                const html = document.documentElement;
-                html.classList.remove('cf-a11y', 'cf-a11y-contrast', 'cf-a11y-large');
-                if (mode === 'contrast') html.classList.add('cf-a11y-contrast');
-                if (mode === 'large') html.classList.add('cf-a11y-large');
-                if (mode === 'contrast-large') html.classList.add('cf-a11y-contrast', 'cf-a11y-large');
-            };
-
             try {
-                const params = new URLSearchParams(window.location.search || '');
-                const fromQuery = normalizeA11yMode((params.get('a11y_mode') || '').trim());
-                if (fromQuery !== 'standard') {
-                    applyA11yMode(fromQuery);
-                }
-
-                const scope = getUserScope();
-                const modeKey = `cogflow_builder_a11y_mode::${scope}`;
-                const mode = normalizeA11yMode(localStorage.getItem(modeKey));
-                if (fromQuery === 'standard' && mode !== 'standard') {
-                    applyA11yMode(mode);
-                } else {
-                    // Legacy compatibility: old boolean toggle becomes contrast mode.
-                    const legacyEnabled = fromQuery === 'standard' && localStorage.getItem('cogflow_builder_a11y') === '1';
-                    if (legacyEnabled) applyA11yMode('contrast');
-                }
+                const enabled = localStorage.getItem('cogflow_builder_a11y') === '1';
+                if (enabled) document.documentElement.classList.add('cf-a11y');
             } catch (e) {
                 // Ignore storage errors (privacy mode, etc.)
             }
@@ -88,7 +41,7 @@
     <link href="vendor/quill.snow.css" rel="stylesheet">
 
     <!-- App theme + Bootstrap overrides (must load AFTER Bootstrap) -->
-    <link rel="stylesheet" href="css/style.css?v=20260326-1">
+    <link rel="stylesheet" href="css/style.css?v=20260324-1">
 
     <!-- Prevent aggressive caching when opened via file:// or a simple static server -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
@@ -122,8 +75,14 @@
                 <button class="btn btn-outline-light me-2" id="importLocalJsonBtn">
                     <i class="fas fa-file-arrow-up"></i> Import JSON(s)
                 </button>
+                <button class="btn btn-outline-light me-2" id="prepJatosPropsBtn">
+                    <i class="fas fa-clipboard"></i> JATOS Props
+                </button>
                 <button class="btn btn-warning me-2" id="platformPublishBtn" style="display:none" title="Publish config to CogFlow Platform">
                     <i class="fas fa-server"></i> Publish
+                </button>
+                <button class="btn btn-success" id="exportJsonBtn">
+                    <i class="fas fa-cloud-arrow-up"></i> Export
                 </button>
 
                 <!-- Hidden input: local JSON import for Token Store uploads -->
@@ -247,6 +206,12 @@
                     </div>
                     <div class="card-body p-0">
                         <div id="timelineBuilder" class="timeline-container">
+                            <span class="timeline-corner-icon timeline-corner-icon-left" title="Loop markers">
+                                <i class="fas fa-repeat"></i>
+                            </span>
+                            <span class="timeline-corner-icon timeline-corner-icon-right" title="Shuffle markers">
+                                <i class="fas fa-shuffle"></i>
+                            </span>
                             <!-- Timeline components will be dragged here -->
                             <div id="timelineComponents" class="timeline-components-container">
                                 <div class="empty-timeline text-center text-muted p-4">
@@ -437,7 +402,10 @@
     <footer class="cf-footer">
         <div class="container-fluid cf-footer-inner">
             <div class="cf-footer-a11y">
-                <span style="font-size:.75rem;opacity:.9;">Accessibility is managed from the Portal top bar.</span>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" role="switch" id="accessibilityModeToggle">
+                    <label class="form-check-label" for="accessibilityModeToggle">Accessibility Mode</label>
+                </div>
             </div>
             <div class="cf-footer-spacer"></div>
             <div class="cf-footer-text">
@@ -471,7 +439,7 @@
     </script>
 
     <!-- Cache-bust local scripts -->
-    <script src="src/JsonBuilder.js?v=20260326-1"></script>
+    <script src="src/JsonBuilder.js?v=20260325-1"></script>
     <script src="src/modules/DataCollectionModules.js?v=20260114-1"></script>
     <script src="src/modules/TrialManager.js?v=20260113-10"></script>
     <script src="src/modules/TimelineBuilder.js?v=20260309-1"></script>
@@ -542,9 +510,6 @@
                 if (!e || e.origin !== window.location.origin) return;
                 if (e.data && e.data.type === 'cogflow:set-theme') {
                     setBuilderTheme(e.data.theme);
-                }
-                if (e.data && e.data.type === 'cogflow:set-a11y' && window.jsonBuilderInstance && typeof window.jsonBuilderInstance.setAccessibilityMode === 'function') {
-                    window.jsonBuilderInstance.setAccessibilityMode(e.data.mode || 'standard');
                 }
             });
 
@@ -638,11 +603,16 @@
 
             const state = {
                 loopMap: new Map(),
+                randomizeMap: new Map(),
                 draw: null,
                 resize: null,
                 layerEl: null,
-                gutterEl: null
+                gutterEl: null,
+                randomGutterEl: null
             };
+
+            const LOOP_GUTTER_WIDTH_PX = 20;
+            const RANDOM_GUTTER_WIDTH_PX = 20;
 
             const parseComponentData = (el) => {
                 try { return JSON.parse(el?.dataset?.componentData || '{}') || {}; }
@@ -659,14 +629,26 @@
                 return data.type === 'loop-end';
             };
 
+            const isRandomizeStartMarker = (el) => {
+                const data = parseComponentData(el);
+                return data.type === 'randomize-start';
+            };
+
+            const isRandomizeEndMarker = (el) => {
+                const data = parseComponentData(el);
+                return data.type === 'randomize-end';
+            };
+
             const isLoopMarker = (el) => isLoopStartMarker(el) || isLoopEndMarker(el);
+            const isRandomizeMarker = (el) => isRandomizeStartMarker(el) || isRandomizeEndMarker(el);
+            const isStructureMarker = (el) => isLoopMarker(el) || isRandomizeMarker(el);
 
             const getTimelineCards = () => Array.from(timelineContainer.querySelectorAll(':scope > .timeline-component'));
-            const getVisibleCards = () => getTimelineCards().filter((el) => !isLoopMarker(el));
+            const getVisibleCards = () => getTimelineCards().filter((el) => !isStructureMarker(el));
 
             const normalizeMarkerVisibility = () => {
                 getTimelineCards().forEach((el) => {
-                    if (isLoopMarker(el)) el.classList.add('cf-loop-marker-hidden');
+                    if (isStructureMarker(el)) el.classList.add('cf-loop-marker-hidden');
                     else el.classList.remove('cf-loop-marker-hidden');
                 });
             };
@@ -724,6 +706,54 @@
                 return pairs;
             };
 
+            const getRandomizePairs = () => {
+                const cards = getTimelineCards();
+                const stack = [];
+                const pairs = [];
+
+                const groupIdOf = (el) => (parseComponentData(el).random_group_id ?? '').toString().trim();
+
+                for (let idx = 0; idx < cards.length; idx++) {
+                    const el = cards[idx];
+                    if (isRandomizeStartMarker(el)) {
+                        stack.push({
+                            startEl: el,
+                            startIdx: idx,
+                            groupId: groupIdOf(el),
+                            depth: stack.length
+                        });
+                        continue;
+                    }
+
+                    if (isRandomizeEndMarker(el)) {
+                        if (stack.length === 0) continue;
+                        const endId = groupIdOf(el);
+
+                        let matchPos = -1;
+                        if (endId) {
+                            for (let i = stack.length - 1; i >= 0; i--) {
+                                if ((stack[i].groupId || '') === endId) {
+                                    matchPos = i;
+                                    break;
+                                }
+                            }
+                        } else {
+                            matchPos = stack.length - 1;
+                        }
+                        if (matchPos < 0) continue;
+
+                        const matched = stack.splice(matchPos, 1)[0];
+                        pairs.push({
+                            ...matched,
+                            endEl: el,
+                            endIdx: idx
+                        });
+                    }
+                }
+
+                return pairs;
+            };
+
             const getVisibleIndexFromY = (clientY) => {
                 const cards = getVisibleCards();
                 if (cards.length === 0) return -1;
@@ -751,21 +781,33 @@
                 if (!state.gutterEl || !state.gutterEl.isConnected) {
                     const gutter = document.createElement('div');
                     gutter.className = 'timeline-loop-gutter-hitbox';
+                    gutter.style.width = `${LOOP_GUTTER_WIDTH_PX}px`;
                     timelineContainer.appendChild(gutter);
                     state.gutterEl = gutter;
                 }
+                if (!state.randomGutterEl || !state.randomGutterEl.isConnected) {
+                    const randomGutter = document.createElement('div');
+                    randomGutter.className = 'timeline-random-gutter-hitbox';
+                    randomGutter.style.width = `${RANDOM_GUTTER_WIDTH_PX}px`;
+                    timelineContainer.appendChild(randomGutter);
+                    state.randomGutterEl = randomGutter;
+                }
             };
 
-            const createLoopMarkerElement = (type, loopId, iterations) => {
+            const createMarkerElement = (type, markerId, iterations) => {
                 const el = document.createElement('div');
                 el.className = 'timeline-component card mb-2 cf-loop-marker-hidden';
                 el.dataset.componentType = type;
 
-                const data = {
-                    type,
-                    name: type === 'loop-start' ? 'Loop Start' : 'Loop End',
-                    loop_id: loopId
-                };
+                const data = { type };
+                if (type === 'loop-start' || type === 'loop-end') {
+                    data.name = type === 'loop-start' ? 'Loop Start' : 'Loop End';
+                    data.loop_id = markerId;
+                } else {
+                    data.name = type === 'randomize-start' ? 'Randomize Start' : 'Randomize End';
+                    data.random_group_id = markerId;
+                    if (type === 'randomize-start') data.randomizable_across_markers = true;
+                }
                 if (type === 'loop-start') {
                     data.iterations = Number.isFinite(Number(iterations)) ? Math.max(1, Math.floor(Number(iterations))) : 2;
                 }
@@ -774,7 +816,7 @@
                 return el;
             };
 
-            const createLoopFromVisibleRange = (startVisibleIdx, endVisibleIdx) => {
+            const createRangeFromVisibleRange = (rangeType, startVisibleIdx, endVisibleIdx) => {
                 const cards = getVisibleCards();
                 if (cards.length === 0) return;
                 const lo = Math.max(0, Math.min(startVisibleIdx, endVisibleIdx));
@@ -783,9 +825,10 @@
                 const endCard = cards[hi];
                 if (!startCard || !endCard) return;
 
-                const loopId = `loop_${Date.now()}_${Math.floor(Math.random() * 1000000)}`;
-                const startMarker = createLoopMarkerElement('loop-start', loopId, 2);
-                const endMarker = createLoopMarkerElement('loop-end', loopId);
+                const markerId = `${rangeType}_${Date.now()}_${Math.floor(Math.random() * 1000000)}`;
+                const isLoop = rangeType === 'loop';
+                const startMarker = createMarkerElement(isLoop ? 'loop-start' : 'randomize-start', markerId, 2);
+                const endMarker = createMarkerElement(isLoop ? 'loop-end' : 'randomize-end', markerId);
 
                 timelineContainer.insertBefore(startMarker, startCard);
                 if (endCard.nextSibling) timelineContainer.insertBefore(endMarker, endCard.nextSibling);
@@ -825,11 +868,16 @@
                 const bottom = endCard.offsetTop + endCard.offsetHeight;
 
                 const draft = document.createElement('div');
-                draft.className = 'timeline-loop-bracket is-draft';
-                draft.style.left = '8px';
+                const isLoop = state.draw.kind !== 'randomize';
+                draft.className = `${isLoop ? 'timeline-loop-bracket' : 'timeline-random-bracket'} is-draft`;
+                if (isLoop) {
+                    draft.style.left = '8px';
+                } else {
+                    draft.style.right = '8px';
+                }
                 draft.style.top = `${top}px`;
                 draft.style.height = `${Math.max(8, bottom - top)}px`;
-                draft.title = 'Release to create loop';
+                draft.title = isLoop ? 'Release to create loop' : 'Release to create randomization group';
                 state.layerEl.appendChild(draft);
                 void containerRect; // keep lint quiet in non-strict environments
             };
@@ -840,6 +888,7 @@
 
                 state.layerEl.innerHTML = '';
                 state.loopMap.clear();
+                state.randomizeMap.clear();
 
                 const pairs = getLoopPairs();
                 const cards = getTimelineCards();
@@ -887,6 +936,53 @@
                     });
                 });
 
+                const randomPairs = getRandomizePairs();
+                randomPairs.forEach((group, idx) => {
+                    const visibleWithin = cards
+                        .slice(group.startIdx + 1, group.endIdx)
+                        .filter((el) => !isStructureMarker(el));
+
+                    if (visibleWithin.length === 0) return;
+                    const startCard = visibleWithin[0];
+                    const endCard = visibleWithin[visibleWithin.length - 1];
+
+                    const top = startCard.offsetTop;
+                    const bottom = endCard.offsetTop + endCard.offsetHeight;
+                    const left = 20 + (group.depth * 10);
+                    const key = `${group.groupId || 'random'}:${group.startIdx}:${group.endIdx}:${idx}`;
+
+                    const bracket = document.createElement('div');
+                    bracket.className = 'timeline-random-bracket';
+                    bracket.style.right = `${left}px`;
+                    bracket.style.top = `${top}px`;
+                    bracket.style.height = `${Math.max(8, bottom - top)}px`;
+                    bracket.dataset.loopKey = key;
+                    bracket.dataset.rangeType = 'randomize';
+                    bracket.title = 'Randomize enclosed items once per run • click to remove';
+
+                    const topHandle = document.createElement('div');
+                    topHandle.className = 'timeline-random-handle top';
+                    topHandle.dataset.loopKey = key;
+                    topHandle.dataset.handle = 'top';
+                    topHandle.dataset.rangeType = 'randomize';
+
+                    const bottomHandle = document.createElement('div');
+                    bottomHandle.className = 'timeline-random-handle bottom';
+                    bottomHandle.dataset.loopKey = key;
+                    bottomHandle.dataset.handle = 'bottom';
+                    bottomHandle.dataset.rangeType = 'randomize';
+
+                    bracket.appendChild(topHandle);
+                    bracket.appendChild(bottomHandle);
+                    state.layerEl.appendChild(bracket);
+
+                    state.randomizeMap.set(key, {
+                        ...group,
+                        visibleStartIdx: getVisibleCards().indexOf(startCard),
+                        visibleEndIdx: getVisibleCards().indexOf(endCard)
+                    });
+                });
+
                 renderDraftBracket();
             };
 
@@ -898,7 +994,8 @@
                 }
 
                 if (state.resize) {
-                    const loop = state.loopMap.get(state.resize.loopKey);
+                    const mapRef = state.resize.rangeType === 'randomize' ? state.randomizeMap : state.loopMap;
+                    const loop = mapRef.get(state.resize.loopKey);
                     if (!loop) return;
                     const idxRaw = getVisibleIndexFromY(e.clientY);
                     if (idxRaw < 0) return;
@@ -925,7 +1022,7 @@
                     const startIdx = state.draw.startIdx;
                     const endIdx = state.draw.currentIdx;
                     if (startIdx >= 0 && endIdx >= 0) {
-                        createLoopFromVisibleRange(startIdx, endIdx);
+                        createRangeFromVisibleRange(state.draw.kind || 'loop', startIdx, endIdx);
                         didMutate = true;
                     }
                     state.draw = null;
@@ -946,26 +1043,41 @@
             };
 
             timelineContainer.addEventListener('mousedown', (e) => {
-                const handleEl = e.target.closest('.timeline-loop-handle');
+                const handleEl = e.target.closest('.timeline-loop-handle, .timeline-random-handle');
                 if (handleEl) {
                     e.preventDefault();
                     e.stopPropagation();
                     const loopKey = handleEl.dataset.loopKey;
                     const handleType = handleEl.dataset.handle;
+                    const rangeType = handleEl.dataset.rangeType || 'loop';
                     if (!loopKey || !handleType) return;
-                    state.resize = { loopKey, handleType, lastIdx: -1 };
+                    state.resize = { loopKey, handleType, rangeType, lastIdx: -1 };
                     document.addEventListener('mousemove', onDocumentMouseMove);
                     document.addEventListener('mouseup', onDocumentMouseUp);
                     return;
                 }
 
-                const bracketEl = e.target.closest('.timeline-loop-bracket');
+                const bracketEl = e.target.closest('.timeline-loop-bracket, .timeline-random-bracket');
                 if (bracketEl) {
                     e.preventDefault();
                     e.stopPropagation();
                     const loopKey = bracketEl.dataset.loopKey;
-                    const loop = state.loopMap.get(loopKey || '');
+                    const rangeType = bracketEl.dataset.rangeType || 'loop';
+                    const mapRef = rangeType === 'randomize' ? state.randomizeMap : state.loopMap;
+                    const loop = mapRef.get(loopKey || '');
                     if (!loop) return;
+
+                    if (rangeType === 'randomize') {
+                        const ok = window.confirm('Remove this randomization group?');
+                        if (!ok) return;
+                        loop.startEl.remove();
+                        loop.endEl.remove();
+                        if (window.jsonBuilderInstance) {
+                            window.jsonBuilderInstance.updateJSON();
+                        }
+                        refresh();
+                        return;
+                    }
 
                     const startData = parseComponentData(loop.startEl);
                     const currentIter = Number.parseInt(startData.iterations ?? loop.iterations ?? '1', 10) || 1;
@@ -1003,14 +1115,19 @@
 
                 const containerRect = timelineContainer.getBoundingClientRect();
                 const relX = e.clientX - containerRect.left;
-                if (relX > 26) return;
+                const rightDist = containerRect.right - e.clientX;
                 if (e.target.closest('.timeline-component')) return;
+
+                const isLoopLane = relX >= 0 && relX <= LOOP_GUTTER_WIDTH_PX;
+                const isRandomLane = rightDist >= 0 && rightDist <= RANDOM_GUTTER_WIDTH_PX;
+                if (!isLoopLane && !isRandomLane) return;
 
                 const startIdx = getVisibleIndexFromY(e.clientY);
                 if (startIdx < 0) return;
 
                 e.preventDefault();
-                state.draw = { startIdx, currentIdx: startIdx };
+                const drawKind = isLoopLane ? 'loop' : 'randomize';
+                state.draw = { kind: drawKind, startIdx, currentIdx: startIdx };
                 refresh();
 
                 document.addEventListener('mousemove', onDocumentMouseMove);

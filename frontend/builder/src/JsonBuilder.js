@@ -5181,6 +5181,8 @@ class JsonBuilder {
 
             const commonParams = {
                 block_component_type: { type: 'select', default: defaultType, options },
+                block_sizing_mode: { type: 'select', default: 'by_frames', options: ['by_frames', 'by_duration'] },
+                block_duration_seconds: { type: 'number', default: 1, min: 0.01, max: 36000, step: 0.01 },
                 block_length: { type: 'number', default: defaultBlockLength, min: 1, max: 50000 },
                 sampling_mode: { type: 'select', default: 'per-trial', options: ['per-trial', 'per-block'] },
                 seed: { type: 'string', default: '' }
@@ -5536,6 +5538,9 @@ class JsonBuilder {
                 group_1_coherence_min: { type: 'number', default: 0.1, min: 0, max: 1, step: 0.01 },
                 group_1_coherence_max: { type: 'number', default: 0.5, min: 0, max: 1, step: 0.01 },
                 group_1_direction_options: { type: 'string', default: '0,180' },
+                dependent_direction_of_movement_enabled: { type: 'boolean', default: false, blockTarget: 'rdm-dot-groups' },
+                dependent_group_1_direction_options: { type: 'string', default: '0-15', blockTarget: 'rdm-dot-groups' },
+                dependent_group_direction_difference_options: { type: 'string', default: '180,270', blockTarget: 'rdm-dot-groups' },
                 group_1_speed_min: { type: 'number', default: 4, min: 0, max: 50 },
                 group_1_speed_max: { type: 'number', default: 10, min: 0, max: 50 },
                 group_2_coherence_min: { type: 'number', default: 0.5, min: 0, max: 1, step: 0.01 },
@@ -5549,7 +5554,11 @@ class JsonBuilder {
                 response_target_group: { type: 'select', default: 'none', options: ['none', 'group_1', 'group_2'] },
                 cue_border_mode: { type: 'select', default: 'off', options: ['off', 'target-group-color', 'custom'] },
                 cue_border_color: { type: 'COLOR', default: '#FFFFFF' },
-                cue_border_width: { type: 'number', default: 4, min: 0, max: 20 }
+                cue_border_width: { type: 'number', default: 4, min: 0, max: 20 },
+
+                // Dot-groups dynamic target switching
+                dynamic_target_group_switch_enabled: { type: 'boolean', default: false, blockTarget: 'rdm-dot-groups' },
+                dynamic_target_group_every_n_frames: { type: 'string', default: '120-240', blockTarget: 'rdm-dot-groups' }
             };
 
             const perTaskParams = (currentTaskType === 'flanker')
@@ -5670,6 +5679,31 @@ class JsonBuilder {
                 type: 'loop-end',
                 parameters: {
                     loop_id: { type: 'string', default: '' }
+                }
+            },
+            {
+                id: 'randomize-start',
+                name: 'Randomize Start',
+                icon: 'fas fa-shuffle',
+                description: 'Marks the start of a sibling-level randomization range in the timeline',
+                category: 'advanced',
+                hidden: true,
+                type: 'randomize-start',
+                parameters: {
+                    random_group_id: { type: 'string', default: '' },
+                    randomizable_across_markers: { type: 'boolean', default: true }
+                }
+            },
+            {
+                id: 'randomize-end',
+                name: 'Randomize End',
+                icon: 'fas fa-random',
+                description: 'Marks the end of a sibling-level randomization range in the timeline',
+                category: 'advanced',
+                hidden: true,
+                type: 'randomize-end',
+                parameters: {
+                    random_group_id: { type: 'string', default: '' }
                 }
             },
             {
@@ -8754,9 +8788,8 @@ class JsonBuilder {
 
         // Continuous: cap is total frames = duration (sec) * frame_rate.
         if (this.experimentType === 'continuous') {
-            const durRaw = document.getElementById('duration')?.value;
+            const durationSec = this.getExperimentWideDurationCapSeconds();
             const frRaw = document.getElementById('frameRate')?.value;
-            const durationSec = Number.parseFloat(durRaw ?? '');
             const frameRate = Number.parseFloat(frRaw ?? '60');
             if (!Number.isFinite(durationSec) || durationSec <= 0) return null;
             if (!Number.isFinite(frameRate) || frameRate <= 0) return null;
@@ -8766,13 +8799,21 @@ class JsonBuilder {
         return null;
     }
 
+    getExperimentWideDurationCapSeconds() {
+        if (this.experimentType !== 'continuous') return null;
+        const durRaw = document.getElementById('duration')?.value;
+        const durationSec = Number.parseFloat(durRaw ?? '');
+        return (Number.isFinite(durationSec) && durationSec > 0) ? durationSec : null;
+    }
+
     getExperimentWideBlockLengthDefault() {
         return this.getExperimentWideLengthCapForBlocks() ?? 100;
     }
 
     findBlockLengthViolations(config) {
         const cap = this.getExperimentWideLengthCapForBlocks();
-        if (!cap) return [];
+        const durationCapSec = this.getExperimentWideDurationCapSeconds();
+        if (!cap && !(Number.isFinite(durationCapSec) && durationCapSec > 0)) return [];
 
         const timeline = Array.isArray(config?.timeline) ? config.timeline : [];
         const violations = [];
@@ -8782,12 +8823,30 @@ class JsonBuilder {
             if (c.type !== 'block') continue;
 
             const len = Number.parseInt(c.block_length ?? c.length ?? '', 10);
-            if (!Number.isFinite(len)) continue;
+            if (!Number.isFinite(len) || !Number.isFinite(cap)) continue;
             if (len <= cap) continue;
 
             const rawType = (c.block_component_type ?? c.component_type ?? 'unknown').toString();
             const safeType = rawType.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64) || 'unknown';
             violations.push(`Block (${safeType}) length ${len} exceeds experiment length ${cap}.`);
+        }
+
+        if (Number.isFinite(durationCapSec) && durationCapSec > 0) {
+            for (const c of timeline) {
+                if (!c || typeof c !== 'object') continue;
+                if (c.type !== 'block') continue;
+
+                const sizingMode = (c.block_sizing_mode ?? '').toString().trim().toLowerCase();
+                if (sizingMode !== 'by_duration') continue;
+
+                const dur = Number(c.block_duration_seconds);
+                if (!Number.isFinite(dur)) continue;
+                if (dur <= durationCapSec) continue;
+
+                const rawType = (c.block_component_type ?? c.component_type ?? 'unknown').toString();
+                const safeType = rawType.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64) || 'unknown';
+                violations.push(`Block (${safeType}) duration ${dur}s exceeds experiment duration ${durationCapSec}s.`);
+            }
         }
 
         return violations;
@@ -8844,13 +8903,39 @@ class JsonBuilder {
     buildNestedLoopsFromMarkers(components) {
         const list = Array.isArray(components) ? components : [];
         const root = [];
-        const stack = [{ items: root, loopId: null }];
+        const stack = [{ items: root, markerType: null, markerId: null }];
 
-        const toLoopId = (raw) => (raw ?? '').toString().trim();
+        const toMarkerId = (raw) => (raw ?? '').toString().trim();
         const toIterations = (raw) => {
             const n = Number.parseInt(raw ?? '', 10);
             if (!Number.isFinite(n)) return 1;
             return Math.max(1, Math.min(10000, n));
+        };
+
+        const closeMarker = (markerType, markerId) => {
+            if (stack.length <= 1) return;
+
+            if (!markerId) {
+                for (let i = stack.length - 1; i >= 1; i--) {
+                    if ((stack[i].markerType || '') === markerType) {
+                        while (stack.length - 1 >= i) stack.pop();
+                        return;
+                    }
+                }
+                return;
+            }
+
+            let matchedIndex = -1;
+            for (let i = stack.length - 1; i >= 1; i--) {
+                if ((stack[i].markerType || '') === markerType && (stack[i].markerId || '') === markerId) {
+                    matchedIndex = i;
+                    break;
+                }
+            }
+            if (matchedIndex === -1) return;
+            while (stack.length - 1 >= matchedIndex) {
+                stack.pop();
+            }
         };
 
         for (const item of list) {
@@ -8858,7 +8943,7 @@ class JsonBuilder {
 
             const t = (item.type ?? '').toString();
             if (t === 'loop-start') {
-                const loopId = toLoopId(item.loop_id);
+                const loopId = toMarkerId(item.loop_id);
                 const loopNode = {
                     type: 'loop',
                     ...(loopId ? { loop_id: loopId } : {}),
@@ -8872,36 +8957,31 @@ class JsonBuilder {
                 }
 
                 stack[stack.length - 1].items.push(loopNode);
-                stack.push({ items: loopNode.items, loopId });
+                stack.push({ items: loopNode.items, markerType: 'loop', markerId: loopId });
                 continue;
             }
 
             if (t === 'loop-end') {
-                if (stack.length <= 1) {
-                    // Unmatched end marker; drop it from exported timeline.
-                    continue;
-                }
+                closeMarker('loop', toMarkerId(item.loop_id));
+                continue;
+            }
 
-                const closingId = toLoopId(item.loop_id);
-                if (!closingId) {
-                    stack.pop();
-                    continue;
-                }
+            if (t === 'randomize-start') {
+                const randomId = toMarkerId(item.random_group_id ?? item.group_id ?? item.loop_id);
+                const randomNode = {
+                    type: 'randomize-group',
+                    randomizable_across_markers: item.randomizable_across_markers !== false,
+                    ...(randomId ? { random_group_id: randomId } : {}),
+                    items: []
+                };
 
-                // Close nearest matching loop_id while preserving nesting order.
-                let matchedIndex = -1;
-                for (let i = stack.length - 1; i >= 1; i--) {
-                    if ((stack[i].loopId || '') === closingId) {
-                        matchedIndex = i;
-                        break;
-                    }
-                }
-                if (matchedIndex === -1) {
-                    continue;
-                }
-                while (stack.length - 1 >= matchedIndex) {
-                    stack.pop();
-                }
+                stack[stack.length - 1].items.push(randomNode);
+                stack.push({ items: randomNode.items, markerType: 'randomize', markerId: randomId });
+                continue;
+            }
+
+            if (t === 'randomize-end') {
+                closeMarker('randomize', toMarkerId(item.random_group_id ?? item.group_id ?? item.loop_id));
                 continue;
             }
 
@@ -9194,8 +9274,30 @@ class JsonBuilder {
             || 'rdm-trial'
         );
         const lengthRaw = blockComponent.block_length;
-        const length = Math.max(1, parseInt(lengthRaw ?? 1));
+        let length = Math.max(1, parseInt(lengthRaw ?? 1));
         const samplingMode = blockComponent.sampling_mode || 'per-trial';
+
+        const sizingModeRaw = (blockComponent.block_sizing_mode ?? blockComponent.sizing_mode ?? 'by_frames').toString().trim().toLowerCase();
+        const sizingMode = (this.experimentType === 'continuous' && sizingModeRaw === 'by_duration') ? 'by_duration' : 'by_frames';
+
+        let blockDurationSeconds = null;
+        if (this.experimentType === 'continuous' && sizingMode === 'by_duration') {
+            const durationRaw = Number(blockComponent.block_duration_seconds);
+            const durationCapSec = this.getExperimentWideDurationCapSeconds();
+            const frameRate = Number.parseFloat(document.getElementById('frameRate')?.value ?? '60');
+
+            if (Number.isFinite(durationRaw) && durationRaw > 0) {
+                blockDurationSeconds = durationRaw;
+                if (Number.isFinite(durationCapSec) && durationCapSec > 0) {
+                    blockDurationSeconds = Math.min(blockDurationSeconds, durationCapSec);
+                }
+                if (Number.isFinite(frameRate) && frameRate > 0) {
+                    length = Math.max(1, Math.round(blockDurationSeconds * frameRate));
+                }
+            } else if (Number.isFinite(frameRate) && frameRate > 0) {
+                blockDurationSeconds = length / frameRate;
+            }
+        }
 
         // Block editors sometimes store values under `parameter_values`.
         // Prefer top-level keys when present (they reflect the current editor UI), but fall back to nested.
@@ -9235,13 +9337,39 @@ class JsonBuilder {
             windows[name] = { min: minNum, max: maxNum };
         };
 
-        const parseNumberList = (raw, { min = 0, max = 359 } = {}) => {
-            if (raw === undefined || raw === null) return [];
-            const parts = raw
+        const expandIntegerRangeTokens = (raw) => {
+            const tokens = (raw ?? '')
                 .toString()
                 .split(',')
                 .map(s => s.trim())
                 .filter(Boolean);
+
+            const out = [];
+            for (const token of tokens) {
+                const m = token.match(/^(-?\d+)\s*-\s*(-?\d+)$/);
+                if (!m) {
+                    out.push(token);
+                    continue;
+                }
+
+                const start = Number.parseInt(m[1], 10);
+                const end = Number.parseInt(m[2], 10);
+                if (!Number.isFinite(start) || !Number.isFinite(end)) {
+                    out.push(token);
+                    continue;
+                }
+
+                const step = start <= end ? 1 : -1;
+                for (let n = start; step > 0 ? n <= end : n >= end; n += step) {
+                    out.push(String(n));
+                }
+            }
+            return out;
+        };
+
+        const parseNumberList = (raw, { min = 0, max = 359 } = {}) => {
+            if (raw === undefined || raw === null) return [];
+            const parts = expandIntegerRangeTokens(raw);
 
             const nums = [];
             for (const p of parts) {
@@ -9339,13 +9467,32 @@ class JsonBuilder {
             addWindow('response_deadline', blockComponent.response_deadline_min, blockComponent.response_deadline_max);
             addWindow('inter_trial_interval', blockComponent.inter_trial_interval_min, blockComponent.inter_trial_interval_max);
 
-            const g1Dirs = parseNumberList(blockComponent.group_1_direction_options, { min: 0, max: 359 });
-            if (g1Dirs.length > 0) {
-                values.group_1_direction = g1Dirs;
-            }
-            const g2Dirs = parseNumberList(blockComponent.group_2_direction_options, { min: 0, max: 359 });
-            if (g2Dirs.length > 0) {
-                values.group_2_direction = g2Dirs;
+            const dependentDirectionEnabled = (
+                blockComponent.dependent_direction_of_movement_enabled === true
+                || blockComponent.dependent_direction_of_movement_enabled === 'true'
+                || blockComponent.dependent_direction_of_movement_enabled === 1
+                || blockComponent.dependent_direction_of_movement_enabled === '1'
+            );
+
+            if (dependentDirectionEnabled) {
+                const g1DependentDirs = parseNumberList(blockComponent.dependent_group_1_direction_options, { min: 0, max: 359 });
+                if (g1DependentDirs.length > 0) {
+                    values.dependent_group_1_direction = g1DependentDirs;
+                }
+                const diffDirs = parseNumberList(blockComponent.dependent_group_direction_difference_options, { min: 0, max: 359 });
+                if (diffDirs.length > 0) {
+                    values.dependent_group_direction_difference = diffDirs;
+                }
+                values.dependent_direction_of_movement_enabled = true;
+            } else {
+                const g1Dirs = parseNumberList(blockComponent.group_1_direction_options, { min: 0, max: 359 });
+                if (g1Dirs.length > 0) {
+                    values.group_1_direction = g1Dirs;
+                }
+                const g2Dirs = parseNumberList(blockComponent.group_2_direction_options, { min: 0, max: 359 });
+                if (g2Dirs.length > 0) {
+                    values.group_2_direction = g2Dirs;
+                }
             }
 
             addDirectionTransitionControls();
@@ -9364,6 +9511,20 @@ class JsonBuilder {
 
             if (g1Color) values.group_1_color = g1Color;
             if (g2Color) values.group_2_color = g2Color;
+
+            const dynamicSwitchEnabled = (
+                blockComponent.dynamic_target_group_switch_enabled === true
+                || blockComponent.dynamic_target_group_switch_enabled === 'true'
+                || blockComponent.dynamic_target_group_switch_enabled === 1
+                || blockComponent.dynamic_target_group_switch_enabled === '1'
+            );
+            if (dynamicSwitchEnabled) {
+                values.dynamic_target_group_switch_enabled = true;
+                const dynamicRange = (blockComponent.dynamic_target_group_every_n_frames ?? '').toString().trim();
+                if (dynamicRange) {
+                    values.dynamic_target_group_every_n_frames = dynamicRange;
+                }
+            }
         } else if (resolvedComponentType === 'flanker-trial') {
             // Generic task fields; interpreter defines how these are rendered/scored.
             const parseStringList = (raw) => {
@@ -9430,11 +9591,7 @@ class JsonBuilder {
         } else if (resolvedComponentType === 'sart-trial') {
             const parseIntList = (raw) => {
                 if (raw === undefined || raw === null) return [];
-                return raw
-                    .toString()
-                    .split(',')
-                    .map(s => s.trim())
-                    .filter(Boolean)
+                return expandIntegerRangeTokens(raw)
                     .map(s => Number.parseInt(s, 10))
                     .filter(n => Number.isFinite(n));
             };
@@ -9972,6 +10129,13 @@ class JsonBuilder {
             sampling_mode: samplingMode,
             parameter_windows: windows
         };
+
+        if (this.experimentType === 'continuous') {
+            out.block_sizing_mode = sizingMode;
+            if (sizingMode === 'by_duration' && Number.isFinite(blockDurationSeconds) && blockDurationSeconds > 0) {
+                out.block_duration_seconds = blockDurationSeconds;
+            }
+        }
 
         if (Object.keys(values).length > 0) {
             out.parameter_values = values;

@@ -213,7 +213,12 @@ var jsPsychRdm = (function (jspsych) {
       let responseAngleRawDeg = null;
       let responseSegmentIndex = null;
 
-      const correctSide = window.RDMEngine.computeCorrectSide(rdm);
+      const getActiveRdmParams = () => {
+        const live = (engine && engine.params && typeof engine.params === 'object') ? engine.params : null;
+        return live ? { ...rdm, ...live } : rdm;
+      };
+
+      const getCurrentCorrectSide = () => window.RDMEngine.computeCorrectSide(getActiveRdmParams());
 
       // Detection Response Task (DRT) overlay (builder flag: detection_response_task_enabled)
       const drtEnabled = rdm.detection_response_task_enabled === true;
@@ -240,6 +245,8 @@ var jsPsychRdm = (function (jspsych) {
         const includeAccuracy = dataCollection['accuracy'] === true;
         const includeCorrectness = dataCollection['correctness'] === true;
 
+        const activeRdm = getActiveRdmParams();
+        const correctSide = getCurrentCorrectSide();
         const isCorrect = (responseSide !== null) ? (responseSide === correctSide) : null;
 
         const data = {
@@ -265,7 +272,7 @@ var jsPsychRdm = (function (jspsych) {
         };
 
         // Keep the trial params for analysis/debugging
-        data.rdm_parameters = rdm;
+        data.rdm_parameters = activeRdm;
         data.rdm_coherence = Number(rdm.coherence);
         data.rdm_speed = Number(rdm.speed);
         data.response_parameters = response;
@@ -290,7 +297,7 @@ var jsPsychRdm = (function (jspsych) {
             <span style="opacity:0.7">${responseSide || ''}</span>
           </div>`;
         } else if (fb.type === 'arrow') {
-          const directionDeg = getCorrectDirectionDeg(rdm);
+          const directionDeg = getCorrectDirectionDeg(getActiveRdmParams());
           const arrowColor = isCorrect ? '#5CFF8A' : '#FF5C5C';
           if (engine) {
             engine.arrowDirectionDeg = directionDeg;
@@ -346,7 +353,7 @@ var jsPsychRdm = (function (jspsych) {
         responseTs = nowMs();
         rt = startTs ? Math.round(responseTs - startTs) : null;
 
-        const isCorrect = responseSide !== null ? responseSide === correctSide : null;
+        const isCorrect = responseSide !== null ? responseSide === getCurrentCorrectSide() : null;
         if (isCorrect !== null) showFeedback(isCorrect);
 
         if (experimentType === 'trial-based') {

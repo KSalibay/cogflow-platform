@@ -326,7 +326,11 @@
         const rdm = frame.rdm || {};
         const response = frame.response || {};
 
-        const correctSide = computeCorrectSide(rdm);
+        const activeRdm = (engine && engine.params && typeof engine.params === 'object')
+          ? { ...rdm, ...engine.params }
+          : rdm;
+
+        const correctSide = computeCorrectSide(activeRdm);
 
         // Record end-of-frame even if no response
         records.push({
@@ -334,7 +338,7 @@
           event: 'frame_end',
           t_ms: Math.round(nowMs() - trialStartTs),
           ended_reason: reason || 'advance',
-          rdm,
+          rdm: activeRdm,
           response,
           correct_side: correctSide,
           rt_ms: frameRtMs,
@@ -483,7 +487,11 @@
         const rdm = frame.rdm || {};
         const response = frame.response || {};
 
-        const correctSide = computeCorrectSide(rdm);
+        const activeRdm = (engine && engine.params && typeof engine.params === 'object')
+          ? { ...rdm, ...engine.params }
+          : rdm;
+
+        const correctSide = computeCorrectSide(activeRdm);
         const isCorrect = side ? side === correctSide : null;
 
         if (!respondedThisFrame) {

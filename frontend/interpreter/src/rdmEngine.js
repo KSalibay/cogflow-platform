@@ -128,6 +128,7 @@
       this._debugAccReseeds = 0;
       this._debugAccNoiseJumps = 0;
       this._debugLastSecTs = 0;
+      this._dynamicTargetSwitch = null;
 
       this._init();
     }
@@ -156,7 +157,98 @@
 
       this.lifetimeFrames = Math.max(1, Number.parseInt(p.lifetime_frames ?? 60, 10) || 60);
 
+      this._initDynamicTargetSwitch();
+
       this._initDots();
+    }
+
+    _isDotGroupsMode(p) {
+      const cfg = p || this.params || {};
+      return (typeof cfg.type === 'string' && cfg.type === 'rdm-dot-groups')
+        || cfg.enable_groups === true
+        || cfg.group_1_percentage !== undefined;
+    }
+
+    _parseDynamicSwitchRange(p) {
+      const minRaw = Number.parseInt(p.dynamic_target_group_every_n_frames_min, 10);
+      const maxRaw = Number.parseInt(p.dynamic_target_group_every_n_frames_max, 10);
+      if (Number.isFinite(minRaw) && Number.isFinite(maxRaw) && minRaw >= 1 && maxRaw >= 1) {
+        return (maxRaw >= minRaw) ? { min: minRaw, max: maxRaw } : { min: maxRaw, max: minRaw };
+      }
+
+      const raw = (p.dynamic_target_group_every_n_frames ?? '').toString().trim();
+      if (!raw) return null;
+
+      const single = raw.match(/^(\d+)$/);
+      if (single) {
+        const n = Number.parseInt(single[1], 10);
+        if (Number.isFinite(n) && n >= 1) return { min: n, max: n };
+        return null;
+      }
+
+      const span = raw.match(/^(\d+)\s*-\s*(\d+)$/);
+      if (!span) return null;
+
+      let min = Number.parseInt(span[1], 10);
+      let max = Number.parseInt(span[2], 10);
+      if (!Number.isFinite(min) || !Number.isFinite(max) || min < 1 || max < 1) return null;
+      if (max < min) {
+        const t = min;
+        min = max;
+        max = t;
+      }
+      return { min, max };
+    }
+
+    _nextDynamicSwitchDelay(range) {
+      const min = Math.max(1, Number.parseInt(range.min, 10) || 1);
+      const max = Math.max(min, Number.parseInt(range.max, 10) || min);
+      if (max === min) return min;
+      return min + Math.floor(this.rng() * (max - min + 1));
+    }
+
+    _initDynamicTargetSwitch() {
+      const p = this.params || {};
+      if (!this._isDotGroupsMode(p)) {
+        this._dynamicTargetSwitch = null;
+        return;
+      }
+
+      const rawEnabled = p.dynamic_target_group_switch_enabled;
+      const enabled = rawEnabled === true || rawEnabled === 1 || rawEnabled === '1'
+        || (typeof rawEnabled === 'string' && ['true', 'yes', 'on', 'enabled'].includes(rawEnabled.trim().toLowerCase()));
+
+      if (!enabled) {
+        this._dynamicTargetSwitch = null;
+        return;
+      }
+
+      const range = this._parseDynamicSwitchRange(p) || { min: 120, max: 240 };
+
+      let currentGroup = Number.parseInt(p.response_target_group, 10);
+      if (currentGroup !== 1 && currentGroup !== 2) {
+        currentGroup = this.rng() < 0.5 ? 1 : 2;
+      }
+
+      this.params = { ...(this.params || {}), response_target_group: currentGroup };
+
+      this._dynamicTargetSwitch = {
+        enabled: true,
+        minFrames: range.min,
+        maxFrames: range.max,
+        currentGroup,
+        nextSwitchFrame: this.frameCount + this._nextDynamicSwitchDelay(range)
+      };
+    }
+
+    _maybeApplyDynamicTargetSwitch() {
+      const state = this._dynamicTargetSwitch;
+      if (!state || state.enabled !== true) return;
+      if (this.frameCount < state.nextSwitchFrame) return;
+
+      state.currentGroup = state.currentGroup === 1 ? 2 : 1;
+      this.params = { ...(this.params || {}), response_target_group: state.currentGroup };
+      state.nextSwitchFrame = this.frameCount + this._nextDynamicSwitchDelay({ min: state.minFrames, max: state.maxFrames });
     }
 
     updateParams(next) {
@@ -255,6 +347,9 @@
 
         // keep cue border behavior current
         this.params = { ...(this.params || {}), ...(b || {}) };
+        if (this._dynamicTargetSwitch && this._dynamicTargetSwitch.enabled === true) {
+          this.params.response_target_group = this._dynamicTargetSwitch.currentGroup;
+        }
 
         // Adjust group membership counts without wiping the canvas (avoids white flash).
         // We keep positions/lifetimes; only update group + per-dot parameters.
@@ -512,6 +607,7 @@
     step(dtMs) {
       this._debugFrameReseeds = 0;
       this._debugFrameNoiseJumps = 0;
+      this._maybeApplyDynamicTargetSwitch();
       const dt = Number.isFinite(Number(dtMs)) && Number(dtMs) > 0 ? Number(dtMs) : (1000 / 60);
       const lifeStep = dt / (1000 / 60);
 

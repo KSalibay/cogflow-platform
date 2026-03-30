@@ -2024,6 +2024,19 @@ class JSPsychSchemas {
                         required: true,
                         description: 'What component type this block generates'
                     },
+                    block_sizing_mode: {
+                        type: this.parameterTypes.SELECT,
+                        default: 'by_frames',
+                        options: ['by_frames', 'by_duration'],
+                        description: 'Continuous mode only: size this block by frames (legacy) or by duration (seconds)'
+                    },
+                    block_duration_seconds: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 1,
+                        min: 0.01,
+                        max: 36000,
+                        description: 'Continuous mode only: block duration in seconds when sizing mode is by_duration'
+                    },
                     block_length: {
                         type: this.parameterTypes.INT,
                         default: 100,

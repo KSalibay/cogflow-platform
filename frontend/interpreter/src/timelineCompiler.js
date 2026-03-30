@@ -316,8 +316,33 @@
     return out;
   }
 
+  function resolveBlockLength(block, opts, fallbackLength) {
+    const fallback = Number.isFinite(Number(fallbackLength)) ? Math.max(1, Number.parseInt(fallbackLength, 10)) : 1;
+    let length = Math.max(1, Number.parseInt(block?.block_length ?? block?.length ?? fallback, 10) || fallback);
+
+    const sizingMode = (block?.block_sizing_mode ?? block?.sizing_mode ?? '').toString().trim().toLowerCase();
+    const experimentType = (opts?.experimentType ?? '').toString().trim().toLowerCase();
+    if (experimentType !== 'continuous' || sizingMode !== 'by_duration') {
+      return length;
+    }
+
+    const frameRate = Number(opts?.frameRate);
+    const durationSecRaw = Number(block?.block_duration_seconds ?? block?.duration_seconds);
+    if (!Number.isFinite(frameRate) || frameRate <= 0) return length;
+    if (!Number.isFinite(durationSecRaw) || durationSecRaw <= 0) return length;
+
+    let durationSec = durationSecRaw;
+    const durationCap = Number(opts?.experimentDurationSeconds);
+    if (Number.isFinite(durationCap) && durationCap > 0) {
+      durationSec = Math.min(durationSec, durationCap);
+    }
+
+    length = Math.max(1, Math.round(durationSec * frameRate));
+    return length;
+  }
+
   function expandBlock(block, opts) {
-    const length = Math.max(1, Number.parseInt(block.block_length ?? block.length ?? 1, 10) || 1);
+    const length = resolveBlockLength(block, opts, 1);
     const baseType = (typeof block.block_component_type === 'string' && block.block_component_type.trim())
       ? block.block_component_type.trim()
       : (typeof block.component_type === 'string' && block.component_type.trim())
@@ -602,18 +627,72 @@
       return lo + (hi - lo) * rng();
     };
 
+    const parseNumericListWithRanges = (raw) => {
+      if (raw === undefined || raw === null) return [];
+
+      const source = Array.isArray(raw)
+        ? raw.map(x => (x === undefined || x === null) ? '' : String(x))
+        : String(raw).split(',');
+
+      const expanded = [];
+      for (const chunk of source) {
+        const token = String(chunk).trim();
+        if (!token) continue;
+
+        const m = token.match(/^(-?\d+)\s*-\s*(-?\d+)$/);
+        if (!m) {
+          expanded.push(token);
+          continue;
+        }
+
+        const start = Number.parseInt(m[1], 10);
+        const end = Number.parseInt(m[2], 10);
+        if (!Number.isFinite(start) || !Number.isFinite(end)) {
+          expanded.push(token);
+          continue;
+        }
+
+        const step = start <= end ? 1 : -1;
+        for (let n = start; step > 0 ? n <= end : n >= end; n += step) {
+          expanded.push(String(n));
+        }
+      }
+
+      const nums = [];
+      for (const token of expanded) {
+        const n = Number(token);
+        if (!Number.isFinite(n)) return [];
+        nums.push(n);
+      }
+      return nums;
+    };
+
     const sampleFromValues = (v) => {
       if (Array.isArray(v)) {
         if (v.length === 0) return null;
         const idx = Math.floor(rng() * v.length);
         return v[Math.max(0, Math.min(v.length - 1, idx))];
       }
+
+      // Back-compat/robustness: allow numeric list shorthand strings (e.g., "1-4", "0,90,180").
+      if (typeof v === 'string') {
+        const parsed = parseNumericListWithRanges(v);
+        if (parsed.length > 0) {
+          const idx = Math.floor(rng() * parsed.length);
+          return parsed[Math.max(0, Math.min(parsed.length - 1, idx))];
+        }
+      }
+
       return v;
     };
 
     const normalizeOptions = (raw) => {
       if (raw === undefined || raw === null) return [];
       if (Array.isArray(raw)) return raw;
+      if (typeof raw === 'string') {
+        const parsed = parseNumericListWithRanges(raw);
+        if (parsed.length > 0) return parsed;
+      }
       return [raw];
     };
 
@@ -623,6 +702,14 @@
       const idx = Math.floor(rng() * arr.length);
       return arr[Math.max(0, Math.min(arr.length - 1, idx))];
     };
+
+    const dependentDotGroupDirectionsEnabled = (
+      baseType === 'rdm-dot-groups'
+      && (values.dependent_direction_of_movement_enabled === true
+        || values.dependent_direction_of_movement_enabled === 'true'
+        || values.dependent_direction_of_movement_enabled === 1
+        || values.dependent_direction_of_movement_enabled === '1')
+    );
 
     const directionTransitionMode = (values.direction_transition_mode ?? 'random_each_trial').toString().trim().toLowerCase();
     const directionTransitionEveryNRaw = Number.parseInt(values.direction_transition_every_n_trials, 10);
@@ -643,7 +730,11 @@
 
     const directionKeysForType = (type) => {
       if (type === 'rdm-trial' || type === 'rdm-practice') return ['direction'];
-      if (type === 'rdm-dot-groups') return ['group_1_direction', 'group_2_direction'];
+      if (type === 'rdm-dot-groups') {
+        return dependentDotGroupDirectionsEnabled
+          ? ['dependent_group_1_direction', 'dependent_group_direction_difference']
+          : ['group_1_direction', 'group_2_direction'];
+      }
       return [];
     };
 
@@ -1314,12 +1405,38 @@
         };
       }
 
-      // dot-groups helper: group_2_percentage = 100 - group_1_percentage
+      // dot-groups helpers
       if (baseType === 'rdm-dot-groups') {
         if (Number.isFinite(t.group_1_percentage)) {
           const g1 = Math.max(0, Math.min(100, Math.round(t.group_1_percentage)));
           t.group_1_percentage = g1;
           t.group_2_percentage = 100 - g1;
+        }
+
+        if (dependentDotGroupDirectionsEnabled) {
+          const normalizeDirection = (raw) => {
+            const n = Number(raw);
+            if (!Number.isFinite(n)) return null;
+            return ((n % 360) + 360) % 360;
+          };
+
+          const sampledBaseDirection = normalizeDirection(
+            t.dependent_group_1_direction !== undefined ? t.dependent_group_1_direction : sampleFromValues(values.dependent_group_1_direction)
+          );
+          const sampledDifference = normalizeDirection(
+            t.dependent_group_direction_difference !== undefined ? t.dependent_group_direction_difference : sampleFromValues(values.dependent_group_direction_difference)
+          );
+
+          if (sampledBaseDirection !== null) {
+            t.group_1_direction = sampledBaseDirection;
+          }
+          if (sampledBaseDirection !== null && sampledDifference !== null) {
+            t.group_2_direction = (sampledBaseDirection + sampledDifference) % 360;
+          }
+
+          delete t.dependent_group_1_direction;
+          delete t.dependent_group_direction_difference;
+          delete t.dependent_direction_of_movement_enabled;
         }
       }
 
@@ -1346,6 +1463,14 @@
     const inTl = Array.isArray(rawTimeline) ? rawTimeline : [];
     const out = [];
 
+    const shuffleInPlace = (arr) => {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    };
+
     const normalizeLoopIterations = (raw) => {
       const n = Number.parseInt(raw ?? '', 10);
       if (!Number.isFinite(n)) return 1;
@@ -1355,16 +1480,42 @@
     const normalizeLoopTreeFromMarkers = (list) => {
       const src = Array.isArray(list) ? list : [];
       const root = [];
-      const stack = [{ items: root, loopId: null }];
+      const stack = [{ items: root, markerType: null, markerId: null }];
 
-      const toLoopId = (raw) => (raw ?? '').toString().trim();
+      const toMarkerId = (raw) => (raw ?? '').toString().trim();
+
+      const closeMarker = (markerType, markerId) => {
+        if (stack.length <= 1) return;
+
+        if (!markerId) {
+          for (let i = stack.length - 1; i >= 1; i--) {
+            if ((stack[i].markerType || '') === markerType) {
+              while (stack.length - 1 >= i) stack.pop();
+              return;
+            }
+          }
+          return;
+        }
+
+        let matchedIndex = -1;
+        for (let i = stack.length - 1; i >= 1; i--) {
+          if ((stack[i].markerType || '') === markerType && (stack[i].markerId || '') === markerId) {
+            matchedIndex = i;
+            break;
+          }
+        }
+        if (matchedIndex === -1) return;
+        while (stack.length - 1 >= matchedIndex) {
+          stack.pop();
+        }
+      };
 
       for (const item of src) {
         if (!isObject(item)) continue;
         const t = (item.type ?? '').toString();
 
         if (t === 'loop-start') {
-          const loopId = toLoopId(item.loop_id);
+          const loopId = toMarkerId(item.loop_id);
           const loopNode = {
             type: 'loop',
             ...(loopId ? { loop_id: loopId } : {}),
@@ -1375,30 +1526,30 @@
             loopNode.label = item.label;
           }
           stack[stack.length - 1].items.push(loopNode);
-          stack.push({ items: loopNode.items, loopId });
+          stack.push({ items: loopNode.items, markerType: 'loop', markerId: loopId });
           continue;
         }
 
         if (t === 'loop-end') {
-          if (stack.length <= 1) continue;
+          closeMarker('loop', toMarkerId(item.loop_id));
+          continue;
+        }
 
-          const closingId = toLoopId(item.loop_id);
-          if (!closingId) {
-            stack.pop();
-            continue;
-          }
+        if (t === 'randomize-start') {
+          const randomId = toMarkerId(item.random_group_id ?? item.group_id ?? item.loop_id);
+          const randomNode = {
+            type: 'randomize-group',
+            randomizable_across_markers: item.randomizable_across_markers !== false,
+            ...(randomId ? { random_group_id: randomId } : {}),
+            items: []
+          };
+          stack[stack.length - 1].items.push(randomNode);
+          stack.push({ items: randomNode.items, markerType: 'randomize', markerId: randomId });
+          continue;
+        }
 
-          let matchedIndex = -1;
-          for (let i = stack.length - 1; i >= 1; i--) {
-            if ((stack[i].loopId || '') === closingId) {
-              matchedIndex = i;
-              break;
-            }
-          }
-          if (matchedIndex === -1) continue;
-          while (stack.length - 1 >= matchedIndex) {
-            stack.pop();
-          }
+        if (t === 'randomize-end') {
+          closeMarker('randomize', toMarkerId(item.random_group_id ?? item.group_id ?? item.loop_id));
           continue;
         }
 
@@ -1467,6 +1618,20 @@
         for (let i = 0; i < iterations; i++) {
           out.push(...expandTimeline(childItems, opts));
         }
+        continue;
+      }
+
+      if (item.type === 'randomize-group' || item.type === 'randomize-across-markers') {
+        const childItems = Array.isArray(item.items)
+          ? item.items
+          : (Array.isArray(item.timeline)
+            ? item.timeline
+            : (Array.isArray(item.components) ? item.components : []));
+
+        const expandedChildren = expandTimeline(childItems, opts);
+        const shouldShuffle = item.randomizable_across_markers !== false;
+        if (shouldShuffle) shuffleInPlace(expandedChildren);
+        out.push(...expandedChildren);
         continue;
       }
 
@@ -1750,12 +1915,19 @@
       return 1000;
     })();
 
+    const blockLengthOpts = {
+      experimentType,
+      frameRate: Number(config.frame_rate),
+      experimentDurationSeconds: Number(config.duration)
+    };
+
     const expandedRaw = expandTimeline(config.timeline, {
       preserveBlocksForComponentTypes: preserveBlocksFor,
       expandNbackSequences: experimentType === 'trial-based',
       defaultGeneratedTrialDurationMs,
       nbackDefaults,
-      taskSwitchingDefaults
+      taskSwitchingDefaults,
+      ...blockLengthOpts
     });
 
     // SOC Dashboard: the Builder has "helper" component types (`soc-subtask-*`, `soc-dashboard-icon`) that are
@@ -2562,8 +2734,7 @@
             ? { ...item, ...item.parameter_values }
             : item;
 
-          const blockLen = Number.parseInt(src.block_length ?? src.length ?? 30, 10);
-          const len = Number.isFinite(blockLen) ? Math.max(1, blockLen) : 30;
+          const len = resolveBlockLength(src, blockLengthOpts, 30);
 
           const pickFromDefaults = (raw, defKey, fallback) => {
             if (raw !== undefined && raw !== null) return raw;
@@ -2621,7 +2792,7 @@
         if (baseType === 'pvt-trial' && pvtDefaults && pvtDefaults.add_trial_per_false_start === true) {
           const Pvt = requirePlugin('pvt (window.jsPsychPvt)', window.jsPsychPvt);
 
-          const targetValidTrials = Math.max(1, Number.parseInt(item.block_length ?? item.length ?? 1, 10) || 1);
+          const targetValidTrials = resolveBlockLength(item, blockLengthOpts, 1);
 
           // Builder exports parameter_windows as an array of { parameter, min, max }.
           // Support both object-map and array forms.
@@ -4287,6 +4458,41 @@
   function normalizeRdmParams(params) {
     const p = isObject(params) ? { ...params } : {};
 
+    const parseBoolish = (v) => {
+      if (typeof v === 'boolean') return v;
+      if (typeof v === 'number') return v > 0;
+      if (typeof v === 'string') {
+        const s = v.trim().toLowerCase();
+        if (s === 'true' || s === '1' || s === 'yes' || s === 'on' || s === 'enabled') return true;
+        if (s === 'false' || s === '0' || s === 'no' || s === 'off' || s === 'disabled') return false;
+      }
+      return false;
+    };
+
+    const parseFrameRange = (raw) => {
+      const s = (raw ?? '').toString().trim();
+      if (!s) return null;
+
+      const single = s.match(/^(\d+)$/);
+      if (single) {
+        const n = Number.parseInt(single[1], 10);
+        return Number.isFinite(n) && n > 0 ? { min: n, max: n } : null;
+      }
+
+      const span = s.match(/^(\d+)\s*-\s*(\d+)$/);
+      if (!span) return null;
+
+      let min = Number.parseInt(span[1], 10);
+      let max = Number.parseInt(span[2], 10);
+      if (!Number.isFinite(min) || !Number.isFinite(max) || min < 1 || max < 1) return null;
+      if (max < min) {
+        const t = min;
+        min = max;
+        max = t;
+      }
+      return { min, max };
+    };
+
     // Allow nested config style: per-trial overrides may provide aperture fields under
     // `aperture_parameters: { ... }`. Flatten any missing keys for convenience.
     if (isObject(p.aperture_parameters)) {
@@ -4307,6 +4513,22 @@
     if (p.aperture_size === undefined) {
       if (p.aperture_diameter !== undefined) p.aperture_size = p.aperture_diameter;
       else if (p.diameter !== undefined) p.aperture_size = p.diameter;
+    }
+
+    if (p.dynamic_target_group_switch_enabled !== undefined || p.dynamic_target_group_every_n_frames !== undefined) {
+      const enabled = parseBoolish(p.dynamic_target_group_switch_enabled);
+      p.dynamic_target_group_switch_enabled = enabled;
+
+      const parsedRange = parseFrameRange(p.dynamic_target_group_every_n_frames);
+      if (enabled) {
+        const range = parsedRange || { min: 120, max: 240 };
+        p.dynamic_target_group_every_n_frames = `${range.min}-${range.max}`;
+        p.dynamic_target_group_every_n_frames_min = range.min;
+        p.dynamic_target_group_every_n_frames_max = range.max;
+      } else {
+        delete p.dynamic_target_group_every_n_frames_min;
+        delete p.dynamic_target_group_every_n_frames_max;
+      }
     }
 
     return p;

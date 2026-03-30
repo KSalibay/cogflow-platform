@@ -1356,6 +1356,10 @@ class TimelineBuilder {
 
         let formHtml = '';
         for (const [paramName, paramDef] of Object.entries(parameters)) {
+            if (paramDef && typeof paramDef === 'object' && paramDef.blockTarget && type !== 'block') {
+                continue;
+            }
+
             let currentValue;
 
             if (component.parameters && Object.prototype.hasOwnProperty.call(component.parameters, paramName)) {
@@ -1375,12 +1379,31 @@ class TimelineBuilder {
                 ? '<div class="form-text">When unchecked, ISO timing/RT fields are locked to default values.</div>'
                 : '';
 
+            const responseGroup = (paramName === 'feedback_mode' || paramName === 'feedback_duration_ms')
+                ? 'feedback'
+                : (paramName === 'cue_border_mode' || paramName === 'cue_border_width' || paramName === 'cue_border_color' || paramName === 'response_target_group')
+                    ? 'cue'
+                    : (paramName === 'dynamic_target_group_switch_enabled' || paramName === 'dynamic_target_group_every_n_frames')
+                        ? 'dynamicTarget'
+                        : (paramName === 'group_1_direction_options' || paramName === 'group_2_direction_options')
+                            ? 'groupDirection'
+                            : (paramName === 'dependent_direction_of_movement_enabled' || paramName === 'dependent_group_1_direction_options' || paramName === 'dependent_group_direction_difference_options')
+                                ? 'dependentDirection'
+                                : (paramName === 'group_speed_mode' || paramName === 'group_1_speed' || paramName === 'group_2_speed')
+                                    ? 'groupSpeed'
+                                    : '';
+
+            const cueSubGroup = (paramName === 'cue_border_color') ? 'cueColor' : '';
+            const feedbackSubGroup = (paramName === 'feedback_duration_ms') ? 'feedbackDuration' : '';
+            const dynamicTargetSubGroup = (paramName === 'dynamic_target_group_every_n_frames') ? 'dynamicTargetRange' : '';
+            const dependentDirectionSubGroup = (paramName === 'dependent_group_1_direction_options' || paramName === 'dependent_group_direction_difference_options') ? 'dependentDirectionFields' : '';
+
             const blockTargetAttr = (type === 'block' && blockTargetByParam[paramName])
                 ? ` data-block-target="${this.escapeHtmlAttr(String(blockTargetByParam[paramName]))}"`
                 : '';
 
             formHtml += `
-                <div class="mb-3" data-param-name="${this.escapeHtmlAttr(paramName)}"${blockTargetAttr}>
+                <div class="mb-3" data-param-name="${this.escapeHtmlAttr(paramName)}"${responseGroup ? ` data-response-group="${this.escapeHtmlAttr(responseGroup)}"` : ''}${cueSubGroup ? ` data-cue-subgroup="${this.escapeHtmlAttr(cueSubGroup)}"` : ''}${feedbackSubGroup ? ` data-feedback-subgroup="${this.escapeHtmlAttr(feedbackSubGroup)}"` : ''}${dynamicTargetSubGroup ? ` data-dynamic-target-subgroup="${this.escapeHtmlAttr(dynamicTargetSubGroup)}"` : ''}${dependentDirectionSubGroup ? ` data-dependent-direction-subgroup="${this.escapeHtmlAttr(dependentDirectionSubGroup)}"` : ''}${blockTargetAttr}>
                     <label for="param_${this.escapeHtmlAttr(paramName)}" class="form-label">${label}</label>
                     ${this.generateParameterInputFromComponentDef(paramName, paramDef, currentValue, shouldDisable)}
                     ${helpText}
@@ -1472,6 +1495,10 @@ class TimelineBuilder {
         const parameters = schema.parameters;
 
         for (const [paramName, paramDef] of Object.entries(parameters)) {
+            if (paramDef.blockTarget && componentType !== 'block') {
+                continue;
+            }
+
             // Priority order: component parameter → experiment default → schema default
             let currentValue;
             
@@ -1509,6 +1536,12 @@ class TimelineBuilder {
                         ? 'feedback'
                     : (paramName === 'cue_border_mode' || paramName === 'cue_border_width' || paramName === 'cue_border_color' || paramName === 'response_target_group')
                         ? 'cue'
+                        : (paramName === 'dynamic_target_group_switch_enabled' || paramName === 'dynamic_target_group_every_n_frames')
+                            ? 'dynamicTarget'
+                            : (paramName === 'group_1_direction_options' || paramName === 'group_2_direction_options')
+                                ? 'groupDirection'
+                                : (paramName === 'dependent_direction_of_movement_enabled' || paramName === 'dependent_group_1_direction_options' || paramName === 'dependent_group_direction_difference_options')
+                                    ? 'dependentDirection'
                         : (paramName === 'show_aperture_outline_mode' || paramName === 'aperture_outline_width' || paramName === 'aperture_outline_color')
                             ? 'apertureOutline'
                         : (paramName === 'group_speed_mode' || paramName === 'group_1_speed' || paramName === 'group_2_speed')
@@ -1517,6 +1550,8 @@ class TimelineBuilder {
 
             const cueSubGroup = (paramName === 'cue_border_color') ? 'cueColor' : '';
             const feedbackSubGroup = (paramName === 'feedback_duration_ms') ? 'feedbackDuration' : '';
+            const dynamicTargetSubGroup = (paramName === 'dynamic_target_group_every_n_frames') ? 'dynamicTargetRange' : '';
+            const dependentDirectionSubGroup = (paramName === 'dependent_group_1_direction_options' || paramName === 'dependent_group_direction_difference_options') ? 'dependentDirectionFields' : '';
 
             const blockTargetAttr = paramDef.blockTarget ? `data-block-target="${paramDef.blockTarget}"` : '';
 
@@ -1530,7 +1565,7 @@ class TimelineBuilder {
             }
 
             formHtml += `
-                <div class="mb-3 ${shouldDisable ? 'parameter-disabled' : ''}" data-param-name="${paramName}" ${responseGroup ? `data-response-group="${responseGroup}"` : ''} ${cueSubGroup ? `data-cue-subgroup="${cueSubGroup}"` : ''} ${feedbackSubGroup ? `data-feedback-subgroup="${feedbackSubGroup}"` : ''} ${blockTargetAttr} ${nbackParadigmAttr}>
+                <div class="mb-3 ${shouldDisable ? 'parameter-disabled' : ''}" data-param-name="${paramName}" ${responseGroup ? `data-response-group="${responseGroup}"` : ''} ${cueSubGroup ? `data-cue-subgroup="${cueSubGroup}"` : ''} ${feedbackSubGroup ? `data-feedback-subgroup="${feedbackSubGroup}"` : ''} ${dynamicTargetSubGroup ? `data-dynamic-target-subgroup="${dynamicTargetSubGroup}"` : ''} ${dependentDirectionSubGroup ? `data-dependent-direction-subgroup="${dependentDirectionSubGroup}"` : ''} ${blockTargetAttr} ${nbackParadigmAttr}>
                     <label for="param_${paramName}" class="form-label ${shouldDisable ? 'text-muted' : ''}">
                         ${this.formatParameterName(paramName)}
                         ${paramDef.required ? '<span class="text-danger">*</span>' : ''}
@@ -1884,8 +1919,11 @@ class TimelineBuilder {
             updateNbackRenderModeVisibility();
         }
 
-        // Block length clamping: blocks cannot exceed experiment length.
+        // Block sizing in continuous mode: by_frames or by_duration.
+        // Keep numeric inputs clamped to experiment-wide limits.
         const blockLenEl = formContainer.querySelector('#param_block_length');
+        const blockSizingModeEl = formContainer.querySelector('#param_block_sizing_mode');
+        const blockDurationEl = formContainer.querySelector('#param_block_duration_seconds');
         if (blockLenEl && component && component.type === 'block') {
             const cap = this.jsonBuilder.getExperimentWideLengthCapForBlocks?.();
             if (Number.isFinite(cap) && cap > 0) {
@@ -1905,6 +1943,31 @@ class TimelineBuilder {
                 blockLenEl.addEventListener('input', clamp);
                 blockLenEl.addEventListener('change', clamp);
                 clamp();
+            }
+
+            const durationCapSec = this.jsonBuilder.getExperimentWideDurationCapSeconds?.();
+            const frameRate = Number.parseFloat(document.getElementById('frameRate')?.value ?? '60');
+
+            const clampDuration = () => {
+                if (!blockDurationEl) return;
+                const raw = Number.parseFloat(blockDurationEl.value || '');
+                if (!Number.isFinite(raw)) return;
+
+                let next = raw;
+                if (next <= 0) next = Number.isFinite(frameRate) && frameRate > 0 ? (1 / frameRate) : 0.01;
+                if (Number.isFinite(durationCapSec) && durationCapSec > 0 && next > durationCapSec) {
+                    next = durationCapSec;
+                }
+
+                if (next !== raw) {
+                    blockDurationEl.value = String(next);
+                }
+            };
+
+            if (blockDurationEl) {
+                blockDurationEl.addEventListener('input', clampDuration);
+                blockDurationEl.addEventListener('change', clampDuration);
+                clampDuration();
             }
         }
 
@@ -1993,6 +2056,86 @@ class TimelineBuilder {
         }
         if (responseTargetEl || cueModeEl) {
             updateCueVisibility();
+        }
+
+        // Dot-groups dynamic target switching controls
+        const dynamicTargetSwitchEl = formContainer.querySelector('#param_dynamic_target_group_switch_enabled');
+        const dynamicTargetRangeEl = formContainer.querySelector('#param_dynamic_target_group_every_n_frames');
+
+        const updateDynamicTargetSwitchVisibility = () => {
+            const target = responseTargetEl ? responseTargetEl.value : 'none';
+            const hasTarget = !!target && target !== 'none';
+            const enabled = dynamicTargetSwitchEl ? dynamicTargetSwitchEl.checked === true : false;
+
+            formContainer.querySelectorAll('[data-response-group="dynamicTarget"]').forEach(el => {
+                const paramName = el.getAttribute('data-param-name');
+                let show = hasTarget;
+                if (paramName === 'dynamic_target_group_every_n_frames') {
+                    show = hasTarget && enabled;
+                }
+
+                el.style.display = show ? '' : 'none';
+                el.querySelectorAll('input, select, textarea').forEach(i => {
+                    i.disabled = !show;
+                });
+            });
+
+            formContainer.querySelectorAll('[data-dynamic-target-subgroup="dynamicTargetRange"]').forEach(el => {
+                const show = hasTarget && enabled;
+                el.style.display = show ? '' : 'none';
+                el.querySelectorAll('input, select, textarea').forEach(i => {
+                    i.disabled = !show;
+                });
+            });
+        };
+
+        if (dynamicTargetSwitchEl) {
+            dynamicTargetSwitchEl.addEventListener('change', updateDynamicTargetSwitchVisibility);
+        }
+        if (dynamicTargetRangeEl) {
+            dynamicTargetRangeEl.addEventListener('input', updateDynamicTargetSwitchVisibility);
+        }
+        if (responseTargetEl) {
+            responseTargetEl.addEventListener('change', updateDynamicTargetSwitchVisibility);
+        }
+        if (dynamicTargetSwitchEl || dynamicTargetRangeEl || responseTargetEl) {
+            updateDynamicTargetSwitchVisibility();
+        }
+
+        // Dot-groups dependent direction controls
+        const dependentDirectionToggleEl = formContainer.querySelector('#param_dependent_direction_of_movement_enabled');
+        const updateDependentDirectionVisibility = () => {
+            const enabled = dependentDirectionToggleEl ? dependentDirectionToggleEl.checked === true : false;
+
+            formContainer.querySelectorAll('[data-response-group="groupDirection"]').forEach(el => {
+                const show = !enabled;
+                el.style.display = show ? '' : 'none';
+                el.querySelectorAll('input, select, textarea').forEach(i => {
+                    i.disabled = !show;
+                });
+            });
+
+            formContainer.querySelectorAll('[data-response-group="dependentDirection"]').forEach(el => {
+                const paramName = el.getAttribute('data-param-name');
+                const show = (paramName === 'dependent_direction_of_movement_enabled') ? true : enabled;
+                el.style.display = show ? '' : 'none';
+                el.querySelectorAll('input, select, textarea').forEach(i => {
+                    i.disabled = !show;
+                });
+            });
+
+            formContainer.querySelectorAll('[data-dependent-direction-subgroup="dependentDirectionFields"]').forEach(el => {
+                const show = enabled;
+                el.style.display = show ? '' : 'none';
+                el.querySelectorAll('input, select, textarea').forEach(i => {
+                    i.disabled = !show;
+                });
+            });
+        };
+
+        if (dependentDirectionToggleEl) {
+            dependentDirectionToggleEl.addEventListener('change', updateDependentDirectionVisibility);
+            updateDependentDirectionVisibility();
         }
 
         // Dot-groups group-speed conditional fields
@@ -2355,6 +2498,18 @@ class TimelineBuilder {
             setParamVisible('ts_stimulus_color_hex', !showColor);
         };
 
+        const updateBlockSizingVisibility = () => {
+            if (!blockTypeEl) return;
+
+            const isContinuousExperiment = (this.jsonBuilder?.experimentType === 'continuous');
+            const mode = (blockSizingModeEl ? blockSizingModeEl.value : 'by_frames').toString().trim().toLowerCase();
+            const byDuration = isContinuousExperiment && mode === 'by_duration';
+
+            setParamVisible('block_sizing_mode', isContinuousExperiment);
+            setParamVisible('block_duration_seconds', byDuration);
+            setParamVisible('block_length', !byDuration);
+        };
+
         const updateBlockVisibility = () => {
             if (!blockTypeEl) return;
             const selected = blockTypeEl.value;
@@ -2408,6 +2563,9 @@ class TimelineBuilder {
 
             // Task Switching block: cue + trial type conditional fields.
             updateTaskSwitchingBlockVisibility();
+
+            // Block sizing controls (continuous mode only).
+            updateBlockSizingVisibility();
 
             // Stroop block: hide keyboard-only fields when mouse is effective, and
             // toggle between color-naming (choice keys) vs congruency (two keys).
@@ -2470,6 +2628,12 @@ class TimelineBuilder {
                 tsCueTypeEl.addEventListener('change', updateTaskSwitchingBlockVisibility);
             }
             updateTaskSwitchingBlockVisibility();
+
+            const blockSizingEl = formContainer.querySelector('#param_block_sizing_mode');
+            if (blockSizingEl) {
+                blockSizingEl.addEventListener('change', updateBlockSizingVisibility);
+            }
+            updateBlockSizingVisibility();
 
             // When editing a Flanker block, stimulus type changes should re-evaluate visibility.
             const stimTypeEl = formContainer.querySelector('#param_flanker_stimulus_type');
@@ -4072,17 +4236,70 @@ class TimelineBuilder {
             // ignore
         }
 
-        // Block length: default to (and cap at) the experiment-wide length.
-        // Researchers may shorten blocks, but cannot extend them beyond the experiment length.
+        // Block sizing validation:
+        // - trial-based: always by frames (block_length)
+        // - continuous: by frames OR by duration (derive block_length from seconds)
         try {
             if ((currentData.type || '') === 'block') {
                 const cap = this.jsonBuilder?.getExperimentWideLengthCapForBlocks?.();
-                const proposed = Number.parseInt(newParameters.block_length ?? currentData.block_length ?? '', 10);
-                if (Number.isFinite(cap) && cap > 0 && Number.isFinite(proposed) && proposed > cap) {
-                    newParameters.block_length = cap;
-                    const inputEl = modalBody.querySelector('#param_block_length');
-                    if (inputEl) inputEl.value = String(cap);
-                    window.alert(`Block length cannot exceed the experiment length (${cap}). It has been set to ${cap}.`);
+                const durationCapSec = this.jsonBuilder?.getExperimentWideDurationCapSeconds?.();
+                const isContinuous = this.jsonBuilder?.experimentType === 'continuous';
+
+                let sizingMode = (newParameters.block_sizing_mode ?? currentData.block_sizing_mode ?? 'by_frames').toString().trim().toLowerCase();
+                if (!isContinuous) sizingMode = 'by_frames';
+                if (sizingMode !== 'by_duration') sizingMode = 'by_frames';
+
+                if (isContinuous) {
+                    newParameters.block_sizing_mode = sizingMode;
+                } else {
+                    newParameters.block_sizing_mode = undefined;
+                    newParameters.block_duration_seconds = undefined;
+                }
+
+                if (isContinuous && sizingMode === 'by_duration') {
+                    const frameRate = Number.parseFloat(document.getElementById('frameRate')?.value ?? '60');
+                    let durationSec = Number.parseFloat(newParameters.block_duration_seconds ?? currentData.block_duration_seconds ?? '');
+
+                    if (!Number.isFinite(durationSec) || durationSec <= 0) {
+                        const fallbackFrames = Number.parseInt(newParameters.block_length ?? currentData.block_length ?? '1', 10);
+                        if (Number.isFinite(frameRate) && frameRate > 0 && Number.isFinite(fallbackFrames) && fallbackFrames > 0) {
+                            durationSec = fallbackFrames / frameRate;
+                        } else {
+                            durationSec = Number.isFinite(frameRate) && frameRate > 0 ? (1 / frameRate) : 0.01;
+                        }
+                    }
+
+                    if (Number.isFinite(durationCapSec) && durationCapSec > 0 && durationSec > durationCapSec) {
+                        durationSec = durationCapSec;
+                        const inputEl = modalBody.querySelector('#param_block_duration_seconds');
+                        if (inputEl) inputEl.value = String(durationSec);
+                        window.alert(`Block duration cannot exceed the experiment duration (${durationCapSec}s). It has been set to ${durationCapSec}s.`);
+                    }
+
+                    newParameters.block_duration_seconds = durationSec;
+
+                    let derivedLength = Number.isFinite(frameRate) && frameRate > 0
+                        ? Math.max(1, Math.round(durationSec * frameRate))
+                        : Number.parseInt(newParameters.block_length ?? currentData.block_length ?? '1', 10);
+
+                    if (!Number.isFinite(derivedLength) || derivedLength < 1) {
+                        derivedLength = 1;
+                    }
+
+                    if (Number.isFinite(cap) && cap > 0 && derivedLength > cap) {
+                        derivedLength = cap;
+                    }
+
+                    newParameters.block_length = derivedLength;
+                } else {
+                    newParameters.block_duration_seconds = undefined;
+                    const proposed = Number.parseInt(newParameters.block_length ?? currentData.block_length ?? '', 10);
+                    if (Number.isFinite(cap) && cap > 0 && Number.isFinite(proposed) && proposed > cap) {
+                        newParameters.block_length = cap;
+                        const inputEl = modalBody.querySelector('#param_block_length');
+                        if (inputEl) inputEl.value = String(cap);
+                        window.alert(`Block length cannot exceed the experiment length (${cap}). It has been set to ${cap}.`);
+                    }
                 }
             }
         } catch {
@@ -4134,9 +4351,124 @@ class TimelineBuilder {
                     if (Object.prototype.hasOwnProperty.call(newParameters, 'stroop_incongruent_key')) delete newParameters.stroop_incongruent_key;
                 }
             }
+
+            const isRdmDotGroupsBlock = (blockType === 'rdm-dot-groups');
+            if (isRdmDotGroupsBlock) {
+                const rawEnabled = (newParameters.dynamic_target_group_switch_enabled !== undefined)
+                    ? newParameters.dynamic_target_group_switch_enabled
+                    : (currentData.dynamic_target_group_switch_enabled ?? currentData.parameters?.dynamic_target_group_switch_enabled ?? false);
+                const enabled = rawEnabled === true || rawEnabled === 'true' || rawEnabled === 1 || rawEnabled === '1';
+
+                if (!enabled) {
+                    newParameters.dynamic_target_group_switch_enabled = false;
+                    newParameters.dynamic_target_group_every_n_frames = undefined;
+                } else {
+                    const rawRange = (newParameters.dynamic_target_group_every_n_frames ?? currentData.dynamic_target_group_every_n_frames ?? currentData.parameters?.dynamic_target_group_every_n_frames ?? '')
+                        .toString()
+                        .trim();
+
+                    const single = rawRange.match(/^(\d+)$/);
+                    const span = rawRange.match(/^(\d+)\s*-\s*(\d+)$/);
+
+                    let minFrames = NaN;
+                    let maxFrames = NaN;
+                    if (single) {
+                        minFrames = Number.parseInt(single[1], 10);
+                        maxFrames = minFrames;
+                    } else if (span) {
+                        minFrames = Number.parseInt(span[1], 10);
+                        maxFrames = Number.parseInt(span[2], 10);
+                    }
+
+                    if (!Number.isFinite(minFrames) || !Number.isFinite(maxFrames) || minFrames < 1 || maxFrames < 1) {
+                        window.alert('Dynamic target-group switching requires a valid frame range, e.g. "120-240" (or a single value like "180").');
+                        return;
+                    }
+
+                    if (maxFrames < minFrames) {
+                        const tmp = minFrames;
+                        minFrames = maxFrames;
+                        maxFrames = tmp;
+                    }
+
+                    newParameters.dynamic_target_group_switch_enabled = true;
+                    newParameters.dynamic_target_group_every_n_frames = `${minFrames}-${maxFrames}`;
+
+                    const rangeInputEl = modalBody.querySelector('#param_dynamic_target_group_every_n_frames');
+                    if (rangeInputEl) {
+                        rangeInputEl.value = newParameters.dynamic_target_group_every_n_frames;
+                    }
+                }
+
+                const rawDependentEnabled = (newParameters.dependent_direction_of_movement_enabled !== undefined)
+                    ? newParameters.dependent_direction_of_movement_enabled
+                    : (currentData.dependent_direction_of_movement_enabled ?? currentData.parameters?.dependent_direction_of_movement_enabled ?? false);
+                const dependentEnabled = rawDependentEnabled === true || rawDependentEnabled === 'true' || rawDependentEnabled === 1 || rawDependentEnabled === '1';
+
+                if (!dependentEnabled) {
+                    newParameters.dependent_direction_of_movement_enabled = false;
+                    newParameters.dependent_group_1_direction_options = undefined;
+                    newParameters.dependent_group_direction_difference_options = undefined;
+                } else {
+                    const rawBaseDirections = (newParameters.dependent_group_1_direction_options ?? currentData.dependent_group_1_direction_options ?? currentData.parameters?.dependent_group_1_direction_options ?? '')
+                        .toString()
+                        .trim();
+                    const rawDifferences = (newParameters.dependent_group_direction_difference_options ?? currentData.dependent_group_direction_difference_options ?? currentData.parameters?.dependent_group_direction_difference_options ?? '')
+                        .toString()
+                        .trim();
+
+                    if (!rawBaseDirections || !rawDifferences) {
+                        window.alert('Dependent direction of movement requires both a group 1 direction list/range and a direction-difference list/range.');
+                        return;
+                    }
+
+                    newParameters.dependent_direction_of_movement_enabled = true;
+                    newParameters.dependent_group_1_direction_options = rawBaseDirections;
+                    newParameters.dependent_group_direction_difference_options = rawDifferences;
+                    newParameters.group_1_direction_options = undefined;
+                    newParameters.group_2_direction_options = undefined;
+                }
+            }
         }
 
         console.log('Collected parameters:', newParameters);
+
+        const expandIntegerRangeTokens = (tokens, { maxExpandedItems = 5000 } = {}) => {
+            const out = [];
+
+            for (const token of tokens) {
+                const t = (token ?? '').toString().trim();
+                if (!t) continue;
+
+                // Expand inclusive integer ranges like "1-4" or "-3--1".
+                const m = t.match(/^(-?\d+)\s*-\s*(-?\d+)$/);
+                if (!m) {
+                    out.push(t);
+                    continue;
+                }
+
+                const start = Number.parseInt(m[1], 10);
+                const end = Number.parseInt(m[2], 10);
+                if (!Number.isFinite(start) || !Number.isFinite(end)) {
+                    out.push(t);
+                    continue;
+                }
+
+                const step = start <= end ? 1 : -1;
+                const count = Math.abs(end - start) + 1;
+                if (count > maxExpandedItems) {
+                    // Keep the raw token so it fails normal validation with a clear message.
+                    out.push(t);
+                    continue;
+                }
+
+                for (let n = start; step > 0 ? n <= end : n >= end; n += step) {
+                    out.push(String(n));
+                }
+            }
+
+            return out;
+        };
 
         const validateCommaSeparatedNumericList = (raw, { min, max, integersOnly = false } = {}) => {
             const text = (raw ?? '').toString();
@@ -4144,11 +4476,12 @@ class TimelineBuilder {
                 .split(',')
                 .map(s => s.trim())
                 .filter(Boolean);
+            const expandedParts = expandIntegerRangeTokens(parts);
 
             const kept = [];
             const invalid = [];
 
-            for (const p of parts) {
+            for (const p of expandedParts) {
                 const n = integersOnly ? Number.parseInt(p, 10) : Number(p);
                 if (!Number.isFinite(n)) {
                     invalid.push(p);
@@ -4224,6 +4557,8 @@ class TimelineBuilder {
             practice_direction_options: { min: 0, max: 359, integersOnly: false },
             group_1_direction_options: { min: 0, max: 359, integersOnly: false },
             group_2_direction_options: { min: 0, max: 359, integersOnly: false },
+            dependent_group_1_direction_options: { min: 0, max: 359, integersOnly: false },
+            dependent_group_direction_difference_options: { min: 0, max: 359, integersOnly: false },
 
             // SART digits
             sart_digit_options: { min: 0, max: 9, integersOnly: true }
@@ -4395,6 +4730,25 @@ class TimelineBuilder {
                 const isBlock = (updatedData.type === 'block');
                 if (isBlock) {
                     const blockType = (updatedData.block_component_type ?? updatedData.component_type ?? '').toString();
+                    if (blockType === 'rdm-dot-groups') {
+                        const rawDependentEnabled = (updatedData.dependent_direction_of_movement_enabled ?? updatedData.parameters?.dependent_direction_of_movement_enabled ?? false);
+                        const dependentEnabled = rawDependentEnabled === true || rawDependentEnabled === 'true' || rawDependentEnabled === 1 || rawDependentEnabled === '1';
+
+                        const containers = [];
+                        if (updatedData && typeof updatedData === 'object') containers.push(updatedData);
+                        if (updatedData.parameters && typeof updatedData.parameters === 'object') containers.push(updatedData.parameters);
+
+                        for (const c of containers) {
+                            if (!c || typeof c !== 'object') continue;
+                            if (dependentEnabled) {
+                                if (Object.prototype.hasOwnProperty.call(c, 'group_1_direction_options')) delete c.group_1_direction_options;
+                                if (Object.prototype.hasOwnProperty.call(c, 'group_2_direction_options')) delete c.group_2_direction_options;
+                            } else {
+                                if (Object.prototype.hasOwnProperty.call(c, 'dependent_group_1_direction_options')) delete c.dependent_group_1_direction_options;
+                                if (Object.prototype.hasOwnProperty.call(c, 'dependent_group_direction_difference_options')) delete c.dependent_group_direction_difference_options;
+                            }
+                        }
+                    }
                     if (blockType === 'stroop-trial') {
                         const defaultDevice = (document.getElementById('stroopDefaultResponseDevice')?.value || 'keyboard').toString();
                         const defaultMode = (document.getElementById('stroopDefaultResponseMode')?.value || 'color_naming').toString();
