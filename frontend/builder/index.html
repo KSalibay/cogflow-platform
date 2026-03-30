@@ -11,15 +11,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
 
     <script>
-        // Apply Accessibility Mode + Theme early to avoid flash of wrong styling
+        // Apply theme early to avoid flash of wrong styling
         (function () {
-            try {
-                const enabled = localStorage.getItem('cogflow_builder_a11y') === '1';
-                if (enabled) document.documentElement.classList.add('cf-a11y');
-            } catch (e) {
-                // Ignore storage errors (privacy mode, etc.)
-            }
-
             try {
                 const params = new URLSearchParams(window.location.search || '');
                 const qTheme = (params.get('theme') || '').trim().toLowerCase();
@@ -59,7 +52,7 @@
             <span class="navbar-brand mb-0 h1">
                 <img src="img/logo_builder_light.png" alt="CogFlow Builder" class="cf-brand-logo">
             </span>
-            <div class="d-flex">
+            <div class="d-flex cf-navbar-actions">
                 <button class="btn btn-outline-light me-2" id="loadTemplateBtn">
                     <i class="fas fa-folder-open"></i> Load Template
                 </button>
@@ -395,13 +388,6 @@
 
     <footer class="cf-footer">
         <div class="container-fluid cf-footer-inner">
-            <div class="cf-footer-a11y">
-                <div class="form-check form-switch">
-                    <input class="form-check-input" type="checkbox" role="switch" id="accessibilityModeToggle">
-                    <label class="form-check-label" for="accessibilityModeToggle">Accessibility Mode</label>
-                </div>
-            </div>
-            <div class="cf-footer-spacer"></div>
             <div class="cf-footer-text">
                 <a class="cf-footer-link" href="https://github.com/KSalibay/json-builder-app" target="_blank" rel="noopener noreferrer" aria-label="GitHub repository">
                     <i class="fa-brands fa-github" aria-hidden="true"></i>

@@ -799,15 +799,6 @@ class JsonBuilder {
         console.log('CogFlow Builder initialized successfully');
     }
 
-    setAccessibilityMode(enabled) {
-        const on = !!enabled;
-        document.documentElement.classList.toggle('cf-a11y', on);
-        try {
-            localStorage.setItem('cogflow_builder_a11y', on ? '1' : '0');
-        } catch (e) {
-            // Ignore storage errors
-        }
-    }
     /**
      * Initialize all modules
      */
@@ -828,17 +819,6 @@ class JsonBuilder {
      * Set up event listeners for UI interactions
      */
     setupEventListeners() {
-        // Accessibility Mode toggle (footer)
-        const a11yToggle = document.getElementById('accessibilityModeToggle');
-        if (a11yToggle && a11yToggle.dataset.bound !== '1') {
-            a11yToggle.dataset.bound = '1';
-            a11yToggle.checked = document.documentElement.classList.contains('cf-a11y');
-
-            a11yToggle.addEventListener('change', () => {
-                this.setAccessibilityMode(!!a11yToggle.checked);
-            });
-        }
-
         // Experiment type radio buttons
         document.querySelectorAll('input[name="experimentType"]').forEach(radio => {
             radio.addEventListener('change', this.onExperimentTypeChange);
