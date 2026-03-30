@@ -50,6 +50,7 @@
     --bs-focus-ring-color: rgba(174, 140, 163, 0.35);
     --bs-link-color: var(--cf-twilight-indigo);
     --bs-link-hover-color: #2f3551;
+    --cf-font-scale: 1;
 }
 
 /* Manual page theme selection (independent from OS settings) */
@@ -78,8 +79,9 @@ html, body {
     height: 100%;
 }
 
-/* Accessibility mode (high contrast + Atkinson Hyperlegible) */
-html.cf-a11y {
+/* Accessibility modes */
+html.cf-a11y,
+html.cf-a11y-contrast {
     --bs-body-font-family: 'Atkinson Hyperlegible', 'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
 
     /* Higher-contrast semantic tokens */
@@ -94,11 +96,15 @@ html.cf-a11y {
     --bs-focus-ring-color: rgba(95, 105, 149, 0.45);
 }
 
+html.cf-a11y-large {
+    --cf-font-scale: 1.125;
+}
+
 body {
     font-family: var(--bs-body-font-family);
     background-color: var(--bs-body-bg);
-    font-size: 0.875rem; /* Reduced from default 16px to 14px */
-    min-width: 1200px; /* Prevent layout collapse */
+    font-size: calc(0.875rem * var(--cf-font-scale)); /* Reduced base size, scalable via accessibility mode */
+    min-width: 0;
     margin: 0;
 
     /* App shell: prevent whole-page scroll; keep scroll inside panels */
@@ -114,8 +120,14 @@ body {
 .navbar .container-fluid {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    min-width: 0;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.navbar .container-fluid .d-flex {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
 }
 
 /* Slightly tighter navbar to save vertical space */
@@ -144,15 +156,17 @@ body {
 }
 
 .cf-navbar-actions {
+    flex: 1 1 auto;
     margin-left: auto;
     min-width: 0;
     flex-wrap: wrap;
     justify-content: flex-end;
-    row-gap: 0.35rem;
+    row-gap: 0.2rem;
 }
 
 .cf-navbar-actions .btn {
     white-space: nowrap;
+    margin-right: 0 !important;
 }
 
 .cf-theme-toggle {
@@ -314,9 +328,19 @@ html[data-cf-theme="dark"] #publishMetadataModal .modal-footer {
 .cf-footer-inner {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: flex-start;
     padding-top: 6px !important;
     padding-bottom: 6px !important;
+}
+
+.cf-footer-a11y {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.cf-footer-spacer {
+    flex: 1 1 auto;
 }
 
 .cf-footer-text {

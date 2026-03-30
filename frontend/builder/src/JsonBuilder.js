@@ -799,6 +799,34 @@ class JsonBuilder {
         console.log('CogFlow Builder initialized successfully');
     }
 
+    setAccessibilityMode(modeOrEnabled) {
+        const normalizeMode = (raw) => {
+            const mode = (raw || '').toString().trim().toLowerCase();
+            if (mode === 'contrast' || mode === 'large' || mode === 'contrast-large') return mode;
+            return 'standard';
+        };
+
+        const mode = (typeof modeOrEnabled === 'boolean')
+            ? (modeOrEnabled ? 'contrast' : 'standard')
+            : normalizeMode(modeOrEnabled);
+
+        const html = document.documentElement;
+        html.classList.remove('cf-a11y', 'cf-a11y-contrast', 'cf-a11y-large');
+        if (mode === 'contrast') html.classList.add('cf-a11y-contrast');
+        if (mode === 'large') html.classList.add('cf-a11y-large');
+        if (mode === 'contrast-large') html.classList.add('cf-a11y-contrast', 'cf-a11y-large');
+
+        try {
+            const params = new URLSearchParams(window.location.search || '');
+            const scopedUser = (params.get('builder_user') || localStorage.getItem('cogflow_builder_user') || 'default').trim() || 'default';
+            const modeKey = `cogflow_builder_a11y_mode::${scopedUser}`;
+            localStorage.setItem(modeKey, mode);
+            localStorage.setItem('cogflow_builder_a11y', mode === 'standard' ? '0' : '1');
+        } catch (e) {
+            // Ignore storage errors
+        }
+    }
+
     /**
      * Initialize all modules
      */
