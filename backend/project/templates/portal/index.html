@@ -1045,15 +1045,19 @@
               <p class="view-subtitle" style="margin:0 0 20px;">Generate recruitment-platform launch links and completion redirects per study.</p>
 
               <div class="panel panel-pad" style="margin-bottom:14px;">
-                <h3 style="margin:0 0 10px;">SONA Link Generator</h3>
-                <p class="inline-note" style="margin:0 0 12px;">Create SONA-friendly launch links that return participants to SONA after completion.</p>
-
-                <div class="account-field">
-                  <label for="integrationStudySelect">Study</label>
+                <h3 style="margin:0 0 10px;">Study</h3>
+                <p class="inline-note" style="margin:0 0 12px;">This study selection is shared by both SONA and Prolific generators.</p>
+                <div class="account-field" style="margin-bottom:0;">
+                  <label for="integrationStudySelect">Select study</label>
                   <select id="integrationStudySelect" style="border:1.5px solid var(--line);border-radius:8px;padding:7px 11px;font-size:.88rem;font-family:inherit;outline:none;background:var(--bg);color:var(--ink);max-width:380px;">
                     <option value="">— Select study —</option>
                   </select>
                 </div>
+              </div>
+
+              <div class="panel panel-pad" style="margin-bottom:14px;">
+                <h3 style="margin:0 0 10px;">SONA Link Generator</h3>
+                <p class="inline-note" style="margin:0 0 12px;">Create SONA-friendly launch links that return participants to SONA after completion.</p>
 
                 <div class="account-field">
                   <label for="integrationParticipantId">Participant ID (optional)</label>
