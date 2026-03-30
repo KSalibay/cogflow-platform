@@ -1082,8 +1082,16 @@
                 <p class="inline-note" style="margin:0 0 12px;">Generate a Prolific-ready external study URL for the selected study.</p>
 
                 <div class="account-field">
-                  <label for="prolificCompletionCode">Prolific completion code (optional)</label>
+                  <label for="prolificCompletionCode">Prolific completion code</label>
                   <input type="text" id="prolificCompletionCode" placeholder="e.g. C123ABC" />
+                </div>
+
+                <div class="account-field">
+                  <label for="prolificCompletionMethod">Completion behavior</label>
+                  <select id="prolificCompletionMethod" style="border:1.5px solid var(--line);border-radius:8px;padding:7px 11px;font-size:.88rem;font-family:inherit;outline:none;background:var(--bg);color:var(--ink);max-width:380px;">
+                    <option value="redirect" selected>Auto-redirect to Prolific (recommended)</option>
+                    <option value="show_code">Show completion code screen inside CogFlow</option>
+                  </select>
                 </div>
 
                 <div class="inline-note" style="margin:2px 0 12px;">The generated URL includes Prolific placeholders: <span class="mono">{{%PROLIFIC_PID%}}</span>, <span class="mono">{{%STUDY_ID%}}</span>, <span class="mono">{{%SESSION_ID%}}</span>.</div>
@@ -2183,9 +2191,11 @@
       out.innerHTML = `
         <article class="detail-card" style="margin-top:12px;">
           <h3 style="margin:0 0 12px;">Prolific</h3>
+          ${rfRow("Completion behavior", payload.completionMethodLabel || "Auto-redirect to Prolific")}
           ${rfRow("External Study URL", payload.externalStudyUrl || "")}
           ${rfRow("Base launch URL", payload.baseLaunchUrl || "")}
-          ${payload.completionRedirect ? rfRow("Completion redirect", payload.completionRedirect) : '<p class="result-message" style="margin:0 0 8px;">No completion redirect set (code was left blank).</p>'}
+          ${payload.completionCode ? rfRow("Completion code", payload.completionCode) : '<p class="result-message" style="margin:0 0 8px;">No completion code set.</p>'}
+          ${payload.completionRedirect ? rfRow("Completion redirect", payload.completionRedirect) : '<p class="result-message" style="margin:0 0 8px;">No completion redirect set (completion-code screen mode).</p>'}
           <p class="rollout-meta" style="margin-top:10px;">Paste the External Study URL into Prolific. Placeholders will be resolved by Prolific at runtime.</p>
         </article>`;
 
@@ -2248,6 +2258,7 @@
       const btn = document.getElementById("generateProlificLinkBtn");
       const slug = (document.getElementById("integrationStudySelect")?.value || "").trim();
       const completionCode = (document.getElementById("prolificCompletionCode")?.value || "").trim();
+      const completionMethod = (document.getElementById("prolificCompletionMethod")?.value || "redirect").trim().toLowerCase();
 
       if (!slug) {
         statusEl.className = "status-bar error";
@@ -2255,7 +2266,13 @@
         return;
       }
 
-      const completionRedirect = completionCode
+      if (!completionCode) {
+        statusEl.className = "status-bar error";
+        statusEl.textContent = "Completion code is required for Prolific links.";
+        return;
+      }
+
+      const completionRedirect = completionMethod === "redirect"
         ? `https://app.prolific.com/submissions/complete?cc=${encodeURIComponent(completionCode)}`
         : null;
 
@@ -2269,6 +2286,8 @@
           expires_in_hours: 72,
           completion_redirect_url: completionRedirect,
           abort_redirect_url: null,
+          prolific_completion_mode: completionMethod,
+          prolific_completion_code: completionCode,
         }));
         const d = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
@@ -2281,6 +2300,10 @@
           externalStudyUrl,
           baseLaunchUrl,
           completionRedirect: completionRedirect || "",
+          completionCode,
+          completionMethodLabel: completionMethod === "show_code"
+            ? "Show completion code screen inside CogFlow"
+            : "Auto-redirect to Prolific",
         });
 
         statusEl.className = "status-bar ok";

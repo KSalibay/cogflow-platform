@@ -1196,6 +1196,8 @@ class CreateParticipantLinkView(APIView):
         participant_external_id = (data.get("participant_external_id") or "").strip()
         completion_redirect_url = (data.get("completion_redirect_url") or "").strip()
         abort_redirect_url = (data.get("abort_redirect_url") or "").strip()
+        prolific_completion_mode = (data.get("prolific_completion_mode") or "default").strip() or "default"
+        prolific_completion_code = (data.get("prolific_completion_code") or "").strip()
         base_payload = {
             "study_slug": study.slug,
             "researcher_username": request.user.username,
@@ -1203,6 +1205,8 @@ class CreateParticipantLinkView(APIView):
             "expires_at": expires_at.isoformat(),
             "completion_redirect_url": completion_redirect_url,
             "abort_redirect_url": abort_redirect_url,
+            "prolific_completion_mode": prolific_completion_mode,
+            "prolific_completion_code": prolific_completion_code,
         }
         single_use_token = _issue_launch_token(
             {
@@ -1227,6 +1231,8 @@ class CreateParticipantLinkView(APIView):
                 "expires_at": expires_at.isoformat(),
                 "has_completion_redirect": bool(completion_redirect_url),
                 "has_abort_redirect": bool(abort_redirect_url),
+                "prolific_completion_mode": prolific_completion_mode,
+                "has_prolific_completion_code": bool(prolific_completion_code),
                 "single_use_token_digest": _launch_token_digest(single_use_token),
                 "multi_use_token_digest": _launch_token_digest(multi_use_token),
             },
@@ -1241,6 +1247,8 @@ class CreateParticipantLinkView(APIView):
                 "launch_url": launch_url_multi,
                 "completion_redirect_url": completion_redirect_url,
                 "abort_redirect_url": abort_redirect_url,
+                "prolific_completion_mode": prolific_completion_mode,
+                "prolific_completion_code": prolific_completion_code,
                 "launch_options": {
                     "multi_use": {
                         "launch_mode": "multi_use",
@@ -1248,6 +1256,8 @@ class CreateParticipantLinkView(APIView):
                         "launch_url": launch_url_multi,
                         "completion_redirect_url": completion_redirect_url,
                         "abort_redirect_url": abort_redirect_url,
+                        "prolific_completion_mode": prolific_completion_mode,
+                        "prolific_completion_code": prolific_completion_code,
                     },
                     "single_use": {
                         "launch_mode": "single_use",
@@ -1255,6 +1265,8 @@ class CreateParticipantLinkView(APIView):
                         "launch_url": launch_url_single,
                         "completion_redirect_url": completion_redirect_url,
                         "abort_redirect_url": abort_redirect_url,
+                        "prolific_completion_mode": prolific_completion_mode,
+                        "prolific_completion_code": prolific_completion_code,
                     },
                 },
                 "expires_at": expires_at,
@@ -1471,6 +1483,14 @@ class StartRunView(APIView):
             participant_key,
             run_session.id,
         )
+        prolific_completion_mode = (
+            (token_payload.get("prolific_completion_mode") if launch_token else None)
+            or "default"
+        )
+        prolific_completion_code = (
+            (token_payload.get("prolific_completion_code") if launch_token else None)
+            or ""
+        )
 
         record_audit(
             action="start_run",
@@ -1483,6 +1503,8 @@ class StartRunView(APIView):
                 "launch_token_digest": launch_token_digest,
                 "has_completion_redirect": bool(completion_redirect_url),
                 "has_abort_redirect": bool(abort_redirect_url),
+                "prolific_completion_mode": prolific_completion_mode,
+                "has_prolific_completion_code": bool(prolific_completion_code),
             },
         )
 
@@ -1496,6 +1518,8 @@ class StartRunView(APIView):
                 "owner_username": owner_name_response,
                 "completion_redirect_url": completion_redirect_url,
                 "abort_redirect_url": abort_redirect_url,
+                "prolific_completion_mode": prolific_completion_mode,
+                "prolific_completion_code": prolific_completion_code,
             },
             status=status.HTTP_201_CREATED,
         )
