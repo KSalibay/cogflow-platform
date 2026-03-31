@@ -107,6 +107,19 @@ class AdminUpdateUserActivationRequestSerializer(serializers.Serializer):
     is_active = serializers.BooleanField()
 
 
+class AdminSetUserPasswordRequestSerializer(serializers.Serializer):
+    new_password = serializers.CharField(max_length=128)
+
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    identity = serializers.CharField(max_length=254)
+
+
+class PasswordResetConfirmRequestSerializer(serializers.Serializer):
+    token = serializers.CharField(max_length=2048)
+    new_password = serializers.CharField(max_length=128)
+
+
 class FeedbackSubmitRequestSerializer(serializers.Serializer):
     category = serializers.ChoiceField(
         choices=["bug", "feature", "ux", "other"],

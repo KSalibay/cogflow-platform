@@ -39,11 +39,14 @@ from apps.results.services import (
 )
 from project.api_serializers import (
     AdminCreateUserRequestSerializer,
+    AdminSetUserPasswordRequestSerializer,
     AdminUpdateUserActivationRequestSerializer,
     AdminUpdateUserRoleRequestSerializer,
     AssignStudyOwnerRequestSerializer,
     ShareStudyRequestSerializer,
     AuthLoginRequestSerializer,
+    PasswordResetConfirmRequestSerializer,
+    PasswordResetRequestSerializer,
     AuthRegisterRequestSerializer,
     FeedbackSubmitRequestSerializer,
     CreateParticipantLinkRequestSerializer,
@@ -225,6 +228,21 @@ def _read_email_verification_token(token: str) -> dict:
     max_age_hours = int(os.getenv("AUTH_EMAIL_VERIFY_MAX_AGE_HOURS", "72"))
     max_age_seconds = max(1, max_age_hours) * 60 * 60
     return signing.loads(token, salt="auth-register-verify-v1", max_age=max_age_seconds)
+
+
+def _issue_password_reset_token(user: User) -> str:
+    payload = {
+        "uid": user.id,
+        "email": (user.email or "").strip().lower(),
+        "pwd": user.password,
+    }
+    return signing.dumps(payload, salt="auth-password-reset-v1", compress=True)
+
+
+def _read_password_reset_token(token: str) -> dict:
+    max_age_hours = int(os.getenv("AUTH_PASSWORD_RESET_MAX_AGE_HOURS", "2"))
+    max_age_seconds = max(1, max_age_hours) * 60 * 60
+    return signing.loads(token, salt="auth-password-reset-v1", max_age=max_age_seconds)
 
 
 def _portal_auth_redirect(request, msg: str, mode: str = "login") -> HttpResponseRedirect:
@@ -625,6 +643,151 @@ class PasswordChangeView(APIView):
         return Response({"ok": True}, status=status.HTTP_200_OK)
 
 
+class PasswordResetRequestView(APIView):
+    """Send a password reset email without exposing whether the account exists."""
+
+    @transaction.atomic
+    def post(self, request):
+        serializer = PasswordResetRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        identity = (serializer.validated_data.get("identity") or "").strip()
+        if not identity:
+            return Response({"error": "identity is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = (
+            User.objects.filter(Q(username__iexact=identity) | Q(email__iexact=identity))
+            .order_by("id")
+            .first()
+        )
+
+        if user and user.is_active and (user.email or "").strip():
+            reset_token = _issue_password_reset_token(user)
+            platform_base = (os.getenv("COGFLOW_PLATFORM_URL", "").strip() or request.build_absolute_uri("/")).rstrip("/")
+            portal_url = f"{platform_base}/portal/"
+            reset_url = f"{portal_url}?{urlencode({'auth_mode': 'reset', 'token': reset_token})}"
+            try:
+                subject = "Reset your CogFlow password"
+                text_body = (
+                    "A password reset was requested for your CogFlow account.\n\n"
+                    "Use the link below to set a new password:\n"
+                    f"{reset_url}\n\n"
+                    f"Portal URL: {portal_url}\n"
+                    "If you did not request this change, you can ignore this email."
+                )
+                html_body = f"""
+                <html>
+                    <body style=\"margin:0;padding:0;background:#f3f5f8;font-family:Arial,sans-serif;color:#1f2937;\">
+                        <table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"padding:24px 0;\">
+                            <tr>
+                                <td align=\"center\">
+                                    <table role=\"presentation\" width=\"560\" cellspacing=\"0\" cellpadding=\"0\" style=\"background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;padding:24px;\">
+                                        <tr>
+                                            <td align=\"center\" style=\"padding-bottom:16px;\">
+                                                <img src=\"cid:cogflow-logo\" alt=\"CogFlow\" style=\"max-width:220px;height:auto;display:block;\" />
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td style=\"font-size:15px;line-height:1.6;\">
+                                                <p style=\"margin:0 0 12px;\">A password reset was requested for your CogFlow account.</p>
+                                                <p style=\"margin:0 0 16px;\">Use the link below to set a new password:</p>
+                                                <p style=\"margin:0 0 20px;\">
+                                                    <a href=\"{reset_url}\" style=\"display:inline-block;background:#30334a;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:8px;font-weight:600;\">Reset Password</a>
+                                                </p>
+                                                <p style=\"margin:0 0 10px;word-break:break-all;\"><a href=\"{reset_url}\" style=\"color:#30334a;\">{reset_url}</a></p>
+                                                <p style=\"margin:0;color:#6b7280;\">If you did not request this change, you can ignore this email.</p>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </td>
+                            </tr>
+                        </table>
+                    </body>
+                </html>
+                """
+
+                msg = EmailMultiAlternatives(
+                    subject=subject,
+                    body=text_body,
+                    from_email=os.getenv("DEFAULT_FROM_EMAIL", "noreply@localhost"),
+                    to=[(user.email or "").strip()],
+                )
+                msg.attach_alternative(html_body, "text/html")
+
+                logo_path = settings.BASE_DIR.parent / "frontend" / "builder" / "img" / "logo_dark.png"
+                if logo_path.exists():
+                    with logo_path.open("rb") as fh:
+                        logo = MIMEImage(fh.read())
+                    logo.add_header("Content-ID", "<cogflow-logo>")
+                    logo.add_header("Content-Disposition", "inline", filename="logo_dark.png")
+                    msg.mixed_subtype = "related"
+                    msg.attach(logo)
+
+                msg.send(fail_silently=True)
+            except Exception:
+                pass
+
+        record_audit(
+            action="auth_password_reset_requested",
+            resource_type="user",
+            resource_id=user.id if user else "unknown",
+            actor=(user.username if user else identity),
+            metadata={"email_present": bool(user and (user.email or "").strip())},
+        )
+
+        return Response(
+            {"ok": True, "message": "If that account exists and has an email address, a password reset link has been sent."},
+            status=status.HTTP_200_OK,
+        )
+
+
+class PasswordResetConfirmView(APIView):
+    """Set a new password from a signed email reset token."""
+
+    @transaction.atomic
+    def post(self, request):
+        serializer = PasswordResetConfirmRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        token = (data.get("token") or "").strip()
+        new_pwd = data.get("new_password") or ""
+        if len(new_pwd) < 8:
+            return Response({"error": "Password must be at least 8 characters"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            token_data = _read_password_reset_token(token)
+        except signing.SignatureExpired:
+            return Response({"error": "Password reset link expired"}, status=status.HTTP_400_BAD_REQUEST)
+        except signing.BadSignature:
+            return Response({"error": "Password reset link is invalid"}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = User.objects.filter(id=token_data.get("uid")).first()
+        email = (token_data.get("email") or "").strip().lower()
+        password_hash = token_data.get("pwd") or ""
+
+        if not user:
+            return Response({"error": "Account not found for this reset link"}, status=status.HTTP_400_BAD_REQUEST)
+        if not user.is_active:
+            return Response({"error": "Account is not active"}, status=status.HTTP_400_BAD_REQUEST)
+        if (user.email or "").strip().lower() != email:
+            return Response({"error": "Reset link does not match this account"}, status=status.HTTP_400_BAD_REQUEST)
+        if user.password != password_hash:
+            return Response({"error": "Password reset link is no longer valid"}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.set_password(new_pwd)
+        user.save(update_fields=["password"])
+
+        record_audit(
+            action="auth_password_reset_completed",
+            resource_type="user",
+            resource_id=user.id,
+            actor=user.username,
+        )
+
+        return Response({"ok": True, "message": "Password reset. You can now sign in."}, status=status.HTTP_200_OK)
+
+
 class AuthMeView(APIView):
     """Return current session user info, or 401 if not authenticated."""
 
@@ -940,6 +1103,43 @@ class AdminUserActivationView(APIView):
                     "is_active": target.is_active,
                 },
             },
+            status=status.HTTP_200_OK,
+        )
+
+
+class AdminUserPasswordView(APIView):
+    """Allow platform admins to set a new temporary password for any user."""
+
+    @transaction.atomic
+    def post(self, request, user_id: int):
+        _, error = _require_platform_admin(request)
+        if error:
+            return error
+
+        serializer = AdminSetUserPasswordRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        new_password = serializer.validated_data["new_password"]
+
+        if len(new_password) < 8:
+            return Response({"error": "Password must be at least 8 characters"}, status=status.HTTP_400_BAD_REQUEST)
+
+        target = User.objects.filter(id=user_id).first()
+        if not target:
+            return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        target.set_password(new_password)
+        target.save(update_fields=["password"])
+
+        record_audit(
+            action="admin_user_password_reset",
+            resource_type="user",
+            resource_id=target.id,
+            actor=request.user.username,
+            metadata={"username": target.username},
+        )
+
+        return Response(
+            {"ok": True, "user": {"id": target.id, "username": target.username}},
             status=status.HTTP_200_OK,
         )
 

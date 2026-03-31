@@ -816,6 +816,9 @@
             </div>
           </div>
           <button class="btn btn-primary btn-full" id="loginBtn">Sign In</button>
+          <div style="margin-top:10px;text-align:center;">
+            <button class="btn btn-ghost btn-sm" id="showResetRequestBtn" type="button">Forgot password?</button>
+          </div>
           <div style="margin-top:12px;text-align:center;">
             <button class="btn btn-ghost btn-sm" id="showRegisterBtn" type="button">Create an account</button>
           </div>
@@ -846,6 +849,41 @@
           <button class="btn btn-primary btn-full" id="registerBtn">Submit Registration</button>
           <div style="margin-top:12px;text-align:center;">
             <button class="btn btn-ghost btn-sm" id="showSignInBtn" type="button">Back to sign in</button>
+          </div>
+        </div>
+
+        <div id="loginStepResetRequest" style="display:none;">
+          <h2>Reset password</h2>
+          <p class="mfa-hint" style="margin-top:0;">Enter your username or email address. If the account exists and has an email address, we will send a reset link.</p>
+          <div class="field-group">
+            <div>
+              <label for="resetIdentity">Username or email</label>
+              <input type="text" id="resetIdentity" autocomplete="username email" placeholder="your-username or you@example.com" />
+            </div>
+          </div>
+          <button class="btn btn-primary btn-full" id="requestResetBtn">Send Reset Link</button>
+          <div style="margin-top:12px;text-align:center;">
+            <button class="btn btn-ghost btn-sm" id="showSignInFromResetBtn" type="button">Back to sign in</button>
+          </div>
+        </div>
+
+        <div id="loginStepResetConfirm" style="display:none;">
+          <h2>Set new password</h2>
+          <p class="mfa-hint" style="margin-top:0;">Choose a new password for your account.</p>
+          <input type="hidden" id="resetToken" />
+          <div class="field-group">
+            <div>
+              <label for="resetPassword1">New password</label>
+              <input type="password" id="resetPassword1" autocomplete="new-password" placeholder="At least 8 characters" />
+            </div>
+            <div>
+              <label for="resetPassword2">Confirm password</label>
+              <input type="password" id="resetPassword2" autocomplete="new-password" placeholder="Repeat password" />
+            </div>
+          </div>
+          <button class="btn btn-primary btn-full" id="confirmResetBtn">Set New Password</button>
+          <div style="margin-top:12px;text-align:center;">
+            <button class="btn btn-ghost btn-sm" id="showSignInFromResetConfirmBtn" type="button">Back to sign in</button>
           </div>
         </div>
 
@@ -1641,6 +1679,8 @@
       applyPortalA11y("standard", false);
       document.getElementById("loginStep1").style.display = "";
       document.getElementById("loginStepRegister").style.display = "none";
+      document.getElementById("loginStepResetRequest").style.display = "none";
+      document.getElementById("loginStepResetConfirm").style.display = "none";
       document.getElementById("loginStep2").style.display = "none";
       const el = document.getElementById("loginError");
       if (msg) { el.textContent = msg; el.classList.remove("hidden"); }
@@ -1652,7 +1692,36 @@
       document.getElementById("loginOverlay").classList.remove("hidden");
       document.getElementById("loginStep1").style.display = "none";
       document.getElementById("loginStepRegister").style.display = "";
+      document.getElementById("loginStepResetRequest").style.display = "none";
+      document.getElementById("loginStepResetConfirm").style.display = "none";
       document.getElementById("loginStep2").style.display = "none";
+      const el = document.getElementById("loginError");
+      if (msg) { el.textContent = msg; el.classList.remove("hidden"); }
+      else       el.classList.add("hidden");
+    }
+
+    function showResetRequest(msg) {
+      document.getElementById("appShell").classList.add("hidden");
+      document.getElementById("loginOverlay").classList.remove("hidden");
+      document.getElementById("loginStep1").style.display = "none";
+      document.getElementById("loginStepRegister").style.display = "none";
+      document.getElementById("loginStepResetRequest").style.display = "";
+      document.getElementById("loginStepResetConfirm").style.display = "none";
+      document.getElementById("loginStep2").style.display = "none";
+      const el = document.getElementById("loginError");
+      if (msg) { el.textContent = msg; el.classList.remove("hidden"); }
+      else       el.classList.add("hidden");
+    }
+
+    function showResetConfirm(token, msg) {
+      document.getElementById("appShell").classList.add("hidden");
+      document.getElementById("loginOverlay").classList.remove("hidden");
+      document.getElementById("loginStep1").style.display = "none";
+      document.getElementById("loginStepRegister").style.display = "none";
+      document.getElementById("loginStepResetRequest").style.display = "none";
+      document.getElementById("loginStepResetConfirm").style.display = "";
+      document.getElementById("loginStep2").style.display = "none";
+      document.getElementById("resetToken").value = token || "";
       const el = document.getElementById("loginError");
       if (msg) { el.textContent = msg; el.classList.remove("hidden"); }
       else       el.classList.add("hidden");
@@ -1789,6 +1858,79 @@
       }
     }
 
+    async function doPasswordResetRequest() {
+      const identity = (document.getElementById("resetIdentity")?.value || "").trim();
+      if (!identity) {
+        showResetRequest("Enter your username or email.");
+        return;
+      }
+      if (!(await ensureCsrfReady())) {
+        showResetRequest("Security cookie was not set. Reload and try again.");
+        return;
+      }
+
+      const btn = document.getElementById("requestResetBtn");
+      btn.disabled = true;
+      btn.textContent = "Sending…";
+      try {
+        const r = await fetch(`${API}/api/v1/auth/password/reset/request`, postOpts({ identity }));
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+        document.getElementById("resetIdentity").value = "";
+        showLogin(d.message || "If that account exists and has an email address, a password reset link has been sent.");
+      } catch (err) {
+        showResetRequest(err?.message || "Password reset request failed.");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Send Reset Link";
+      }
+    }
+
+    async function doPasswordResetConfirm() {
+      const token = (document.getElementById("resetToken")?.value || "").trim();
+      const password1 = document.getElementById("resetPassword1")?.value || "";
+      const password2 = document.getElementById("resetPassword2")?.value || "";
+      if (!token) {
+        showLogin("Password reset link is missing or invalid.");
+        return;
+      }
+      if (!password1) {
+        showResetConfirm(token, "Enter a new password.");
+        return;
+      }
+      if (password1 !== password2) {
+        showResetConfirm(token, "Passwords do not match.");
+        return;
+      }
+      if (password1.length < 8) {
+        showResetConfirm(token, "Password must be at least 8 characters.");
+        return;
+      }
+      if (!(await ensureCsrfReady())) {
+        showResetConfirm(token, "Security cookie was not set. Reload and try again.");
+        return;
+      }
+
+      const btn = document.getElementById("confirmResetBtn");
+      btn.disabled = true;
+      btn.textContent = "Updating…";
+      try {
+        const r = await fetch(`${API}/api/v1/auth/password/reset/confirm`, postOpts({ token, new_password: password1 }));
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+        ["resetToken","resetPassword1","resetPassword2"].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.value = "";
+        });
+        showLogin(d.message || "Password reset. You can now sign in.");
+      } catch (err) {
+        showResetConfirm(token, err?.message || "Password reset failed.");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Set New Password";
+      }
+    }
+
     document.getElementById("loginBtn").addEventListener("click", doLogin);
     document.getElementById("authPassword").addEventListener("keydown", e => e.key === "Enter" && doLogin());
     document.getElementById("loginMfaBtn").addEventListener("click", doLoginMfa);
@@ -1797,6 +1939,13 @@
     document.getElementById("regPassword2").addEventListener("keydown", e => e.key === "Enter" && doRegister());
     document.getElementById("showRegisterBtn").addEventListener("click", () => showRegister());
     document.getElementById("showSignInBtn").addEventListener("click", () => showLogin());
+    document.getElementById("showResetRequestBtn").addEventListener("click", () => showResetRequest());
+    document.getElementById("showSignInFromResetBtn").addEventListener("click", () => showLogin());
+    document.getElementById("showSignInFromResetConfirmBtn").addEventListener("click", () => showLogin());
+    document.getElementById("requestResetBtn").addEventListener("click", doPasswordResetRequest);
+    document.getElementById("resetIdentity").addEventListener("keydown", e => e.key === "Enter" && doPasswordResetRequest());
+    document.getElementById("confirmResetBtn").addEventListener("click", doPasswordResetConfirm);
+    document.getElementById("resetPassword2").addEventListener("keydown", e => e.key === "Enter" && doPasswordResetConfirm());
 
     // ── Sign out ───────────────────────────────────────────────
     document.getElementById("signOutBtn").addEventListener("click", async () => {
@@ -2486,6 +2635,7 @@
           <td>
             <div style="display:flex;gap:5px;flex-wrap:wrap;">
               <button class="btn btn-ghost btn-xs" data-action="admin-save-role" data-user-id="${Number(u.id)}">Save Role</button>
+              <button class="btn btn-ghost btn-xs" data-action="admin-set-password" data-user-id="${Number(u.id)}">Set Temp Password</button>
               <button class="btn btn-ghost btn-xs" data-action="admin-toggle-active" data-user-id="${Number(u.id)}" ${disabledSelfToggle ? "disabled" : ""}>${toggleLabel}</button>
               <button class="btn btn-danger btn-xs" data-action="admin-delete-user" data-user-id="${Number(u.id)}" ${disabledSelfDelete ? "disabled" : ""}>Delete</button>
             </div>
@@ -2556,6 +2706,32 @@
             await loadAdminUsers(true);
           } catch (err) {
             inlineMsg(msgEl, `Activation update failed: ${err?.message || err}`, "err");
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      });
+
+      tbody.querySelectorAll('[data-action="admin-set-password"]').forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const userId = btn.getAttribute("data-user-id");
+          const username = adminUsers.find(u => String(u.id) === String(userId))?.username || "this user";
+          const newPassword = window.prompt(`Set a new temporary password for ${username}:`, "");
+          if (newPassword === null) return;
+          if (String(newPassword).length < 8) {
+            inlineMsg(document.getElementById("adminMsg"), "Temporary password must be at least 8 characters.", "err");
+            return;
+          }
+
+          const msgEl = document.getElementById("adminMsg");
+          btn.disabled = true;
+          try {
+            const r = await fetch(`${API}/api/v1/admin/users/${encodeURIComponent(userId)}/password`, postOpts({ new_password: String(newPassword) }));
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+            inlineMsg(msgEl, `Temporary password updated for ${username}.`, "ok");
+          } catch (err) {
+            inlineMsg(msgEl, `Password reset failed: ${err?.message || err}`, "err");
           } finally {
             btn.disabled = false;
           }
@@ -2867,9 +3043,18 @@
       const params = new URLSearchParams(window.location.search || "");
       const msg = (params.get("auth_msg") || "").trim();
       const mode = (params.get("auth_mode") || "login").trim();
-      if (!msg) return;
-      if (mode === "register") showRegister(msg);
-      else showLogin(msg);
+      const token = (params.get("token") || "").trim();
+      if (mode === "reset" && token) {
+        showResetConfirm(token, msg || "");
+      } else if (mode === "reset_request") {
+        showResetRequest(msg || "");
+      } else if (mode === "register") {
+        if (!msg) return;
+        showRegister(msg);
+      } else {
+        if (!msg) return;
+        showLogin(msg);
+      }
 
       try {
         const clean = `${window.location.pathname}${window.location.hash || ""}`;
