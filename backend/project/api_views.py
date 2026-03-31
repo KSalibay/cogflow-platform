@@ -5,7 +5,6 @@ from datetime import timedelta
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
-from email.mime.image import MIMEImage
 
 import pyotp
 from django.conf import settings
@@ -256,6 +255,68 @@ def _portal_auth_redirect(request, msg: str, mode: str = "login") -> HttpRespons
     return HttpResponseRedirect(f"{base}?{query}")
 
 
+def _send_transactional_email(
+    *,
+    to_email: str,
+    subject: str,
+    text_body: str,
+    html_body: str | None = None,
+    reply_to: str | None = None,
+) -> str | None:
+    """Send a low-complexity transactional email, preferring Resend API when configured."""
+
+    recipient = (to_email or "").strip()
+    if not recipient:
+        return None
+
+    from_email = (
+        os.getenv("AUTH_FROM_EMAIL", "").strip()
+        or os.getenv("DEFAULT_FROM_EMAIL", "").strip()
+        or "noreply@localhost"
+    )
+    resend_api_key = os.getenv("RESEND_API_KEY", "").strip()
+
+    if resend_api_key:
+        payload = {
+            "from": from_email,
+            "to": [recipient],
+            "subject": subject,
+            "text": text_body,
+        }
+        if html_body:
+            payload["html"] = html_body
+        if reply_to and "@" in reply_to:
+            payload["reply_to"] = reply_to
+
+        req = Request(
+            "https://api.resend.com/emails",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {resend_api_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with urlopen(req, timeout=10) as resp:
+                if 200 <= getattr(resp, "status", 0) < 300:
+                    return "resend"
+        except (HTTPError, URLError, TimeoutError, ValueError):
+            pass
+
+    msg = EmailMultiAlternatives(
+        subject=subject,
+        body=text_body,
+        from_email=from_email,
+        to=[recipient],
+        reply_to=[reply_to] if reply_to and "@" in reply_to else None,
+    )
+    if html_body:
+        msg.attach_alternative(html_body, "text/html")
+    msg.send(fail_silently=False)
+    return "smtp"
+
+
 class AuthLoginView(APIView):
     """Session login endpoint for portal user flows."""
 
@@ -372,54 +433,25 @@ class AuthRegisterView(APIView):
                 )
                 html_body = f"""
                 <html>
-                    <body style=\"margin:0;padding:0;background:#f3f5f8;font-family:Arial,sans-serif;color:#1f2937;\">
-                        <table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"padding:24px 0;\">
-                            <tr>
-                                <td align=\"center\">
-                                    <table role=\"presentation\" width=\"560\" cellspacing=\"0\" cellpadding=\"0\" style=\"background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;padding:24px;\">
-                                        <tr>
-                                            <td align=\"center\" style=\"padding-bottom:16px;\">
-                                                <img src=\"cid:cogflow-logo\" alt=\"CogFlow\" style=\"max-width:220px;height:auto;display:block;\" />
-                                            </td>
-                                        </tr>
-                                        <tr>
-                                            <td style=\"font-size:15px;line-height:1.6;\">
-                                                <p style=\"margin:0 0 12px;\">Your CogFlow account has been created.</p>
-                                                <p style=\"margin:0 0 16px;\">Please verify your email to activate sign-in:</p>
-                                                <p style=\"margin:0 0 20px;\">
-                                                    <a href=\"{verify_url}\" style=\"display:inline-block;background:#30334a;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:8px;font-weight:600;\">Verify Email</a>
-                                                </p>
-                                                <p style=\"margin:0 0 10px;word-break:break-all;\"><a href=\"{verify_url}\" style=\"color:#30334a;\">{verify_url}</a></p>
-                                                <p style=\"margin:0 0 10px;\">Portal: <a href=\"{portal_url}\" style=\"color:#30334a;\">{portal_url}</a></p>
-                                                <p style=\"margin:0;color:#6b7280;\">If you did not request this account, you can ignore this email.</p>
-                                            </td>
-                                        </tr>
-                                    </table>
-                                </td>
-                            </tr>
-                        </table>
+                    <body style=\"margin:0;padding:24px;background:#f7f8fb;font-family:Arial,sans-serif;color:#1f2937;\">
+                        <div style=\"max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;padding:24px;\">
+                            <h2 style=\"margin:0 0 12px;font-size:20px;color:#30334a;\">Verify your CogFlow email</h2>
+                            <p style=\"margin:0 0 12px;line-height:1.6;\">Your CogFlow account has been created.</p>
+                            <p style=\"margin:0 0 16px;line-height:1.6;\">Please verify your email to activate sign-in.</p>
+                            <p style=\"margin:0 0 20px;\"><a href=\"{verify_url}\" style=\"display:inline-block;background:#30334a;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:8px;font-weight:600;\">Verify Email</a></p>
+                            <p style=\"margin:0 0 10px;line-height:1.6;word-break:break-all;\"><a href=\"{verify_url}\" style=\"color:#30334a;\">{verify_url}</a></p>
+                            <p style=\"margin:0;color:#6b7280;line-height:1.6;\">If you did not request this account, you can ignore this email.</p>
+                        </div>
                     </body>
                 </html>
                 """
 
-                msg = EmailMultiAlternatives(
+                _send_transactional_email(
+                        to_email=email,
                         subject=subject,
-                        body=text_body,
-                        from_email=os.getenv("DEFAULT_FROM_EMAIL", "noreply@localhost"),
-                        to=[email],
+                        text_body=text_body,
+                        html_body=html_body,
                 )
-                msg.attach_alternative(html_body, "text/html")
-
-                logo_path = settings.BASE_DIR.parent / "frontend" / "builder" / "img" / "logo_dark.png"
-                if logo_path.exists():
-                        with logo_path.open("rb") as fh:
-                                logo = MIMEImage(fh.read())
-                        logo.add_header("Content-ID", "<cogflow-logo>")
-                        logo.add_header("Content-Disposition", "inline", filename="logo_dark.png")
-                        msg.mixed_subtype = "related"
-                        msg.attach(logo)
-
-                msg.send(fail_silently=True)
         except Exception:
             pass
 
@@ -677,53 +709,25 @@ class PasswordResetRequestView(APIView):
                 )
                 html_body = f"""
                 <html>
-                    <body style=\"margin:0;padding:0;background:#f3f5f8;font-family:Arial,sans-serif;color:#1f2937;\">
-                        <table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"padding:24px 0;\">
-                            <tr>
-                                <td align=\"center\">
-                                    <table role=\"presentation\" width=\"560\" cellspacing=\"0\" cellpadding=\"0\" style=\"background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;padding:24px;\">
-                                        <tr>
-                                            <td align=\"center\" style=\"padding-bottom:16px;\">
-                                                <img src=\"cid:cogflow-logo\" alt=\"CogFlow\" style=\"max-width:220px;height:auto;display:block;\" />
-                                            </td>
-                                        </tr>
-                                        <tr>
-                                            <td style=\"font-size:15px;line-height:1.6;\">
-                                                <p style=\"margin:0 0 12px;\">A password reset was requested for your CogFlow account.</p>
-                                                <p style=\"margin:0 0 16px;\">Use the link below to set a new password:</p>
-                                                <p style=\"margin:0 0 20px;\">
-                                                    <a href=\"{reset_url}\" style=\"display:inline-block;background:#30334a;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:8px;font-weight:600;\">Reset Password</a>
-                                                </p>
-                                                <p style=\"margin:0 0 10px;word-break:break-all;\"><a href=\"{reset_url}\" style=\"color:#30334a;\">{reset_url}</a></p>
-                                                <p style=\"margin:0;color:#6b7280;\">If you did not request this change, you can ignore this email.</p>
-                                            </td>
-                                        </tr>
-                                    </table>
-                                </td>
-                            </tr>
-                        </table>
+                    <body style=\"margin:0;padding:24px;background:#f7f8fb;font-family:Arial,sans-serif;color:#1f2937;\">
+                        <div style=\"max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;padding:24px;\">
+                            <h2 style=\"margin:0 0 12px;font-size:20px;color:#30334a;\">Reset your CogFlow password</h2>
+                            <p style=\"margin:0 0 12px;line-height:1.6;\">A password reset was requested for your CogFlow account.</p>
+                            <p style=\"margin:0 0 16px;line-height:1.6;\">Use the link below to set a new password.</p>
+                            <p style=\"margin:0 0 20px;\"><a href=\"{reset_url}\" style=\"display:inline-block;background:#30334a;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:8px;font-weight:600;\">Reset Password</a></p>
+                            <p style=\"margin:0 0 10px;line-height:1.6;word-break:break-all;\"><a href=\"{reset_url}\" style=\"color:#30334a;\">{reset_url}</a></p>
+                            <p style=\"margin:0;color:#6b7280;line-height:1.6;\">If you did not request this change, you can ignore this email.</p>
+                        </div>
                     </body>
                 </html>
                 """
 
-                msg = EmailMultiAlternatives(
+                _send_transactional_email(
+                    to_email=(user.email or "").strip(),
                     subject=subject,
-                    body=text_body,
-                    from_email=os.getenv("DEFAULT_FROM_EMAIL", "noreply@localhost"),
-                    to=[(user.email or "").strip()],
+                    text_body=text_body,
+                    html_body=html_body,
                 )
-                msg.attach_alternative(html_body, "text/html")
-
-                logo_path = settings.BASE_DIR.parent / "frontend" / "builder" / "img" / "logo_dark.png"
-                if logo_path.exists():
-                    with logo_path.open("rb") as fh:
-                        logo = MIMEImage(fh.read())
-                    logo.add_header("Content-ID", "<cogflow-logo>")
-                    logo.add_header("Content-Disposition", "inline", filename="logo_dark.png")
-                    msg.mixed_subtype = "related"
-                    msg.attach(logo)
-
-                msg.send(fail_silently=True)
             except Exception:
                 pass
 
