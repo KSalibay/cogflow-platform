@@ -1459,7 +1459,7 @@
     return trials;
   }
 
-  function expandTimeline(rawTimeline, opts) {
+  function expandTimeline(rawTimeline, opts, level = 0) {
     const inTl = Array.isArray(rawTimeline) ? rawTimeline : [];
     const out = [];
 
@@ -1604,8 +1604,53 @@
       return 0;
     };
 
-    for (const item of inTlNormalized) {
-      if (!isObject(item)) continue;
+    const chunkItemsForShuffle = (items) => {
+      const src = Array.isArray(items) ? items : [];
+      const chunks = [];
+
+      for (let i = 0; i < src.length;) {
+        const current = src[i];
+        const currentType = isObject(current) ? String(current.type || '') : '';
+
+        // Keep explicit DRT segments atomic when randomizing. This prevents
+        // start/stop controls from being separated by shuffle operations.
+        if (currentType === 'detection-response-task-start') {
+          const chunk = [current];
+          let j = i + 1;
+          for (; j < src.length; j++) {
+            const candidate = src[j];
+            chunk.push(candidate);
+            const candidateType = isObject(candidate) ? String(candidate.type || '') : '';
+            if (candidateType === 'detection-response-task-stop') {
+              j += 1;
+              break;
+            }
+          }
+          chunks.push(chunk);
+          i = j;
+          continue;
+        }
+
+        chunks.push([current]);
+        i += 1;
+      }
+
+      return chunks;
+    };
+
+    const globalRandomizeOrder = (opts && opts.globalRandomizeOrder === true && level === 0);
+    const topLevelChunks = chunkItemsForShuffle(inTlNormalized);
+    const orderedTopLevelChunks = globalRandomizeOrder ? shuffleInPlace(topLevelChunks.slice()) : topLevelChunks;
+
+    const isPoolableSiblingRandomizeGroup = (node) => {
+      if (!isObject(node)) return false;
+      const t = String(node.type || '');
+      if (t !== 'randomize-group' && t !== 'randomize-across-markers') return false;
+      return node.randomizable_across_markers !== false;
+    };
+
+    const expandSingleItem = (item) => {
+      if (!isObject(item)) return;
 
       if (item.type === 'loop') {
         const iterations = normalizeLoopIterations(item.iterations ?? item.loop_iterations ?? 1);
@@ -1616,9 +1661,9 @@
             : (Array.isArray(item.components) ? item.components : []));
 
         for (let i = 0; i < iterations; i++) {
-          out.push(...expandTimeline(childItems, opts));
+          out.push(...expandTimeline(childItems, opts, level + 1));
         }
-        continue;
+        return;
       }
 
       if (item.type === 'randomize-group' || item.type === 'randomize-across-markers') {
@@ -1628,11 +1673,13 @@
             ? item.timeline
             : (Array.isArray(item.components) ? item.components : []));
 
-        const expandedChildren = expandTimeline(childItems, opts);
+        const childChunks = chunkItemsForShuffle(childItems).map((chunk) => expandTimeline(chunk, opts, level + 1));
         const shouldShuffle = item.randomizable_across_markers !== false;
-        if (shouldShuffle) shuffleInPlace(expandedChildren);
-        out.push(...expandedChildren);
-        continue;
+        const orderedChildChunks = shouldShuffle ? shuffleInPlace(childChunks.slice()) : childChunks;
+        for (const expandedChunk of orderedChildChunks) {
+          out.push(...expandedChunk);
+        }
+        return;
       }
 
       if (item.type === 'nback-trial-sequence') {
@@ -1642,7 +1689,7 @@
         } else {
           out.push(item);
         }
-        continue;
+        return;
       }
 
       if (item.type === 'block') {
@@ -1657,10 +1704,45 @@
         } else {
           out.push(...expandBlock(item, opts));
         }
-        continue;
+        return;
       }
 
       out.push(item);
+    };
+
+    const orderedSiblingItems = [];
+    for (const topChunk of orderedTopLevelChunks) {
+      for (const item of topChunk) orderedSiblingItems.push(item);
+    }
+
+    for (let i = 0; i < orderedSiblingItems.length; i++) {
+      const item = orderedSiblingItems[i];
+      if (!isPoolableSiblingRandomizeGroup(item)) {
+        expandSingleItem(item);
+        continue;
+      }
+
+      const pooledExpandedChunks = [];
+      let j = i;
+      for (; j < orderedSiblingItems.length && isPoolableSiblingRandomizeGroup(orderedSiblingItems[j]); j++) {
+        const groupNode = orderedSiblingItems[j];
+        const groupChildItems = Array.isArray(groupNode.items)
+          ? groupNode.items
+          : (Array.isArray(groupNode.timeline)
+            ? groupNode.timeline
+            : (Array.isArray(groupNode.components) ? groupNode.components : []));
+        const groupChunks = chunkItemsForShuffle(groupChildItems).map((chunk) => expandTimeline(chunk, opts, level + 1));
+        for (const expandedChunk of groupChunks) {
+          pooledExpandedChunks.push(expandedChunk);
+        }
+      }
+
+      const shuffledPool = shuffleInPlace(pooledExpandedChunks.slice());
+      for (const expandedChunk of shuffledPool) {
+        out.push(...expandedChunk);
+      }
+
+      i = j - 1;
     }
 
     // mw-probe jitter scheduling:
@@ -1736,7 +1818,55 @@
       i = insertAt;
     }
 
-    return out;
+    // If an MW probe lands inside an active DRT segment, auto-bracket it with
+    // DRT stop/start so researchers do not need to manually split every segment.
+    // The restarted DRT start inherits parameters from the active start marker.
+    const withAutoDrtMwBracketing = [];
+    let drtActive = false;
+    let activeDrtStart = null;
+    for (const item of out) {
+      if (!isObject(item)) {
+        withAutoDrtMwBracketing.push(item);
+        continue;
+      }
+
+      const t = (item.type ?? '').toString();
+
+      if (t === 'detection-response-task-start') {
+        drtActive = true;
+        activeDrtStart = { ...item };
+        withAutoDrtMwBracketing.push(item);
+        continue;
+      }
+
+      if (t === 'detection-response-task-stop') {
+        drtActive = false;
+        withAutoDrtMwBracketing.push(item);
+        continue;
+      }
+
+      if (t === 'mw-probe' && drtActive && activeDrtStart) {
+        withAutoDrtMwBracketing.push({
+          type: 'detection-response-task-stop',
+          _auto_inserted_for_mw_probe: true
+        });
+
+        withAutoDrtMwBracketing.push(item);
+
+        withAutoDrtMwBracketing.push({
+          ...activeDrtStart,
+          type: 'detection-response-task-start',
+          _auto_inserted_for_mw_probe: true
+        });
+
+        drtActive = true;
+        continue;
+      }
+
+      withAutoDrtMwBracketing.push(item);
+    }
+
+    return withAutoDrtMwBracketing;
   }
 
   function compileToJsPsychTimeline(config) {
@@ -1799,6 +1929,30 @@
         .split(/[\n,]+/)
         .map(x => x.trim())
         .filter(Boolean);
+    }
+
+    function buildMwProbeOnStartHook() {
+      return (trial) => {
+        let drtRunningAtProbeStart = false;
+        try {
+          drtRunningAtProbeStart = !!(
+            window.DrtEngine
+            && typeof window.DrtEngine.isRunning === 'function'
+            && window.DrtEngine.isRunning()
+          );
+        } catch {
+          drtRunningAtProbeStart = false;
+        }
+
+        if (drtRunningAtProbeStart) {
+          console.warn('[TimelineCompiler] MW probe started while DRT is active. Prefer explicit DRT stop/start around MW probes for deterministic behavior.');
+        }
+
+        if (trial && typeof trial === 'object') {
+          trial.data = isObject(trial.data) ? trial.data : {};
+          trial.data.drt_running_at_probe_start = drtRunningAtProbeStart;
+        }
+      };
     }
 
     function resolveMaybeRelativeUrl(rawUrl) {
@@ -1925,6 +2079,7 @@
       preserveBlocksForComponentTypes: preserveBlocksFor,
       expandNbackSequences: experimentType === 'trial-based',
       defaultGeneratedTrialDurationMs,
+      globalRandomizeOrder: config.randomize_order === true,
       nbackDefaults,
       taskSwitchingDefaults,
       ...blockLengthOpts
@@ -1949,7 +2104,8 @@
           || t === 'soc-subtask-nback-like'
           || t === 'soc-subtask-flanker-like'
           || t === 'soc-subtask-wcst-like'
-          || t === 'soc-subtask-pvt-like';
+          || t === 'soc-subtask-pvt-like'
+          || t === 'mw-probe';
       };
 
       const mapSocSubtaskKind = (t) => {
@@ -1959,6 +2115,7 @@
           case 'soc-subtask-flanker-like': return 'flanker-like';
           case 'soc-subtask-wcst-like': return 'wcst-like';
           case 'soc-subtask-pvt-like': return 'pvt-like';
+          case 'mw-probe': return 'mw-probe';
           default: return 'unknown';
         }
       };
@@ -2593,6 +2750,7 @@
           const SurveyResponse = requirePlugin('survey-response (window.jsPsychSurveyResponse)', window.jsPsychSurveyResponse);
           timeline.push({
             type: SurveyResponse,
+            on_start: buildMwProbeOnStartHook(),
             title: item.title || 'Thought Probe',
             instructions: item.instructions || '',
             submit_label: item.submit_label || 'Continue',
@@ -3023,6 +3181,7 @@
         const SurveyResponse = requirePlugin('survey-response (window.jsPsychSurveyResponse)', window.jsPsychSurveyResponse);
         timeline.push({
           type: SurveyResponse,
+          on_start: buildMwProbeOnStartHook(),
           title: item.title || 'Thought Probe',
           instructions: item.instructions || '',
           submit_label: item.submit_label || 'Continue',
@@ -3224,6 +3383,7 @@
         || type === 'soc-subtask-flanker-like'
         || type === 'soc-subtask-wcst-like'
         || type === 'soc-subtask-pvt-like'
+        || type === 'mw-probe'
       ) {
         const SocDashboard = requirePlugin('soc-dashboard (window.jsPsychSocDashboard)', window.jsPsychSocDashboard);
 
@@ -3234,6 +3394,7 @@
             case 'soc-subtask-flanker-like': return 'flanker-like';
             case 'soc-subtask-wcst-like': return 'wcst-like';
             case 'soc-subtask-pvt-like': return 'pvt-like';
+            case 'mw-probe': return 'mw-probe';
             default: return 'unknown';
           }
         };

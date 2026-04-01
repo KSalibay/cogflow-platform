@@ -224,6 +224,29 @@ class UnifiedSchema {
                 max: 1000,
                 description: 'Height of the arena canvas in pixels'
             },
+            aperture_shape: {
+                type: this.parameterTypes.SELECT,
+                default: 'rectangle',
+                options: ['rectangle', 'circle'],
+                description: 'Aperture geometry used to constrain MOT motion'
+            },
+            aperture_border_enabled: {
+                type: this.parameterTypes.BOOLEAN,
+                default: true,
+                description: 'Whether to render an aperture border'
+            },
+            aperture_border_color: {
+                type: this.parameterTypes.COLOR,
+                default: '#444444',
+                description: 'Aperture border color'
+            },
+            aperture_border_width_px: {
+                type: this.parameterTypes.NUMBER,
+                default: 2,
+                min: 0,
+                max: 20,
+                description: 'Aperture border thickness in pixels'
+            },
             boundary_behavior: {
                 type: this.parameterTypes.SELECT,
                 default: 'bounce',
@@ -307,8 +330,9 @@ class UnifiedSchema {
                 return this.filterParameters(allParams, [
                     'name', 'num_objects', 'num_targets', 'object_radius_px',
                     'object_color', 'target_cue_color', 'mot_background_color',
-                    'arena_width_px', 'arena_height_px', 'boundary_behavior',
-                    'speed_px_per_s', 'motion_type',
+                    'arena_width_px', 'arena_height_px', 'aperture_shape',
+                    'aperture_border_enabled', 'aperture_border_color', 'aperture_border_width_px',
+                    'boundary_behavior', 'speed_px_per_s', 'motion_type',
                     'tracking_duration_ms', 'cue_duration_ms', 'probe_mode'
                 ]);
 

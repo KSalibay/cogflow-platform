@@ -1914,6 +1914,29 @@ class JSPsychSchemas {
                         max: 1000,
                         description: 'Height of the arena canvas in pixels'
                     },
+                    aperture_shape: {
+                        type: this.parameterTypes.SELECT,
+                        default: 'rectangle',
+                        options: ['rectangle', 'circle'],
+                        description: 'Aperture geometry used to constrain MOT motion'
+                    },
+                    aperture_border_enabled: {
+                        type: this.parameterTypes.BOOL,
+                        default: true,
+                        description: 'Whether to render an aperture border'
+                    },
+                    aperture_border_color: {
+                        type: this.parameterTypes.COLOR,
+                        default: '#444444',
+                        description: 'Aperture border color'
+                    },
+                    aperture_border_width_px: {
+                        type: this.parameterTypes.INT,
+                        default: 2,
+                        min: 0,
+                        max: 20,
+                        description: 'Aperture border thickness in pixels'
+                    },
                     boundary_behavior: {
                         type: this.parameterTypes.SELECT,
                         default: 'bounce',
@@ -3476,6 +3499,37 @@ class JSPsychSchemas {
                         options: ['click', 'number_entry'],
                         blockTarget: 'mot-trial',
                         description: 'MOT: fixed probe mode for all trials in this block'
+                    },
+                    mot_aperture_shape: {
+                        type: this.parameterTypes.SELECT,
+                        default: 'rectangle',
+                        options: ['rectangle', 'circle'],
+                        blockTarget: 'mot-trial',
+                        description: 'MOT: fixed aperture shape for all trials in this block'
+                    },
+                    mot_aperture_border_enabled: {
+                        type: this.parameterTypes.BOOL,
+                        default: true,
+                        blockTarget: 'mot-trial',
+                        description: 'MOT: whether aperture border is shown for all trials in this block'
+                    },
+                    mot_aperture_border_color: {
+                        type: this.parameterTypes.COLOR,
+                        default: '#444444',
+                        blockTarget: 'mot-trial',
+                        description: 'MOT: aperture border color for all trials in this block'
+                    },
+                    mot_aperture_border_width_px_min: {
+                        type: this.parameterTypes.INT,
+                        default: 2,
+                        blockTarget: 'mot-trial',
+                        description: 'MOT: minimum aperture border width (px) for block sampling'
+                    },
+                    mot_aperture_border_width_px_max: {
+                        type: this.parameterTypes.INT,
+                        default: 2,
+                        blockTarget: 'mot-trial',
+                        description: 'MOT: maximum aperture border width (px) for block sampling'
                     },
                     mot_show_feedback: {
                         type: this.parameterTypes.BOOL,

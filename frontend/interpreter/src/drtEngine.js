@@ -48,6 +48,8 @@
     const stimulusTypeRaw = (c.stimulus_type ?? 'square').toString().trim().toLowerCase();
     const stimulusType = (stimulusTypeRaw === 'circle' || stimulusTypeRaw === 'square') ? stimulusTypeRaw : 'square';
     const stimulusColor = safeColor(c.stimulus_color);
+    const displayModeRaw = (c.drt_display_mode ?? 'corner_dot').toString().trim().toLowerCase();
+    const drtDisplayMode = (displayModeRaw === 'screen_border') ? 'screen_border' : 'corner_dot';
 
     const location = (c.location ?? 'top-right').toString().trim().toLowerCase();
     const allowedLocations = new Set(['top-right', 'top-left', 'bottom-right', 'bottom-left']);
@@ -63,6 +65,7 @@
       stimulus_duration_ms: stimulusDurationMs,
       min_rt_ms: minRtMs,
       max_rt_ms: maxRtMs,
+      drt_display_mode: drtDisplayMode,
       stimulus_type: stimulusType,
       stimulus_color: stimulusColor,
       location: loc,
@@ -93,13 +96,44 @@
     dot.style.opacity = '0';
     dot.style.transition = 'opacity 50ms linear';
 
+    const frame = document.createElement('div');
+    frame.id = 'psy-drt-frame';
+    frame.style.position = 'fixed';
+    frame.style.left = '0';
+    frame.style.top = '0';
+    frame.style.width = '100vw';
+    frame.style.height = '100vh';
+    frame.style.boxSizing = 'border-box';
+    frame.style.border = '18px solid #ff3b3b';
+    frame.style.opacity = '0';
+    frame.style.transition = 'opacity 50ms linear';
+    frame.style.pointerEvents = 'none';
+
     el.appendChild(dot);
+    el.appendChild(frame);
     document.body.appendChild(el);
     return el;
   }
 
-  function positionOverlay(container, location, sizePx) {
+  function positionOverlay(container, location, sizePx, displayMode) {
     const dot = container && container.querySelector ? container.querySelector('#psy-drt-dot') : null;
+    const frame = container && container.querySelector ? container.querySelector('#psy-drt-frame') : null;
+    if (!dot && !frame) return;
+
+    if (dot) {
+      dot.style.opacity = '0';
+      dot.style.display = (displayMode === 'screen_border') ? 'none' : 'block';
+    }
+    if (frame) {
+      frame.style.opacity = '0';
+      frame.style.display = (displayMode === 'screen_border') ? 'block' : 'none';
+      frame.style.borderWidth = `${sizePx}px`;
+    }
+
+    if (displayMode === 'screen_border') {
+      return;
+    }
+
     if (!dot) return;
 
     dot.style.width = `${sizePx}px`;
@@ -128,6 +162,13 @@
 
   function styleStimulus(container, stimulusType, stimulusColor) {
     const dot = container && container.querySelector ? container.querySelector('#psy-drt-dot') : null;
+    const frame = container && container.querySelector ? container.querySelector('#psy-drt-frame') : null;
+    if (!dot && !frame) return;
+
+    if (frame) {
+      frame.style.borderColor = safeColor(stimulusColor);
+    }
+
     if (!dot) return;
 
     dot.style.borderRadius = (stimulusType === 'circle') ? '999px' : '0px';
@@ -230,7 +271,9 @@
 
   function hideStimulus() {
     const dot = state.overlay ? state.overlay.querySelector('#psy-drt-dot') : null;
+    const frame = state.overlay ? state.overlay.querySelector('#psy-drt-frame') : null;
     if (dot) dot.style.opacity = '0';
+    if (frame) frame.style.opacity = '0';
     state.stimulus_visible = false;
   }
 
@@ -273,7 +316,12 @@
     state.stimulus_visible = true;
 
     const dot = state.overlay ? state.overlay.querySelector('#psy-drt-dot') : null;
-    if (dot) dot.style.opacity = '1';
+    const frame = state.overlay ? state.overlay.querySelector('#psy-drt-frame') : null;
+    if (state.cfg?.drt_display_mode === 'screen_border') {
+      if (frame) frame.style.opacity = '1';
+    } else {
+      if (dot) dot.style.opacity = '1';
+    }
 
     // Hide stimulus after stimulus_duration_ms.
     state.offTimer = setTimeout(() => {
@@ -339,7 +387,7 @@
 
     state.cfg = cfg;
     state.overlay = ensureOverlay();
-    positionOverlay(state.overlay, cfg.location, cfg.size_px);
+    positionOverlay(state.overlay, cfg.location, cfg.size_px, cfg.drt_display_mode);
     styleStimulus(state.overlay, cfg.stimulus_type, cfg.stimulus_color);
     hideStimulus();
 

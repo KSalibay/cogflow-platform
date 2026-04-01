@@ -27,6 +27,10 @@
       background_color:     { type: PT.STRING, default: '#111111' },
       arena_width_px:       { type: PT.INT,    default: 700 },
       arena_height_px:      { type: PT.INT,    default: 500 },
+      aperture_shape:       { type: PT.SELECT, default: 'rectangle', options: ['rectangle', 'circle'] },
+      aperture_border_enabled: { type: PT.BOOL, default: true },
+      aperture_border_color: { type: PT.STRING, default: '#444444' },
+      aperture_border_width_px: { type: PT.INT, default: 2 },
       boundary_behavior:    { type: PT.SELECT, default: 'bounce', options: ['bounce', 'wrap'] },
       min_separation_px:    { type: PT.INT,    default: 50 },
       speed_px_per_s:       { type: PT.FLOAT,  default: 150 },
@@ -80,6 +84,7 @@
         num_objects, num_targets, object_radius_px,
         object_color, target_cue_color, background_color,
         arena_width_px: W, arena_height_px: H,
+        aperture_shape, aperture_border_enabled, aperture_border_color, aperture_border_width_px,
         boundary_behavior, min_separation_px,
         speed_px_per_s, speed_variability, motion_type, curve_strength,
         cue_duration_ms, cue_flash_rate_hz, tracking_duration_ms, iti_ms,
@@ -95,7 +100,7 @@
              min-height:100vh;box-sizing:border-box;padding:20px;">
           <canvas id="mot-canvas" width="${W}" height="${H}"
             style="display:block;background:${background_color};
-                   border:2px solid #444;max-width:100%;cursor:default;"></canvas>
+                   border:none;max-width:100%;cursor:default;"></canvas>
           <div id="mot-instr" style="color:#ccc;font-family:sans-serif;font-size:14px;
                margin-top:8px;height:24px;text-align:center;"></div>
           <div id="mot-input-row" style="display:none;margin-top:8px;
@@ -107,6 +112,26 @@
       const instrEl  = document.getElementById('mot-instr');
       const inputRow = document.getElementById('mot-input-row');
 
+      const isCircularAperture = String(aperture_shape || 'rectangle').toLowerCase() === 'circle';
+      const borderWidth = Number.isFinite(Number(aperture_border_width_px))
+        ? Math.max(0, Number(aperture_border_width_px))
+        : 0;
+      const borderEnabled = aperture_border_enabled !== false && borderWidth > 0;
+      const cx = W / 2;
+      const cy = H / 2;
+      const circleBorderRadius = Math.max(0, (Math.min(W, H) / 2) - (borderEnabled ? borderWidth / 2 : 0));
+      const circleClipRadius = Math.max(r, circleBorderRadius);
+      const circleMaxCenterRadius = Math.max(r, circleClipRadius - r);
+
+      function randomPointInArena() {
+        if (!isCircularAperture) {
+          return { x: randRange(r, W - r), y: randRange(r, H - r) };
+        }
+        const theta = randRange(0, 2 * Math.PI);
+        const rad = Math.sqrt(Math.random()) * circleMaxCenterRadius;
+        return { x: cx + Math.cos(theta) * rad, y: cy + Math.sin(theta) * rad };
+      }
+
       // ── object placement ─────────────────────────────────────────────────
       function placeObjects() {
         const objs = [];
@@ -114,8 +139,9 @@
         for (let i = 0; i < num_objects; i++) {
           let placed = false;
           for (let attempt = 0; attempt < 1000; attempt++) {
-            const x = randRange(r, W - r);
-            const y = randRange(r, H - r);
+            const pt = randomPointInArena();
+            const x = pt.x;
+            const y = pt.y;
             let ok = true;
             for (const o of objs) {
               const dx = o.x - x, dy = o.y - y;
@@ -133,7 +159,8 @@
             // fallback: ignore separation constraint
             const angle = randRange(0, 2 * Math.PI);
             const spd   = speed_px_per_s * (1 + speed_variability * (Math.random() * 2 - 1));
-            objs.push({ x: randRange(r, W - r), y: randRange(r, H - r),
+            const pt = randomPointInArena();
+            objs.push({ x: pt.x, y: pt.y,
                         vx: Math.cos(angle) * spd, vy: Math.sin(angle) * spd });
           }
         }
@@ -170,6 +197,36 @@
           o.x += o.vx * dtSec;
           o.y += o.vy * dtSec;
 
+          if (isCircularAperture) {
+            const dx = o.x - cx;
+            const dy = o.y - cy;
+            const dist = Math.sqrt(dx * dx + dy * dy) || 0.000001;
+
+            if (boundary_behavior === 'bounce') {
+              if (dist > circleMaxCenterRadius) {
+                const nx = dx / dist;
+                const ny = dy / dist;
+
+                o.x = cx + nx * circleMaxCenterRadius;
+                o.y = cy + ny * circleMaxCenterRadius;
+
+                const vDotN = o.vx * nx + o.vy * ny;
+                if (vDotN > 0) {
+                  o.vx -= 2 * vDotN * nx;
+                  o.vy -= 2 * vDotN * ny;
+                }
+              }
+            } else {
+              if (dist > circleMaxCenterRadius) {
+                const nx = dx / dist;
+                const ny = dy / dist;
+                o.x = cx - nx * circleMaxCenterRadius;
+                o.y = cy - ny * circleMaxCenterRadius;
+              }
+            }
+            continue;
+          }
+
           if (boundary_behavior === 'bounce') {
             if (o.x < r)     { o.x = r;     o.vx =  Math.abs(o.vx); }
             if (o.x > W - r) { o.x = W - r; o.vx = -Math.abs(o.vx); }
@@ -188,6 +245,39 @@
       function clearCanvas() {
         ctx.fillStyle = background_color;
         ctx.fillRect(0, 0, W, H);
+      }
+
+      function beginApertureClip() {
+        if (!isCircularAperture) return;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, circleClipRadius, 0, 2 * Math.PI);
+        ctx.clip();
+      }
+
+      function endApertureClip() {
+        if (!isCircularAperture) return;
+        ctx.restore();
+      }
+
+      function drawApertureBorder() {
+        if (!borderEnabled) return;
+        ctx.save();
+        ctx.strokeStyle = aperture_border_color || '#444444';
+        ctx.lineWidth = borderWidth;
+
+        if (isCircularAperture) {
+          ctx.beginPath();
+          ctx.arc(cx, cy, circleBorderRadius, 0, 2 * Math.PI);
+          ctx.stroke();
+        } else {
+          const inset = borderWidth / 2;
+          const w = Math.max(0, W - borderWidth);
+          const h = Math.max(0, H - borderWidth);
+          ctx.strokeRect(inset, inset, w, h);
+        }
+
+        ctx.restore();
       }
 
       function drawObjects(flashOn) {
@@ -397,6 +487,7 @@
         const elapsed = t - phaseStart;
 
         clearCanvas();
+        beginApertureClip();
 
         if (phase === 'cue') {
           const flashOn = Math.floor(elapsed / (500 / cue_flash_rate_hz)) % 2 === 0;
@@ -429,11 +520,14 @@
         } else if (phase === 'iti') {
           // canvas already cleared (blank)
           if (elapsed >= Math.max(iti_ms, 0)) {
+            endApertureClip();
             endTrial();
             return;               // skip scheduling next frame
           }
         }
 
+        endApertureClip();
+        drawApertureBorder();
         rafId = requestAnimationFrame(loop);
       }
 

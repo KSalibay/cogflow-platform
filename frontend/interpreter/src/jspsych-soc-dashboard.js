@@ -147,6 +147,7 @@
       .soc-icon .lbl { font-size: 12px; opacity: 0.95; text-shadow: 0 1px 2px rgba(0,0,0,0.4); }
 
       .soc-windows { position:absolute; top: 18px; right: 18px; bottom: 18px; left: 140px; display:grid; gap: 12px; grid-auto-rows: 1fr; z-index: 3; }
+      .soc-modal-layer { position:absolute; inset:0; z-index: 8; pointer-events: none; }
       .soc-appwin { position: relative; background: rgba(12,16,26,0.88); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; box-shadow: 0 18px 55px rgba(0,0,0,0.50); overflow:hidden; min-height: 0; }
       /* Keep grid position stable when windows hide/show */
       .soc-appwin.soc-win-hidden { visibility: hidden; pointer-events: none; }
@@ -154,6 +155,8 @@
       .soc-appwin .titlebar .ttl { font-weight: 600; font-size: 13px; }
       .soc-appwin .titlebar .soc-title-debug { margin-left: auto; font-size: 11px; opacity: 0.85; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
       .soc-appwin .content { padding: 12px; height: calc(100% - 38px); overflow:auto; }
+      .soc-appwin.soc-mwprobe-window { position: absolute; inset: 0; z-index: 60; pointer-events: auto; border-radius: 0; }
+      .soc-appwin.soc-mwprobe-window .content { padding: 0; overflow: hidden; }
 
       .soc-card { border: 1px solid rgba(255,255,255,0.10); background: rgba(255,255,255,0.05); border-radius: 12px; padding: 12px; }
       .soc-card h4 { margin:0 0 6px 0; font-size: 13px; }
@@ -256,6 +259,14 @@
       .soc-wcst-help-overlay .panel h3 { margin: 0 0 8px 0; font-size: 14px; }
       .soc-wcst-help-overlay .panel .body { font-size: 12px; opacity: 0.95; line-height: 1.45; }
       .soc-wcst-help-overlay .panel .hint { margin-top: 10px; font-size: 12px; opacity: 0.80; }
+
+      /* MW-probe (full-viewport SOC overlay window) */
+      .soc-mwprobe-root { height: 100%; border: 0; border-radius: 0 0 12px 12px; background: rgba(2,6,23,0.48); padding: 14px; display: flex; min-height: 0; }
+      .soc-mwprobe-panel { flex: 1 1 auto; min-height: 0; border-radius: 12px; border: 1px solid rgba(255,255,255,0.14); background: rgba(12,16,26,0.96); box-shadow: 0 14px 40px rgba(0,0,0,0.45); padding: 14px; display: flex; flex-direction: column; }
+      .soc-mwprobe-intro { opacity: 0.9; margin-bottom: 10px; white-space: pre-wrap; }
+      .soc-mwprobe-form { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; }
+      .soc-mwprobe-scroll { overflow: auto; min-height: 0; flex: 1 1 auto; padding-right: 4px; }
+      .soc-mwprobe-actions { margin-top: 12px; display: flex; justify-content: flex-end; }
     `;
     return style;
   }
@@ -491,7 +502,8 @@
       return out;
     };
 
-    const cols = (windowsSpec.length <= 2) ? windowsSpec.length : 2;
+    const nonMwWindowCount = windowsSpec.filter((w) => ((w?.subtask_type ?? '').toString().toLowerCase() !== 'mw-probe')).length;
+    const cols = (nonMwWindowCount <= 1) ? 1 : Math.min(nonMwWindowCount, 2);
 
     const logIconClicks = (trial.log_icon_clicks !== undefined) ? !!trial.log_icon_clicks : true;
     const iconsClickable = (trial.icons_clickable !== undefined) ? !!trial.icons_clickable : true;
@@ -535,6 +547,9 @@
     const windowInstructionsHtml = new Array(windowsSpec.length).fill('');
     const windowInstructionsOverlay = new Array(windowsSpec.length).fill(null);
     const windowStartIsGated = new Array(windowsSpec.length).fill(false);
+    // Duration (ms) to wait from popup-dismissal before force-ending a gated window.
+    // null means no deferred end pending.
+    const windowEndDurationMs = new Array(windowsSpec.length).fill(null);
 
     const isWindowVisible = (idx) => {
       const el = windowEls[idx];
@@ -546,7 +561,7 @@
       for (let i = 0; i < windowsSpec.length; i++) {
         if (!isWindowVisible(i)) continue;
         const t = (windowsSpec[i]?.subtask_type ?? '').toString().toLowerCase();
-        if (t === 'sart-like' || t === 'nback-like' || t === 'flanker-like' || t === 'wcst-like' || t === 'pvt-like') return i;
+        if (t === 'sart-like' || t === 'nback-like' || t === 'flanker-like' || t === 'wcst-like' || t === 'pvt-like' || t === 'mw-probe') return i;
       }
       for (let i = 0; i < windowsSpec.length; i++) {
         if (isWindowVisible(i)) return i;
@@ -561,7 +576,43 @@
       activeWindowIndex = pickFirstVisibleKeyboardWindow();
     };
 
+    const isMwProbeWindow = (idx) => ((windowsSpec[idx]?.subtask_type ?? '').toString().toLowerCase() === 'mw-probe');
+
+    const activeMwProbeIndex = () => {
+      for (let j = 0; j < windowsSpec.length; j++) {
+        if (!isMwProbeWindow(j)) continue;
+        if (isWindowVisible(j)) return j;
+      }
+      return null;
+    };
+
+    const shouldBeVisibleNow = (idx) => {
+      const sch = windowsSpec[idx]?.schedule || { has_schedule: false, start_at_ms: 0, end_at_ms: null };
+      if (!sch.has_schedule) return true;
+      const t = Math.max(0, Math.floor(nowMs() - startTs));
+      const startAt = Math.max(0, Math.floor(Number(sch.start_at_ms) || 0));
+      const endAt = (sch.end_at_ms === null || sch.end_at_ms === undefined)
+        ? null
+        : Math.max(0, Math.floor(Number(sch.end_at_ms)));
+      if (t < startAt) return false;
+      if (Number.isFinite(endAt) && t >= endAt) return false;
+      return true;
+    };
+
+    const restoreEligibleNonMwWindows = () => {
+      if (activeMwProbeIndex() !== null) return;
+      for (let j = 0; j < windowsSpec.length; j++) {
+        if (isMwProbeWindow(j)) continue;
+        if (!shouldBeVisibleNow(j)) continue;
+        showWindow(j);
+      }
+    };
+
     const showWindow = (idx) => {
+      if (!Number.isFinite(idx) || idx < 0 || idx >= windowsSpec.length) return;
+      const isMw = isMwProbeWindow(idx);
+      if (!isMw && activeMwProbeIndex() !== null) return;
+
       const el = windowEls[idx];
       if (!el) return;
       const wasHidden = el.classList.contains('soc-win-hidden');
@@ -575,6 +626,14 @@
           subtask_type: (windowsSpec[idx]?.subtask_type ?? '').toString() || null
         });
       }
+
+      if (isMw) {
+        for (let j = 0; j < windowsSpec.length; j++) {
+          if (j === idx) continue;
+          if (isWindowVisible(j)) hideWindow(j);
+        }
+      }
+
       activeWindowIndex = idx;
       // If this window has instructions, install the popup when the window becomes visible.
       maybeInstallWindowInstructions(idx);
@@ -595,6 +654,10 @@
       if (activeWindowIndex === idx) {
         ensureActiveWindowVisible();
       }
+
+      if (isMwProbeWindow(idx) && activeMwProbeIndex() === null) {
+        restoreEligibleNonMwWindows();
+      }
     };
 
     const startWindowIfNeeded = (idx) => {
@@ -602,6 +665,16 @@
       windowHasStarted[idx] = true;
       try { subtaskAutoStart[idx]?.(); } catch { /* ignore */ }
       ensureActiveWindowVisible();
+      // If a forced-end duration was deferred until popup dismissal, schedule it now.
+      const pendingDuration = windowEndDurationMs[idx];
+      if (Number.isFinite(pendingDuration) && pendingDuration >= 0) {
+        windowEndDurationMs[idx] = null;
+        setSafeTimeout(() => {
+          if (ended) return;
+          forceEndWindow(idx, 'scheduled_end');
+          hideWindow(idx);
+        }, pendingDuration);
+      }
     };
 
     const maybeInstallWindowInstructions = (idx) => {
@@ -739,10 +812,14 @@
     windows.className = 'soc-windows';
     windows.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
 
+    const modalLayer = document.createElement('div');
+    modalLayer.className = 'soc-modal-layer';
+
     for (let i = 0; i < windowsSpec.length; i++) {
       const wSpec = windowsSpec[i];
       const w = document.createElement('div');
       w.className = 'soc-appwin';
+      w.dataset.subtaskIndex = String(i);
 
       windowEls[i] = w;
       const schedule = wSpec.schedule || { has_schedule: false, start_at_ms: 0, end_at_ms: null };
@@ -755,6 +832,10 @@
       const isFlankerLike = (wSpec.subtask_type || '').toString().toLowerCase() === 'flanker-like';
       const isWcstLike = (wSpec.subtask_type || '').toString().toLowerCase() === 'wcst-like';
       const isPvtLike = (wSpec.subtask_type || '').toString().toLowerCase() === 'pvt-like';
+      const isMwProbeLike = (wSpec.subtask_type || '').toString().toLowerCase() === 'mw-probe';
+      if (isMwProbeLike) {
+        w.classList.add('soc-mwprobe-window');
+      }
       const winId = `soc_win_${i}`;
 
       const dbgHtml = socDebugEnabled
@@ -767,7 +848,11 @@
           <div class="soc-card" id="${escHtml(winId)}"></div>
         </div>
       `;
-      windows.appendChild(w);
+      if (isMwProbeLike) {
+        modalLayer.appendChild(w);
+      } else {
+        windows.appendChild(w);
+      }
 
       if (socDebugEnabled) {
         windowDebugEls[i] = w.querySelector(`#soc_dbg_${i}`);
@@ -2067,7 +2152,257 @@
         continue;
       }
 
-      if (!isSartLike && !isNbackLike && !isFlankerLike && !isWcstLike && !isPvtLike) {
+      if (isMwProbeLike) {
+        const cfg = (() => {
+          const o = (wSpec.subtask && typeof wSpec.subtask === 'object') ? wSpec.subtask : {};
+          return {
+            title: (o.title ?? 'Thought Probe').toString(),
+            instructions: (o.instructions ?? '').toString(),
+            submit_label: (o.submit_label ?? 'Continue').toString(),
+            allow_empty_on_timeout: (o.allow_empty_on_timeout !== undefined) ? !!o.allow_empty_on_timeout : true,
+            timeout_ms: (o.timeout_ms === null || o.timeout_ms === undefined) ? null : Number(o.timeout_ms),
+            questions: Array.isArray(o.questions) ? o.questions.filter(q => q && typeof q === 'object') : []
+          };
+        })();
+
+        const state = {
+          title: wSpec.subtask_title,
+          started: false,
+          ended: false,
+          subtask_start_ts: null
+        };
+
+        const tSubtaskMs = () => {
+          const base = (state.subtask_start_ts ?? startTs);
+          return Math.round(nowMs() - base);
+        };
+
+        const qName = (id, idx) => {
+          const raw = (id ?? '').toString().trim();
+          return raw || `q_${idx + 1}`;
+        };
+
+        const getResponses = (formEl) => {
+          const out = {};
+          for (let idx = 0; idx < cfg.questions.length; idx++) {
+            const q = cfg.questions[idx] || {};
+            const id = qName(q.id, idx);
+            const type = (q.type || 'text').toString().toLowerCase();
+
+            if (type === 'likert' || type === 'radio') {
+              let checked = null;
+              try {
+                checked = formEl.querySelector(`input[name="${CSS.escape(id)}"]:checked`);
+              } catch {
+                checked = formEl.querySelector(`input[name="${id}"]:checked`);
+              }
+              out[id] = checked ? checked.value : null;
+              continue;
+            }
+
+            if (type === 'slider') {
+              const el = formEl.querySelector(`input[name="${id}"]`);
+              out[id] = el ? Number(el.value) : null;
+              continue;
+            }
+
+            if (type === 'number') {
+              const el = formEl.querySelector(`input[name="${id}"]`);
+              out[id] = (!el || el.value === '') ? null : Number(el.value);
+              continue;
+            }
+
+            const el = formEl.querySelector(`[name="${id}"]`);
+            out[id] = el ? String(el.value || '') : null;
+          }
+          return out;
+        };
+
+        const hasAnyResponse = (responses) => {
+          for (const v of Object.values(responses || {})) {
+            if (v === null || v === undefined) continue;
+            if (typeof v === 'string' && v.trim() === '') continue;
+            return true;
+          }
+          return false;
+        };
+
+        const validateRequired = (responses) => {
+          const missing = [];
+          for (let idx = 0; idx < cfg.questions.length; idx++) {
+            const q = cfg.questions[idx] || {};
+            if (q.required !== true) continue;
+            const id = qName(q.id, idx);
+            const v = responses[id];
+            const ok = !(v === null || v === undefined || (typeof v === 'string' && v.trim() === ''));
+            if (!ok) missing.push(id);
+          }
+          return missing;
+        };
+
+        const renderQuestion = (q, idx) => {
+          const id = qName(q.id, idx);
+          const type = (q.type || 'text').toString().toLowerCase();
+          const prompt = escHtml(q.prompt || id);
+          const required = q.required === true;
+          const requiredMark = required ? '<span style="color:#FF5C5C">*</span>' : '';
+
+          if (type === 'likert' || type === 'radio') {
+            const options = Array.isArray(q.options) ? q.options : [];
+            const inputs = options.map((opt, j) => {
+              const val = escHtml(String(opt));
+              const inputId = `soc_mw_q_${i}_${idx}_${j}`;
+              return `<label for="${inputId}" style="display:flex; gap:10px; align-items:flex-start; margin:6px 0;"><input id="${inputId}" type="radio" name="${escHtml(id)}" value="${val}" /><span>${val}</span></label>`;
+            }).join('');
+            return `<div style="margin:12px 0;"><div style="font-weight:600; margin-bottom:6px;">${prompt} ${requiredMark}</div><div>${inputs}</div></div>`;
+          }
+
+          if (type === 'slider') {
+            const min = Number.isFinite(Number(q.min)) ? Number(q.min) : 0;
+            const max = Number.isFinite(Number(q.max)) ? Number(q.max) : 100;
+            const step = Number.isFinite(Number(q.step)) ? Number(q.step) : 1;
+            const initValue = Number.isFinite(Number(q.value)) ? Number(q.value) : min;
+            return `<div style="margin:12px 0;"><div style="font-weight:600; margin-bottom:6px;">${prompt} ${requiredMark}</div><input type="range" name="${escHtml(id)}" min="${min}" max="${max}" step="${step}" value="${initValue}" style="width:100%;" /></div>`;
+          }
+
+          if (type === 'number') {
+            const minAttr = (q.min === null || q.min === undefined || q.min === '') ? '' : `min="${escHtml(q.min)}"`;
+            const maxAttr = (q.max === null || q.max === undefined || q.max === '') ? '' : `max="${escHtml(q.max)}"`;
+            const stepAttr = (q.step === null || q.step === undefined || q.step === '') ? '' : `step="${escHtml(q.step)}"`;
+            return `<div style="margin:12px 0;"><div style="font-weight:600; margin-bottom:6px;">${prompt} ${requiredMark}</div><input type="number" name="${escHtml(id)}" ${minAttr} ${maxAttr} ${stepAttr} style="width:100%; padding:10px; border-radius:10px; border:1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.2); color: inherit;" /></div>`;
+          }
+
+          const multiline = q.multiline === true;
+          const rows = Number.isFinite(Number(q.rows)) ? Number(q.rows) : 4;
+          return `<div style="margin:12px 0;"><div style="font-weight:600; margin-bottom:6px;">${prompt} ${requiredMark}</div>${multiline
+            ? `<textarea name="${escHtml(id)}" rows="${rows}" style="width:100%; padding:10px; border-radius:10px; border:1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.2); color: inherit;"></textarea>`
+            : `<input type="text" name="${escHtml(id)}" style="width:100%; padding:10px; border-radius:10px; border:1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.2); color: inherit;" />`
+          }</div>`;
+        };
+
+        host.innerHTML = `
+          <div class="soc-card soc-mwprobe-root">
+            <div class="soc-mwprobe-panel">
+              <h4 style="margin:0 0 8px 0;">${escHtml(cfg.title || 'Thought Probe')}</h4>
+              ${cfg.instructions ? `<div class="soc-mwprobe-intro">${escHtml(cfg.instructions)}</div>` : ''}
+              <div id="soc_mw_error_${i}" style="display:none; margin: 6px 0 10px 0; padding: 8px; border-radius: 10px; border: 1px solid rgba(255,92,92,0.45); color: #ffd2d2; background: rgba(255,92,92,0.12);"></div>
+              <form id="soc_mw_form_${i}" class="soc-mwprobe-form">
+                <div class="soc-mwprobe-scroll">
+                  ${cfg.questions.map((q, idx) => renderQuestion(q, idx)).join('')}
+                </div>
+                <div class="soc-mwprobe-actions"><button type="submit" class="btn btn-primary">${escHtml(cfg.submit_label || 'Continue')}</button></div>
+              </form>
+              <div id="soc_mw_done_${i}" style="display:none; font-size:12px; opacity:0.92; margin-top:8px;">Response recorded.</div>
+            </div>
+          </div>
+        `;
+
+        const formEl = host.querySelector(`#soc_mw_form_${i}`);
+        const errorEl = host.querySelector(`#soc_mw_error_${i}`);
+        const doneEl = host.querySelector(`#soc_mw_done_${i}`);
+
+        const finishMwProbe = (reason, responses) => {
+          if (state.ended) return;
+          state.ended = true;
+          if (doneEl) doneEl.style.display = '';
+          if (errorEl) errorEl.style.display = 'none';
+
+          events.push({
+            t_ms: Math.round(nowMs() - startTs),
+            t_subtask_ms: tSubtaskMs(),
+            type: 'mw_probe_response',
+            subtask_index: i,
+            subtask_title: state.title,
+            ended_reason: reason,
+            responses: { ...(responses || {}) },
+            rt_ms: Math.max(0, Math.round(nowMs() - (state.subtask_start_ts ?? startTs)))
+          });
+
+          events.push({
+            t_ms: Math.round(nowMs() - startTs),
+            t_subtask_ms: tSubtaskMs(),
+            type: 'mw_probe_subtask_end',
+            subtask_index: i,
+            subtask_title: state.title,
+            ended_reason: reason
+          });
+
+          // Dismiss probe immediately after a valid response so the session can continue.
+          hideWindow(i);
+        };
+
+        const startMwProbeSubtask = () => {
+          if (state.started) return;
+          state.started = true;
+          state.subtask_start_ts = nowMs();
+
+          events.push({
+            t_ms: Math.round(nowMs() - startTs),
+            t_subtask_ms: 0,
+            type: 'mw_probe_subtask_start',
+            subtask_index: i,
+            subtask_title: state.title
+          });
+
+          if (formEl) {
+            formEl.addEventListener('submit', (ev) => {
+              ev.preventDefault();
+              if (!state.started || state.ended) return;
+              const responses = getResponses(formEl);
+              const missing = validateRequired(responses);
+              if (missing.length > 0) {
+                if (errorEl) {
+                  errorEl.style.display = '';
+                  errorEl.textContent = `Please answer required question(s): ${missing.join(', ')}`;
+                }
+                return;
+              }
+              finishMwProbe('submit', responses);
+            });
+          }
+
+          const timeoutMs = cfg.timeout_ms;
+          if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
+            setSafeTimeout(() => {
+              if (!state.started || state.ended) return;
+              const responses = formEl ? getResponses(formEl) : {};
+              const any = hasAnyResponse(responses);
+              if (!any && !cfg.allow_empty_on_timeout) {
+                if (errorEl) {
+                  errorEl.style.display = '';
+                  errorEl.textContent = 'Time is up. Please provide at least one response to continue.';
+                }
+                return;
+              }
+              finishMwProbe('timeout', responses);
+            }, timeoutMs);
+          }
+        };
+
+        subtaskAutoStart[i] = startMwProbeSubtask;
+        subtaskForceEnd[i] = (reason) => {
+          if (state.ended) return;
+          const responses = formEl ? getResponses(formEl) : {};
+          finishMwProbe((reason ?? 'forced').toString(), responses);
+          events.push({
+            t_ms: Math.round(nowMs() - startTs),
+            t_subtask_ms: tSubtaskMs(),
+            type: 'mw_probe_subtask_forced_end',
+            reason: (reason ?? 'forced').toString(),
+            subtask_index: i,
+            subtask_title: state.title
+          });
+        };
+
+        // For mw-probe, render instructions inside the embedded probe panel rather than a separate click-to-start overlay.
+        windowInstructionsHost[i] = w;
+        windowInstructionsTitle[i] = wSpec.subtask_title;
+        windowInstructionsHtml[i] = '';
+        maybeInstallWindowInstructions(i);
+        continue;
+      }
+
+      if (!isSartLike && !isNbackLike && !isFlankerLike && !isWcstLike && !isPvtLike && !isMwProbeLike) {
         host.innerHTML = `
           <h4>Subtask window</h4>
           <div class="muted">Desktop icon clicks are distractors.${wSpec.subtask_type ? ` • Subtask: ${escHtml(wSpec.subtask_type)}` : ''}</div>
@@ -3528,8 +3863,8 @@
           if (latest) {
             // Inline response logic to avoid cross-closure lookups.
             const shouldGoFor = (entryClass) => {
-              if (st.cfg.go_condition === 'target') return entryClass === 'target';
-              if (st.cfg.go_condition === 'distractor') return entryClass === 'distractor';
+              if (st.cfg.go_condition === 'allow') return entryClass === 'target';
+              if (st.cfg.go_condition === 'block') return entryClass === 'distractor';
               return false;
             };
 
@@ -3537,7 +3872,7 @@
               st.responded.add(latest.id);
 
               // Apply action update for realism
-              latest.triage_action = (st.cfg.go_condition === 'distractor') ? 'BLOCK' : 'ALLOW';
+              latest.triage_action = (st.cfg.go_condition === 'block') ? 'BLOCK' : 'ALLOW';
 
               const rt = Math.round(nowMs() - latest.createdAt);
               const correct = shouldGoFor(latest.cls);
@@ -3931,6 +4266,7 @@
     desktop.appendChild(iconsHost);
     desktop.appendChild(windows);
     shell.appendChild(desktop);
+    shell.appendChild(modalLayer);
     display_element.appendChild(shell);
 
     // Scheduled windows: auto-show/auto-start and auto-hide/auto-end.
@@ -3959,21 +4295,33 @@
       }
 
       if (Number.isFinite(endAt)) {
-        setSafeTimeout(() => {
-          if (ended) return;
-          forceEndWindow(i, 'scheduled_end');
-          hideWindow(i);
-        }, endAt);
+        // If this window has an instructions popup, the participant must dismiss it first.
+        // Defer the forced-end by the window duration from popup-dismissal time rather
+        // than firing at an absolute trial timestamp (which would eat into task time).
+        const hasInstructions = (windowInstructionsHtml[i] ?? '').toString().trim() !== '';
+        if (hasInstructions) {
+          // Store duration from window-start; startWindowIfNeeded will set the timer.
+          windowEndDurationMs[i] = Math.max(0, endAt - startAt);
+        } else {
+          setSafeTimeout(() => {
+            if (ended) return;
+            forceEndWindow(i, 'scheduled_end');
+            hideWindow(i);
+          }, endAt);
+        }
       }
     }
 
     // Track last-clicked window for keyboard responses
-    windows.addEventListener('mousedown', (e) => {
+    const onWindowMouseDown = (e) => {
       const winEl = e.target.closest('.soc-appwin');
       if (!winEl) return;
-      const idx = Array.from(windows.children).indexOf(winEl);
+      const idx = Number(winEl.dataset.subtaskIndex);
       if (idx >= 0) activeWindowIndex = idx;
-    }, true);
+    };
+
+    windows.addEventListener('mousedown', onWindowMouseDown, true);
+    modalLayer.addEventListener('mousedown', onWindowMouseDown, true);
 
     shell.addEventListener('click', recordPointerEvent, true);
     shell.addEventListener('mousedown', recordPointerEvent, true);

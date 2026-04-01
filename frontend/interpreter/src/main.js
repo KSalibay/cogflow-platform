@@ -580,98 +580,6 @@
     }
   }
 
-  function getParticipantExternalIdForPlatform() {
-    const candidates = [
-      (typeof window.COGFLOW_PARTICIPANT_ID === 'string' && window.COGFLOW_PARTICIPANT_ID.trim()) || null,
-      getQueryParam('participant'),
-      getQueryParam('participant_id'),
-      getQueryParam('code'),
-      getQueryParam('sona_participant_id'),
-      getQueryParam('sona_id'),
-      getQueryParam('survey_code')
-    ];
-    for (const value of candidates) {
-      const normalized = (value === null || value === undefined) ? '' : String(value).trim();
-      if (normalized) return normalized;
-    }
-    return null;
-  }
-
-  function maybeRedirectAfterPlatformSubmit() {
-    try {
-      if (!window.DjangoRuntimeBackend || !window.DjangoRuntimeBackend.getRunInfo) return false;
-      const runInfo = window.DjangoRuntimeBackend.getRunInfo();
-      const completionRedirect = (runInfo && runInfo.completion_redirect_url) ? String(runInfo.completion_redirect_url).trim() : '';
-      if (!completionRedirect) return false;
-
-      renderBlockingStatus('Submitted to Platform', 'Results saved. Redirecting back to participant system...');
-      window.setTimeout(() => {
-        try {
-          window.location.assign(completionRedirect);
-        } catch {
-          window.location.href = completionRedirect;
-        }
-      }, 600);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  function maybeRenderProlificCompletionScreenAfterPlatformSubmit() {
-    try {
-      if (!window.DjangoRuntimeBackend || !window.DjangoRuntimeBackend.getRunInfo) return false;
-      const runInfo = window.DjangoRuntimeBackend.getRunInfo() || {};
-      const modeRaw = (runInfo.prolific_completion_mode || getQueryParam('prolific_completion_mode') || '').toString().trim().toLowerCase();
-      const mode = (modeRaw === 'show_code') ? 'show_code' : 'default';
-      if (mode !== 'show_code') return false;
-
-      const code = (runInfo.prolific_completion_code || getQueryParam('prolific_completion_code') || '').toString().trim();
-      if (!code) return false;
-
-      const host = els.jspsychTarget || document.getElementById('jspsych-target') || document.body;
-      if (!host) return false;
-
-      const safeCode = escapeHtml(code);
-      host.innerHTML = wrapPsyScreenHtml(
-        `<h2>Submitted to Platform</h2>
-         <div class="psy-muted" style="margin-top:10px;">Results saved. Return to Prolific and enter this completion code:</div>
-         <div style="margin-top:14px;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;">
-           <input id="prolificCompletionCodeValue" type="text" readonly value="${safeCode}" style="min-width:220px;max-width:420px;padding:8px 10px;border:1px solid #9aa4b2;border-radius:8px;font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;font-size:1rem;text-align:center;" />
-           <button id="prolificCompletionCodeCopyBtn" class="jspsych-btn" type="button">Copy code</button>
-         </div>`,
-        null
-      );
-
-      const copyBtn = document.getElementById('prolificCompletionCodeCopyBtn');
-      const codeInput = document.getElementById('prolificCompletionCodeValue');
-      if (copyBtn && codeInput) {
-        copyBtn.addEventListener('click', async () => {
-          const original = copyBtn.textContent;
-          try {
-            await navigator.clipboard.writeText(code);
-            copyBtn.textContent = 'Copied!';
-          } catch {
-            try {
-              codeInput.select();
-              document.execCommand('copy');
-              copyBtn.textContent = 'Copied!';
-            } catch {
-              copyBtn.textContent = 'Copy failed';
-            }
-          }
-          window.setTimeout(() => {
-            copyBtn.textContent = original;
-          }, 1400);
-        });
-      }
-
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
   function getDebugMode() {
     try {
       const v = (getQueryParam('debug') || '').toString().trim().toLowerCase();
@@ -2005,7 +1913,11 @@
               (typeof configId === 'string' && configId.trim()) ||
               'unknown'
             );
-            const participantId = getParticipantExternalIdForPlatform();
+            const participantId = (
+              (typeof window.COGFLOW_PARTICIPANT_ID === 'string' && window.COGFLOW_PARTICIPANT_ID.trim()) ||
+              getQueryParam('code') ||
+              null
+            );
             if (!window.DjangoRuntimeBackend.hasActiveRun()) {
               await window.DjangoRuntimeBackend.startRun({
                 studySlug,
@@ -2013,11 +1925,7 @@
               });
             }
             await window.DjangoRuntimeBackend.submitResult(payload);
-            if (!maybeRedirectAfterPlatformSubmit()) {
-              if (!maybeRenderProlificCompletionScreenAfterPlatformSubmit()) {
-                renderBlockingStatus('Submitted to Platform', 'Results saved to CogFlow Platform.');
-              }
-            }
+            renderBlockingStatus('Submitted to Platform', 'Results saved to CogFlow Platform.');
           } catch (e) {
             console.error('[DjangoRuntimeBackend]', e);
             renderBlockingStatus('Platform submit failed', e && e.message ? e.message : String(e));
@@ -2420,7 +2328,11 @@
               (typeof code === 'string' && code.trim()) ||
               'unknown'
             );
-            const participantId = getParticipantExternalIdForPlatform();
+            const participantId = (
+              (typeof window.COGFLOW_PARTICIPANT_ID === 'string' && window.COGFLOW_PARTICIPANT_ID.trim()) ||
+              getQueryParam('code') ||
+              null
+            );
             if (!window.DjangoRuntimeBackend.hasActiveRun()) {
               await window.DjangoRuntimeBackend.startRun({
                 studySlug,
@@ -2428,11 +2340,7 @@
               });
             }
             await window.DjangoRuntimeBackend.submitResult(payload);
-            if (!maybeRedirectAfterPlatformSubmit()) {
-              if (!maybeRenderProlificCompletionScreenAfterPlatformSubmit()) {
-                renderBlockingStatus('Submitted to Platform', 'Results saved to CogFlow Platform.');
-              }
-            }
+            renderBlockingStatus('Submitted to Platform', 'Results saved to CogFlow Platform.');
           } catch (e) {
             console.error('[DjangoRuntimeBackend]', e);
             renderBlockingStatus('Platform submit failed', e && e.message ? e.message : String(e));
@@ -2557,7 +2465,12 @@
         return true;
       }
 
-      const participantId = getParticipantExternalIdForPlatform();
+      const participantId = (
+        (typeof window.COGFLOW_PARTICIPANT_ID === 'string' && window.COGFLOW_PARTICIPANT_ID.trim()) ||
+        getQueryParam('participant') ||
+        getQueryParam('code') ||
+        null
+      );
 
       setStatus('Starting run from launch link...');
       renderBlockingStatus('Starting', 'Claiming launch link and loading config from CogFlow Platform...');
