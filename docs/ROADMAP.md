@@ -86,6 +86,37 @@ Exit criteria:
 
 ## Deferred Features (Backlog)
 
+### Platform Security Hardening Backlog (Post-Alpha)
+
+Context: current alpha usage is limited to a trusted internal cohort, so these are intentionally
+scheduled for a later hardening phase before broader external rollout.
+
+Priority backlog items:
+
+1. Runtime HTML and script-injection hardening
+- Add stricter sanitization for config-derived HTML fields rendered by Builder/Interpreter.
+- Enforce CSP review/update for portal, builder iframe, and interpreter runtime contexts.
+
+2. API payload and complexity guardrails
+- Add explicit request body size limits for publish/import/upload endpoints.
+- Add defensive validation for excessively deep or complex JSON payloads.
+
+3. Upload and media-serving hardening
+- Keep strict upload allowlists (extension, MIME family, size) and extend test coverage.
+- Ensure media responses use hardened headers (for example `X-Content-Type-Options: nosniff`).
+
+4. Redirect and external URL safety
+- Add allowlist validation for participant completion/abort redirect URLs.
+- Prevent open-redirect behavior for externally controlled URLs.
+
+5. Authorization and tenancy boundaries
+- Expand authorization tests around study ownership/sharing boundaries for publish/upload/read paths.
+- Add periodic audit checks to confirm cross-study access isolation.
+
+6. Security verification and operations
+- Add threat-model review for Builder import/upload and interpreter run startup paths.
+- Add recurring security regression checks to release criteria (pre-public rollout gate).
+
 ### Builder — Researcher-Scoped Templates and Assets
 
 When the Builder is served through the platform (`/builder/`), it should be tied to the authenticated
