@@ -11749,104 +11749,303 @@ class JsonBuilder {
         return rewritten;
     }
 
-    /**
-     * Save current configuration as template.
-     * Serialises the DOM timeline so that all components (including those added
-     * via the component library) are captured correctly.
-     */
-    saveTemplate() {
-        const name = prompt('Enter template name:');
-        if (name) {
-            const container = document.getElementById('timelineComponents');
-            const savedComponents = container
-                ? Array.from(container.querySelectorAll('.timeline-component')).map(el => {
-                    const raw = JSON.parse(el.dataset.componentData || '{}');
-                    const { type: _t, name: _n, label: _l, ...params } = raw;
+    getBuilderIdentity() {
+        const roleRaw = (window.COGFLOW_RESEARCHER_ROLE || new URLSearchParams(window.location.search || '').get('builder_role') || '').toString().trim().toLowerCase();
+        const usernameRaw = (window.COGFLOW_RESEARCHER_USERNAME || new URLSearchParams(window.location.search || '').get('builder_user') || '').toString().trim();
+        const role = roleRaw || 'researcher';
+        const username = usernameRaw || 'local_user';
+        return { role, username, isAdmin: role === 'platform_admin' };
+    }
+
+    getTemplateStore() {
+        const normalizeMap = (obj) => (obj && typeof obj === 'object' && !Array.isArray(obj)) ? obj : {};
+        const key = 'cogflow_templates_v2';
+
+        try {
+            const rawV2 = localStorage.getItem(key) || '';
+            if (rawV2) {
+                const parsed = JSON.parse(rawV2);
+                if (parsed && parsed.version === 2) {
                     return {
-                        type: el.dataset.componentType || _t || '',
-                        builderComponentId: el.dataset.builderComponentId || null,
-                        name: _n || el.dataset.componentType || 'Component',
-                        label: _l || '',
-                        parameters: params
+                        version: 2,
+                        shared: normalizeMap(parsed.shared),
+                        users: normalizeMap(parsed.users),
                     };
-                })
-                : [];
-
-            this.templates[name] = {
-                timeline: savedComponents,
-                experimentType: this.experimentType,
-                dataCollection: { ...this.dataCollection },
-                taskType: document.getElementById('taskType')?.value || 'rdm'
-            };
-
-            // Save to localStorage
-            localStorage.setItem('cogflow_templates', JSON.stringify(this.templates));
-            localStorage.setItem('psychjson_templates', JSON.stringify(this.templates));
-            this.showValidationResult('success', `Template "${name}" saved successfully!`);
+                }
+            }
+        } catch {
+            // ignore
         }
+
+        // Legacy fallback: migrate old global templates into current user scope.
+        let legacy = {};
+        try {
+            legacy = JSON.parse(localStorage.getItem('cogflow_templates') || localStorage.getItem('psychjson_templates') || '{}') || {};
+        } catch {
+            legacy = {};
+        }
+
+        const identity = this.getBuilderIdentity();
+        return {
+            version: 2,
+            shared: {},
+            users: {
+                [identity.username]: normalizeMap(legacy)
+            }
+        };
+    }
+
+    setTemplateStore(store) {
+        const safeStore = {
+            version: 2,
+            shared: (store && typeof store.shared === 'object' && !Array.isArray(store.shared)) ? store.shared : {},
+            users: (store && typeof store.users === 'object' && !Array.isArray(store.users)) ? store.users : {}
+        };
+        localStorage.setItem('cogflow_templates_v2', JSON.stringify(safeStore));
+        // Keep old keys synchronized as a minimal fallback for older builds.
+        localStorage.setItem('cogflow_templates', JSON.stringify(safeStore.users || {}));
+        localStorage.setItem('psychjson_templates', JSON.stringify(safeStore.users || {}));
+    }
+
+    buildTemplateSnapshot() {
+        const container = document.getElementById('timelineComponents');
+        const savedComponents = container
+            ? Array.from(container.querySelectorAll('.timeline-component')).map(el => {
+                const raw = JSON.parse(el.dataset.componentData || '{}');
+                const { type: _t, name: _n, label: _l, ...params } = raw;
+                return {
+                    type: el.dataset.componentType || _t || '',
+                    builderComponentId: el.dataset.builderComponentId || null,
+                    name: _n || el.dataset.componentType || 'Component',
+                    label: _l || '',
+                    parameters: params
+                };
+            })
+            : [];
+
+        return {
+            timeline: savedComponents,
+            experimentType: this.experimentType,
+            dataCollection: { ...this.dataCollection },
+            taskType: document.getElementById('taskType')?.value || 'rdm',
+            saved_at: new Date().toISOString()
+        };
+    }
+
+    applyTemplateSnapshot(template, templateName) {
+        if (!template || typeof template !== 'object') return;
+
+        this.experimentType = template.experimentType;
+        this.dataCollection = { ...template.dataCollection };
+        if (template.taskType) {
+            this.setElementValue('taskType', template.taskType);
+        }
+
+        const container = document.getElementById('timelineComponents');
+        if (container) {
+            container.querySelectorAll('.timeline-component').forEach(el => el.remove());
+
+            const savedComponents = Array.isArray(template.timeline) ? template.timeline : [];
+            const isNewFormat = savedComponents.length > 0 && savedComponents[0] && typeof savedComponents[0].type === 'string';
+            if (isNewFormat) {
+                for (const comp of savedComponents) {
+                    const el = this.timelineBuilder.createComponentElementNew(comp, 0);
+                    if (comp.builderComponentId) {
+                        el.dataset.builderComponentId = comp.builderComponentId;
+                    }
+                    container.appendChild(el);
+                }
+            }
+
+            const emptyState = container.querySelector('.empty-timeline');
+            if (emptyState) {
+                emptyState.style.display = (isNewFormat && savedComponents.length > 0) ? 'none' : 'block';
+            }
+        }
+
+        this.updateExperimentTypeUI();
+        this.updateJSON();
+        this.showValidationResult('success', `Template "${templateName}" loaded successfully!`);
     }
 
     /**
-     * Load template.
-     * Restores the DOM timeline from the saved component data.
+     * Save current configuration as template.
+     * platform_admin saves shared templates; all others save user-private templates.
      */
-    loadTemplate() {
-        // Load templates from localStorage
-        const saved = localStorage.getItem('cogflow_templates') || localStorage.getItem('psychjson_templates');
-        if (saved) {
-            try { this.templates = JSON.parse(saved); } catch { this.templates = {}; }
+    saveTemplate() {
+        const nameRaw = prompt('Enter template name:');
+        const name = (nameRaw || '').toString().trim();
+        if (!name) return;
+
+        const identity = this.getBuilderIdentity();
+        const snapshot = this.buildTemplateSnapshot();
+        const store = this.getTemplateStore();
+
+        if (identity.isAdmin) {
+            store.shared[name] = {
+                ...snapshot,
+                owner: identity.username,
+                scope: 'shared'
+            };
+            this.setTemplateStore(store);
+            this.showValidationResult('success', `Shared template "${name}" saved successfully.`);
+            return;
         }
 
-        const templateNames = Object.keys(this.templates);
-        if (templateNames.length === 0) {
+        if (!store.users[identity.username] || typeof store.users[identity.username] !== 'object') {
+            store.users[identity.username] = {};
+        }
+        store.users[identity.username][name] = {
+            ...snapshot,
+            owner: identity.username,
+            scope: 'user'
+        };
+
+        this.setTemplateStore(store);
+        this.showValidationResult('success', `Template "${name}" saved to your personal templates.`);
+    }
+
+    renderTemplateManagerModal(entries, identity, onLoad, onDelete) {
+        const existing = document.getElementById('cogflowTemplateManagerOverlay');
+        if (existing) existing.remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'cogflowTemplateManagerOverlay';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:100001;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow:auto;';
+
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.style.cssText = 'width:min(900px,100%);box-shadow:0 8px 30px rgba(0,0,0,.35);';
+
+        const header = document.createElement('div');
+        header.className = 'card-header d-flex justify-content-between align-items-center';
+        header.innerHTML = '<div><strong>Template Manager</strong><div class="text-muted" style="font-size:.9rem;">Load or remove saved templates</div></div>';
+
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'btn btn-sm btn-outline-secondary';
+        closeBtn.textContent = 'Close';
+        header.appendChild(closeBtn);
+
+        const body = document.createElement('div');
+        body.className = 'card-body';
+
+        const list = document.createElement('div');
+        list.className = 'd-flex flex-column gap-2';
+
+        for (const entry of entries) {
+            const row = document.createElement('div');
+            row.className = 'd-flex align-items-center justify-content-between border rounded p-2';
+
+            const meta = document.createElement('div');
+            const badge = entry.scope === 'shared'
+                ? '<span class="badge bg-primary me-2">Shared</span>'
+                : '<span class="badge bg-secondary me-2">Personal</span>';
+            meta.innerHTML = `${badge}<strong>${entry.name}</strong><div class="text-muted" style="font-size:.85rem;">Owner: ${entry.owner || 'unknown'}</div>`;
+
+            const actions = document.createElement('div');
+            actions.className = 'd-flex gap-2';
+
+            const loadBtn = document.createElement('button');
+            loadBtn.className = 'btn btn-sm btn-outline-primary';
+            loadBtn.textContent = 'Load';
+            loadBtn.addEventListener('click', () => onLoad(entry));
+            actions.appendChild(loadBtn);
+
+            const canDelete = entry.scope === 'shared' ? identity.isAdmin : true;
+            if (canDelete) {
+                const delBtn = document.createElement('button');
+                delBtn.className = 'btn btn-sm btn-outline-danger';
+                delBtn.textContent = 'Delete';
+                delBtn.addEventListener('click', () => onDelete(entry));
+                actions.appendChild(delBtn);
+            }
+
+            row.appendChild(meta);
+            row.appendChild(actions);
+            list.appendChild(row);
+        }
+
+        if (entries.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'text-muted';
+            empty.textContent = 'No templates available.';
+            list.appendChild(empty);
+        }
+
+        body.appendChild(list);
+        card.appendChild(header);
+        card.appendChild(body);
+        overlay.appendChild(card);
+        document.body.appendChild(overlay);
+
+        const close = () => {
+            try { overlay.remove(); } catch { /* ignore */ }
+        };
+        closeBtn.addEventListener('click', close);
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) close();
+        });
+
+        return { close };
+    }
+
+    /**
+     * Load template via interactive manager (with per-scope delete controls).
+     */
+    loadTemplate() {
+        const identity = this.getBuilderIdentity();
+        const store = this.getTemplateStore();
+
+        const personalMap = (store.users && store.users[identity.username] && typeof store.users[identity.username] === 'object')
+            ? store.users[identity.username]
+            : {};
+        const sharedMap = (store.shared && typeof store.shared === 'object') ? store.shared : {};
+
+        const entries = [
+            ...Object.entries(sharedMap).map(([name, tpl]) => ({ name, ...tpl, scope: 'shared' })),
+            ...Object.entries(personalMap).map(([name, tpl]) => ({ name, ...tpl, scope: 'user' }))
+        ].sort((a, b) => a.name.localeCompare(b.name));
+
+        if (entries.length === 0) {
             this.showValidationResult('warning', 'No saved templates found');
             return;
         }
 
-        // Show template selection (simple prompt for now, could be enhanced with modal)
-        const selection = prompt(`Select template:\n${templateNames.map((name, i) => `${i + 1}. ${name}`).join('\n')}\n\nEnter number:`);
-        const index = parseInt(selection) - 1;
+        let modalRef = null;
+        const refresh = () => {
+            if (modalRef && typeof modalRef.close === 'function') modalRef.close();
+            this.loadTemplate();
+        };
 
-        if (index >= 0 && index < templateNames.length) {
-            const templateName = templateNames[index];
-            const template = this.templates[templateName];
+        modalRef = this.renderTemplateManagerModal(
+            entries,
+            identity,
+            (entry) => {
+                if (modalRef && typeof modalRef.close === 'function') modalRef.close();
+                this.applyTemplateSnapshot(entry, entry.name);
+            },
+            (entry) => {
+                if (entry.scope === 'shared' && !identity.isAdmin) {
+                    this.showValidationResult('error', 'Only platform admins can delete shared templates.');
+                    return;
+                }
 
-            // Restore metadata
-            this.experimentType = template.experimentType;
-            this.dataCollection = { ...template.dataCollection };
-            if (template.taskType) {
-                this.setElementValue('taskType', template.taskType);
-            }
+                const ok = confirm(`Delete template "${entry.name}"? This cannot be undone.`);
+                if (!ok) return;
 
-            // Restore timeline DOM from saved component objects
-            const container = document.getElementById('timelineComponents');
-            if (container) {
-                container.querySelectorAll('.timeline-component').forEach(el => el.remove());
-
-                const savedComponents = Array.isArray(template.timeline) ? template.timeline : [];
-                // Only restore if the saved format is the new DOM-based format
-                // (old empty-array templates are silently ignored).
-                const isNewFormat = savedComponents.length > 0 && savedComponents[0] && typeof savedComponents[0].type === 'string';
-                if (isNewFormat) {
-                    for (const comp of savedComponents) {
-                        const el = this.timelineBuilder.createComponentElementNew(comp, 0);
-                        if (comp.builderComponentId) {
-                            el.dataset.builderComponentId = comp.builderComponentId;
-                        }
-                        container.appendChild(el);
+                const nextStore = this.getTemplateStore();
+                if (entry.scope === 'shared') {
+                    delete nextStore.shared[entry.name];
+                } else {
+                    if (nextStore.users && nextStore.users[identity.username]) {
+                        delete nextStore.users[identity.username][entry.name];
                     }
                 }
-
-                const emptyState = container.querySelector('.empty-timeline');
-                if (emptyState) {
-                    emptyState.style.display = (isNewFormat && savedComponents.length > 0) ? 'none' : 'block';
-                }
+                this.setTemplateStore(nextStore);
+                this.showValidationResult('success', `Template "${entry.name}" deleted.`);
+                refresh();
             }
-
-            this.updateExperimentTypeUI();
-            this.updateJSON();
-            this.showValidationResult('success', `Template "${templateName}" loaded successfully!`);
-        }
+        );
     }
     /**
      * Load default RDM template and populate UI

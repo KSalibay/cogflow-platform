@@ -1516,7 +1516,7 @@
       const user = (currentUser?.username || "").toString().trim();
       const userPart = user ? `&builder_user=${encodeURIComponent(user)}` : "";
       const a11yPart = `&a11y_mode=${encodeURIComponent(normalizeA11yMode(currentA11yMode))}`;
-      return `/builder/?theme=${encodeURIComponent(t)}${userPart}${a11yPart}&v=20260402-2`;
+      return `/builder/?theme=${encodeURIComponent(t)}${userPart}${a11yPart}&v=20260402-3`;
     }
 
     function notifyBuilderTheme(theme) {

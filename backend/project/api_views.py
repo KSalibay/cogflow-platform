@@ -1173,10 +1173,22 @@ class BuilderAppView(APIView):
             )
 
         platform_url = request.build_absolute_uri("/").rstrip("/")
+        username = request.user.username if request.user.is_authenticated else ""
+        role = ""
+        if request.user.is_authenticated:
+            try:
+                role = get_or_create_profile(request.user).role
+            except Exception:
+                role = ""
+
         html = index_path.read_text(encoding="utf-8")
         html = html.replace(
             "window.COGFLOW_PLATFORM_URL    = '';",
-            f"window.COGFLOW_PLATFORM_URL    = '{platform_url}';",
+            "\n".join([
+                f"window.COGFLOW_PLATFORM_URL    = {json.dumps(platform_url)};",
+                f"window.COGFLOW_RESEARCHER_USERNAME = {json.dumps(username)};",
+                f"window.COGFLOW_RESEARCHER_ROLE = {json.dumps(role)};",
+            ]),
         )
         return HttpResponse(html, content_type="text/html; charset=utf-8")
 
