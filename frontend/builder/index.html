@@ -112,7 +112,7 @@
                 <button class="btn btn-outline-light me-2" id="saveTemplateBtn">
                     <i class="fas fa-save"></i> Save Template
                 </button>
-                <button class="btn btn-outline-light me-2" id="uploadAssetsFolderBtn" title="Upload a local assets folder to Token Store so you can refer to images by filename in your config">
+                <button class="btn btn-outline-light me-2" id="uploadAssetsFolderBtn" title="Upload a local assets folder to CogFlow Platform internal storage so you can refer to images by filename in your config">
                     <i class="fas fa-folder-tree"></i> Upload Assets
                 </button>
                 <button class="btn btn-outline-light me-2" id="saveJsonBtn">
@@ -125,7 +125,7 @@
                     <i class="fas fa-server"></i> Publish
                 </button>
 
-                <!-- Hidden input: local JSON import for Token Store uploads -->
+                <!-- Hidden input: local JSON import / builder rehydrate -->
                 <input id="importLocalJsonInput" type="file" accept=".json,application/json" multiple style="display:none" />
 
                 <!-- Hidden input: local assets folder selection (Chromium supports webkitdirectory) -->
@@ -465,18 +465,18 @@
     <script src="src/graphConfig.js?v=20260123-1"></script>
     <script src="src/GraphSharePointClient.js?v=20260123-1"></script>
 
-    <!-- Demo default: Token Store (Cloudflare Worker) base URL -->
+    <!-- Platform mode defaults -->
     <script>
-        // For distribution: change this value (or remove to re-enable prompt).
-        window.COGFLOW_TOKEN_STORE_BASE_URL = 'https://cool-star-379d.kami-salibayeva.workers.dev';
+        // In platform deployments we prefer Django-backed APIs (publish + internal asset upload).
+        // Leave Token Store URL empty to avoid accidental Cloudflare/R2 dependency.
+        window.COGFLOW_TOKEN_STORE_BASE_URL = '';
 
-        // Initial deployment mode: disables SharePoint/Graph prompts and uses Token Store by default.
-        // Remove this line (or set to false) to re-enable Graph/SharePoint export setup prompts.
-        window.COGFLOW_INITIAL_DEPLOYMENT = true;
+        // Platform should not force Token Store-only initial deployment behavior.
+        window.COGFLOW_INITIAL_DEPLOYMENT = false;
     </script>
 
     <!-- Cache-bust local scripts -->
-    <script src="src/JsonBuilder.js?v=20260402-1"></script>
+    <script src="src/JsonBuilder.js?v=20260402-2"></script>
     <script src="src/modules/DataCollectionModules.js?v=20260114-1"></script>
     <script src="src/modules/TrialManager.js?v=20260113-10"></script>
     <script src="src/modules/TimelineBuilder.js?v=20260309-1"></script>

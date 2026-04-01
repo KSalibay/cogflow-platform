@@ -1,7 +1,9 @@
 import os
 import json
+import re
 import hashlib
 from datetime import timedelta
+from uuid import uuid4
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
@@ -11,6 +13,7 @@ from django.conf import settings
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import User
 from django.core import signing
+from django.core.files.storage import default_storage
 from django.core.mail import EmailMultiAlternatives
 from django.db import transaction
 from django.db.models import Count, Max, Q
@@ -21,6 +24,7 @@ from django.utils import timezone
 from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework import status
 from rest_framework.response import Response
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
@@ -1367,6 +1371,63 @@ class PublishConfigView(APIView):
                 "owner_username": _get_study_owner_username(study),
                 "owner_usernames": _get_study_owner_usernames(study),
                 "dashboard_url": f"/portal/studies/{study.slug}",
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class UploadBuilderAssetView(APIView):
+    parser_classes = [MultiPartParser, FormParser]
+
+    @transaction.atomic
+    def post(self, request):
+        if not request.user.is_authenticated:
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        profile = get_or_create_profile(request.user)
+        if not _can_manage_researcher_resources(request, profile):
+            return Response({"error": "Insufficient role permissions"}, status=status.HTTP_403_FORBIDDEN)
+
+        uploaded = request.FILES.get("file")
+        if not uploaded:
+            return Response({"error": "Missing file"}, status=status.HTTP_400_BAD_REQUEST)
+
+        study_slug = (request.data.get("study_slug") or "").strip()
+        study = None
+        scope_slug = "unscoped"
+
+        if study_slug:
+            study = Study.objects.filter(slug=study_slug).first()
+            if not study:
+                return Response({"error": "Study not found"}, status=status.HTTP_404_NOT_FOUND)
+            if not _has_study_access(study, request.user, profile):
+                return Response({"error": "Study is not owned by the current researcher"}, status=status.HTTP_403_FORBIDDEN)
+            scope_slug = study.slug
+
+        original_name = (uploaded.name or "asset").strip() or "asset"
+        safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", original_name)
+        safe_name = re.sub(r"_+", "_", safe_name).strip("._")
+        if not safe_name:
+            safe_name = "asset"
+
+        rel_path = default_storage.save(
+            f"builder-assets/{scope_slug}/{uuid4().hex[:12]}-{safe_name}",
+            uploaded,
+        )
+        rel_path = rel_path.replace("\\", "/")
+
+        try:
+            public_url = request.build_absolute_uri(default_storage.url(rel_path))
+        except Exception:
+            public_url = request.build_absolute_uri(f"/media/{rel_path}")
+
+        return Response(
+            {
+                "ok": True,
+                "url": public_url,
+                "path": rel_path,
+                "study_slug": study.slug if study else None,
+                "filename": original_name,
             },
             status=status.HTTP_201_CREATED,
         )
