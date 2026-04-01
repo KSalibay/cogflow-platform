@@ -1855,6 +1855,51 @@ class JsonBuilder {
         });
     }
 
+    validateImportedJsonFile(file) {
+        const name = (file?.name || '').toString().trim();
+        if (!name || !/\.json$/i.test(name)) {
+            return { ok: false, error: 'Only .json files can be imported.' };
+        }
+
+        const maxBytes = 5 * 1024 * 1024; // 5 MB guardrail for local import
+        const size = Number(file?.size || 0);
+        if (size <= 0) {
+            return { ok: false, error: 'Imported file is empty.' };
+        }
+        if (size > maxBytes) {
+            return { ok: false, error: `Imported JSON is too large (${Math.ceil(size / (1024 * 1024))} MB). Max allowed is 5 MB.` };
+        }
+
+        return { ok: true };
+    }
+
+    containsDangerousConfigMarkup(payload) {
+        const dangerousPatterns = [
+            /<\s*script\b/i,
+            /javascript\s*:/i,
+            /<\s*iframe\b/i,
+            /<\s*object\b/i,
+            /<\s*embed\b/i,
+            /<\s*link\b[^>]*rel\s*=\s*['\"]?import/i,
+            /on[a-z]+\s*=/i,
+        ];
+
+        const visit = (value) => {
+            if (typeof value === 'string') {
+                return dangerousPatterns.some((re) => re.test(value));
+            }
+            if (Array.isArray(value)) {
+                return value.some((v) => visit(v));
+            }
+            if (value && typeof value === 'object') {
+                return Object.values(value).some((v) => visit(v));
+            }
+            return false;
+        };
+
+        return visit(payload);
+    }
+
     extractEnabledFlag(raw, fallback = false) {
         if (typeof raw === 'boolean') return raw;
         if (raw && typeof raw === 'object' && typeof raw.enabled === 'boolean') return raw.enabled;
@@ -2069,6 +2114,13 @@ class JsonBuilder {
 
     async importJsonFileIntoBuilder(file) {
         const filename = (file?.name || 'config.json').toString();
+
+        const fileValidation = this.validateImportedJsonFile(file);
+        if (!fileValidation.ok) {
+            this.showValidationResult('error', `Import blocked: ${fileValidation.error}`);
+            return;
+        }
+
         const text = await this.readFileAsText(file);
 
         let config;
@@ -2081,6 +2133,11 @@ class JsonBuilder {
 
         if (!config || typeof config !== 'object' || Array.isArray(config)) {
             this.showValidationResult('error', `Import failed: ${filename} must contain a top-level JSON object.`);
+            return;
+        }
+
+        if (this.containsDangerousConfigMarkup(config)) {
+            this.showValidationResult('error', 'Import blocked: config contains active-content markup or script-like payloads.');
             return;
         }
 
@@ -2124,7 +2181,7 @@ class JsonBuilder {
 
         const ensureJsonFilename = (name) => {
             const raw = (name || '').toString().trim() || 'config.json';
-            return /\.json$/i.test(raw) ? raw : `${raw}.json`;
+            return raw;
         };
 
         // Sort for predictable behavior.
@@ -2138,6 +2195,12 @@ class JsonBuilder {
         for (const file of queue) {
             const filename = ensureJsonFilename(file?.name || 'config.json');
 
+            const fileValidation = this.validateImportedJsonFile(file);
+            if (!fileValidation.ok) {
+                results.push({ ok: false, filename, error: fileValidation.error });
+                continue;
+            }
+
             let config;
             let jsonText;
             try {
@@ -2150,6 +2213,11 @@ class JsonBuilder {
 
             if (!config || typeof config !== 'object' || Array.isArray(config)) {
                 results.push({ ok: false, filename, error: 'JSON must be an object at the top level' });
+                continue;
+            }
+
+            if (this.containsDangerousConfigMarkup(config)) {
+                results.push({ ok: false, filename, error: 'Blocked: config contains active-content markup or script-like payloads' });
                 continue;
             }
 

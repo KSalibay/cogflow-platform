@@ -1392,6 +1392,28 @@ class UploadBuilderAssetView(APIView):
         if not uploaded:
             return Response({"error": "Missing file"}, status=status.HTTP_400_BAD_REQUEST)
 
+        max_bytes = int(os.getenv("BUILDER_ASSET_MAX_BYTES", str(20 * 1024 * 1024)))
+        if (getattr(uploaded, "size", 0) or 0) > max_bytes:
+            return Response({"error": f"File too large (max {max_bytes} bytes)"}, status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE)
+
+        original_name = (uploaded.name or "asset").strip() or "asset"
+        ext = os.path.splitext(original_name.lower())[1]
+        allowed_exts = {
+            ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".avif",
+            ".mp3", ".wav", ".ogg", ".m4a",
+            ".mp4", ".webm",
+        }
+        if ext not in allowed_exts:
+            return Response({"error": f"Unsupported asset type: {ext or 'unknown'}"}, status=status.HTTP_400_BAD_REQUEST)
+
+        content_type = (uploaded.content_type or "").strip().lower()
+        if content_type and not (
+            content_type.startswith("image/")
+            or content_type.startswith("audio/")
+            or content_type.startswith("video/")
+        ):
+            return Response({"error": f"Unsupported content type: {content_type}"}, status=status.HTTP_400_BAD_REQUEST)
+
         study_slug = (request.data.get("study_slug") or "").strip()
         study = None
         scope_slug = "unscoped"
@@ -1404,7 +1426,6 @@ class UploadBuilderAssetView(APIView):
                 return Response({"error": "Study is not owned by the current researcher"}, status=status.HTTP_403_FORBIDDEN)
             scope_slug = study.slug
 
-        original_name = (uploaded.name or "asset").strip() or "asset"
         safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", original_name)
         safe_name = re.sub(r"_+", "_", safe_name).strip("._")
         if not safe_name:
