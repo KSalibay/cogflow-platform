@@ -212,6 +212,24 @@ var jsPsychRdm = (function (jspsych) {
       let responseAngleDeg = null;
       let responseAngleRawDeg = null;
       let responseSegmentIndex = null;
+      let responseDistanceFromCenterPx = null;
+      let responseWithinAperture = null;
+      let responseWithinBoundaryBand = null;
+      let responseWithinCanvas = null;
+
+      let mouseSelectionMode = null;
+      let mouseRegionPolicy = null;
+      let mouseBoundaryWidthPx = null;
+      let mouseApertureRadiusPx = null;
+      let mousePointerEvents = 0;
+      let mouseInsideCanvasEvents = 0;
+      let mouseRejectedOutsideCanvasEvents = 0;
+      let mouseRejectedOutsideBoundaryBandEvents = 0;
+      let mouseBoundaryBandEntryEvents = 0;
+      let mouseClickEvents = 0;
+      let mouseMoveEvents = 0;
+      let mouseLastPointerX = null;
+      let mouseLastPointerY = null;
 
       const getActiveRdmParams = () => {
         const live = (engine && engine.params && typeof engine.params === 'object') ? engine.params : null;
@@ -248,17 +266,57 @@ var jsPsychRdm = (function (jspsych) {
         const activeRdm = getActiveRdmParams();
         const correctSide = getCurrentCorrectSide();
         const isCorrect = (responseSide !== null) ? (responseSide === correctSide) : null;
+        const responseRegistered = responded === true;
+
+        let responseNotRegisteredReason = null;
+        if (!responseRegistered) {
+          if (responseDevice === 'mouse' || responseDevice === 'touch') {
+            const isHoverMode = (mouseSelectionMode === 'hover' || mouseSelectionMode === 'mousemove');
+            if (isHoverMode && mouseBoundaryBandEntryEvents <= 0) {
+              responseNotRegisteredReason = 'pointer_never_reached_aperture_boundary_band';
+            } else if (mousePointerEvents <= 0) {
+              responseNotRegisteredReason = 'no_pointer_event_captured';
+            } else if (mouseInsideCanvasEvents <= 0) {
+              responseNotRegisteredReason = 'pointer_never_entered_canvas';
+            } else {
+              responseNotRegisteredReason = 'no_response_before_deadline';
+            }
+          } else if (responseDevice === 'keyboard') {
+            responseNotRegisteredReason = 'no_valid_key_before_deadline';
+          } else {
+            responseNotRegisteredReason = 'no_response_before_deadline';
+          }
+        }
 
         const data = {
           experiment_type: experimentType,
           stimulus_type: rdm.type,
           response_device: responseDevice,
+          response_registered: responseRegistered,
+          response_not_registered_reason: responseNotRegisteredReason,
           correct_side: correctSide,
           response_side: responseSide,
           response_key: responseKey,
           response_angle_deg: responseAngleDeg,
           response_angle_raw_deg: responseAngleRawDeg,
           response_segment_index: responseSegmentIndex,
+          response_distance_from_center_px: responseDistanceFromCenterPx,
+          response_within_aperture: responseWithinAperture,
+          response_within_boundary_band: responseWithinBoundaryBand,
+          response_within_canvas: responseWithinCanvas,
+          response_region_policy: mouseRegionPolicy,
+          response_selection_mode: mouseSelectionMode,
+          mouse_aperture_radius_px: mouseApertureRadiusPx,
+          mouse_boundary_width_px: mouseBoundaryWidthPx,
+          mouse_pointer_events_total: mousePointerEvents,
+          mouse_inside_canvas_events: mouseInsideCanvasEvents,
+          mouse_rejected_outside_canvas_events: mouseRejectedOutsideCanvasEvents,
+          mouse_rejected_outside_boundary_band_events: mouseRejectedOutsideBoundaryBandEvents,
+          mouse_boundary_band_entry_events: mouseBoundaryBandEntryEvents,
+          mouse_click_events: mouseClickEvents,
+          mouse_move_events: mouseMoveEvents,
+          mouse_last_pointer_x_px: mouseLastPointerX,
+          mouse_last_pointer_y_px: mouseLastPointerY,
           end_reason: reason || null,
           ...(includeRt ? { rt_ms: rt } : {}),
           ...(includeAccuracy ? { accuracy: isCorrect } : {}),
@@ -350,6 +408,10 @@ var jsPsychRdm = (function (jspsych) {
         if (payload && Number.isFinite(payload.angle_deg)) responseAngleDeg = payload.angle_deg;
         if (payload && Number.isFinite(payload.raw_angle_deg)) responseAngleRawDeg = payload.raw_angle_deg;
         if (payload && Number.isFinite(payload.segment_index)) responseSegmentIndex = payload.segment_index;
+        if (payload && Number.isFinite(payload.distance_from_center_px)) responseDistanceFromCenterPx = payload.distance_from_center_px;
+        if (payload && typeof payload.within_aperture === 'boolean') responseWithinAperture = payload.within_aperture;
+        if (payload && typeof payload.within_boundary_band === 'boolean') responseWithinBoundaryBand = payload.within_boundary_band;
+        if (payload && typeof payload.within_canvas === 'boolean') responseWithinCanvas = payload.within_canvas;
         responseTs = nowMs();
         rt = startTs ? Math.round(responseTs - startTs) : null;
 
@@ -470,16 +532,30 @@ var jsPsychRdm = (function (jspsych) {
           const boundaryWidthPx = Math.max(1, Number(mr.boundary_width_px ?? 16));
           let wasInBoundaryBand = false;
 
+          mouseSelectionMode = selectionMode;
+          mouseRegionPolicy = 'canvas';
+          mouseBoundaryWidthPx = boundaryWidthPx;
+          mouseApertureRadiusPx = apertureRadius;
+
           mouseListener = (e) => {
             const rect = canvas.getBoundingClientRect();
             const clientX = e && typeof e.clientX === 'number' ? e.clientX : null;
             const clientY = e && typeof e.clientY === 'number' ? e.clientY : null;
             if (clientX === null || clientY === null) return;
+            mousePointerEvents += 1;
+            if (selectionMode === 'hover' || selectionMode === 'mousemove') mouseMoveEvents += 1;
+            else mouseClickEvents += 1;
             const x = clientX - rect.left;
             const y = clientY - rect.top;
+            mouseLastPointerX = x;
+            mouseLastPointerY = y;
 
             // Ignore if outside canvas bounds (defensive)
-            if (x < 0 || y < 0 || x > rect.width || y > rect.height) return;
+            if (x < 0 || y < 0 || x > rect.width || y > rect.height) {
+              mouseRejectedOutsideCanvasEvents += 1;
+              return;
+            }
+            mouseInsideCanvasEvents += 1;
 
             // For hover selection, only accept when entering the boundary band around the aperture edge.
             if (selectionMode === 'hover' || selectionMode === 'mousemove') {
@@ -493,26 +569,50 @@ var jsPsychRdm = (function (jspsych) {
               // Trigger on first entry into the band (works for inward and outward crossings).
               if (!wasInBoundaryBand && !inBand) {
                 wasInBoundaryBand = false;
+                mouseRejectedOutsideBoundaryBandEvents += 1;
                 return;
               }
               if (wasInBoundaryBand) {
                 // Already in band; do not keep re-triggering.
+                mouseRejectedOutsideBoundaryBandEvents += 1;
                 return;
               }
               if (inBand) {
                 wasInBoundaryBand = true;
+                mouseBoundaryBandEntryEvents += 1;
               } else {
+                mouseRejectedOutsideBoundaryBandEvents += 1;
                 return;
               }
             }
 
-            const info = computeMouseResponseInfo(x, y, apertureCx, apertureCy, startAngle, segments);
+            const info = (() => {
+              const base = computeMouseResponseInfo(x, y, apertureCx, apertureCy, startAngle, segments);
+              const dx = x - apertureCx;
+              const dy = y - apertureCy;
+              const dist = Math.sqrt(dx * dx + dy * dy);
+              const inner = Math.max(0, apertureRadius - boundaryWidthPx);
+              const outer = apertureRadius + boundaryWidthPx;
+              return {
+                ...base,
+                distance_from_center_px: dist,
+                within_aperture: dist <= apertureRadius,
+                within_boundary_band: dist >= inner && dist <= outer,
+                within_canvas: true,
+                region_policy: 'canvas'
+              };
+            })();
             onResponse({
               key: null,
               side: info.side,
               angle_deg: info.angle_deg,
               raw_angle_deg: info.raw_angle_deg,
-              segment_index: info.segment_index
+              segment_index: info.segment_index,
+              distance_from_center_px: info.distance_from_center_px,
+              within_aperture: info.within_aperture,
+              within_boundary_band: info.within_boundary_band,
+              within_canvas: info.within_canvas,
+              region_policy: info.region_policy
             });
           };
 

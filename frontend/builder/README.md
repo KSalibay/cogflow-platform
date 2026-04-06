@@ -42,6 +42,7 @@ Key features:
 - Task-scoped component library (task-appropriate components and fields)
 - Blocks (compact “generate many trials” representation with per-trial sampling)
 - Preview modal for many components (including representative Block sampling)
+- Survey and MW-probe question editor with optional conditional visibility rules (`visible_if`) and live conditional behavior in preview
 - Timeline authoring ergonomics:
   - Component-level **Duplicate Below** action
   - Stable row alignment and truncation behavior for long timeline labels
@@ -216,10 +217,18 @@ Below is a “what you can add to the timeline” inventory by task type. For pa
   - `html-button-response`
   - `image-keyboard-response`
   - `survey-response`
+  - `mw-probe`
 - Tracking (only shown when enabled under **Data Collection**):
   - `eye-tracking`
   - `eye-tracking-calibration-instructions` (preface screen)
   - `mouse-tracking`
+
+Survey and MW probe authoring notes:
+
+- `survey-response` and `mw-probe` share the same question model.
+- Each question can optionally include `visible_if = { question_id, equals }` so follow-up questions appear only when a prior answer matches.
+- The Builder preview now applies these conditions live so the preview reflects runtime visibility behavior.
+- `mw-probe` supports optional jitter fields `min_interval_ms` / `max_interval_ms` for interruption-style placement inside generated block runs.
 
 ### RDM components (`task_type: "rdm"`)
 
@@ -292,6 +301,14 @@ Task Switching authoring model:
     - Color cue fields: `task_1_color_hex`, `task_2_color_hex`
 
 - Creating a new Task Switching **Block** uses those experiment-wide cueing defaults to seed the block-level `ts_*` parameters.
+
+### MOT components (`task_type: "mot"`)
+
+- `mot-trial`
+- `block` (block_component_type can be `mot-trial`)
+  - Probe modes: `click`, `number_entry`, `yes_no_recognition`
+  - Yes/No recognition supports configurable keys (`yes_key`, `no_key`) and configurable probes per trial (`recognition_probe_count` / `mot_recognition_probe_count`)
+  - Preview reflects recognition mode and probes-per-trial metadata
 
 Runtime behavior notes (Interpreter):
 
@@ -497,6 +514,14 @@ Implemented SOC subtasks are defined in the plugin refdocs under:
 - `soc-subtask-flanker-like`
 - `soc-subtask-wcst-like`
 - `soc-subtask-pvt-like`
+
+SOC SART-like authoring note:
+
+- `soc-subtask-sart-like` now uses `go_condition: block | allow`.
+- Semantics:
+  - `block`: respond to harmful entries (triage action on GO = BLOCK)
+  - `allow`: respond to benign entries (triage action on GO = ALLOW)
+- Legacy values (`target` / `distractor`) remain backward-compatible in runtime normalization.
 
 For a higher-level description of SOC inputs/outputs, see [docs/inputs_outputs.md](docs/inputs_outputs.md).
 

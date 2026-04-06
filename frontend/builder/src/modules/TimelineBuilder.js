@@ -897,13 +897,13 @@ class TimelineBuilder {
                         Continue with empty responses after timeout
                     </label>
                 </div>
-                <div class="row g-2 mt-1">
-                    <div class="col-md-4">
+                <div class="row g-2 mt-1" id="survey_timeout_group">
+                    <div class="col-md-4" id="survey_timeout_input_col">
                         <label class="form-label">Timeout (ms)</label>
                         <input type="number" class="form-control" id="survey_timeout_ms" min="0" value="${timeoutMs === null ? '' : this.escapeHtmlAttr(String(timeoutMs))}" placeholder="(off)">
                     </div>
-                    <div class="col-md-8 d-flex align-items-end">
-                        <small class="text-muted">
+                    <div class="col-md-8 d-flex align-items-end" id="survey_timeout_help_col">
+                        <small class="text-muted" id="survey_timeout_help_text">
                             When enabled, the interpreter may auto-advance after the timeout and store unanswered items as null/empty.
                         </small>
                     </div>
@@ -945,9 +945,18 @@ class TimelineBuilder {
         // Toggle timeout input enable/disable
         const allowTimeoutEl = modalBody.querySelector('#survey_allow_empty_on_timeout');
         const timeoutEl = modalBody.querySelector('#survey_timeout_ms');
+        const timeoutGroupEl = modalBody.querySelector('#survey_timeout_group');
+        const timeoutHelpEl = modalBody.querySelector('#survey_timeout_help_text');
         const syncTimeoutUi = () => {
             if (!allowTimeoutEl || !timeoutEl) return;
-            timeoutEl.disabled = !allowTimeoutEl.checked;
+            const enabled = !!allowTimeoutEl.checked;
+            timeoutEl.disabled = !enabled;
+            if (timeoutGroupEl) timeoutGroupEl.classList.toggle('opacity-50', !enabled);
+            if (timeoutHelpEl) {
+                timeoutHelpEl.textContent = enabled
+                    ? 'When enabled, the interpreter may auto-advance after the timeout and store unanswered items as null/empty.'
+                    : 'Enable "Continue with empty responses after timeout" to use timeout.';
+            }
         };
         if (allowTimeoutEl) {
             allowTimeoutEl.addEventListener('change', syncTimeoutUi);
@@ -962,6 +971,11 @@ class TimelineBuilder {
             const qId = (q.id || 'q' + (container.children.length + 1));
             const qPrompt = (q.prompt || '');
             const required = !!q.required;
+            const visibleIf = (q.visible_if && typeof q.visible_if === 'object') ? q.visible_if : null;
+            const visibleIfQuestionId = (visibleIf?.question_id ?? q.show_if_question_id ?? '').toString();
+            const visibleIfEquals = (visibleIf && Object.prototype.hasOwnProperty.call(visibleIf, 'equals'))
+                ? visibleIf.equals
+                : (q.show_if_value ?? '');
 
             const optText = Array.isArray(q.options) ? q.options.join('\n') : (q.options || '');
 
@@ -1009,6 +1023,21 @@ class TimelineBuilder {
                 <div class="form-check mt-2">
                     <input class="form-check-input" type="checkbox" data-field="required" ${required ? 'checked' : ''}>
                     <label class="form-check-label">Required</label>
+                </div>
+
+                <div class="mt-2 p-2 border rounded bg-light">
+                    <div class="fw-semibold mb-1">Conditional visibility (optional)</div>
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <label class="form-label">Show when question ID equals</label>
+                            <input type="text" class="form-control" data-field="visible_if_question_id" value="${this.escapeHtmlAttr(String(visibleIfQuestionId))}" placeholder="e.g. q1">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Expected value</label>
+                            <input type="text" class="form-control" data-field="visible_if_equals" value="${this.escapeHtmlAttr(String(visibleIfEquals ?? ''))}" placeholder="e.g. Yes">
+                        </div>
+                    </div>
+                    <small class="text-muted">Leave blank to always show this question.</small>
                 </div>
 
                 <div class="survey-type survey-type-likert mt-2" data-type-section="likert">
@@ -1131,9 +1160,13 @@ class TimelineBuilder {
 
         const allow_empty_on_timeout = !!modalBody.querySelector('#survey_allow_empty_on_timeout')?.checked;
         const timeoutRaw = modalBody.querySelector('#survey_timeout_ms')?.value;
-        const timeout_ms = (timeoutRaw === undefined || timeoutRaw === null || timeoutRaw === '')
+        const timeoutMsParsed = (timeoutRaw === undefined || timeoutRaw === null || timeoutRaw === '')
             ? null
             : Number(timeoutRaw);
+        // Keep exported JSON clean: timeout only applies when allow_empty_on_timeout=true.
+        const timeout_ms = (allow_empty_on_timeout && Number.isFinite(timeoutMsParsed) && timeoutMsParsed > 0)
+            ? Math.floor(timeoutMsParsed)
+            : undefined;
 
         const questions = [];
         const questionEls = modalBody.querySelectorAll('.survey-question');
@@ -1154,6 +1187,15 @@ class TimelineBuilder {
             const required = !!el.querySelector('[data-field="required"]')?.checked;
 
             const q = { id, type, prompt, required };
+
+            const visibleIfQuestionId = (el.querySelector('[data-field="visible_if_question_id"]')?.value || '').trim();
+            const visibleIfEqualsRaw = el.querySelector('[data-field="visible_if_equals"]')?.value;
+            if (visibleIfQuestionId) {
+                q.visible_if = {
+                    question_id: visibleIfQuestionId,
+                    equals: (visibleIfEqualsRaw ?? '').toString()
+                };
+            }
 
             if (type === 'likert' || type === 'radio') {
                 const optionsRaw = el.querySelector(`[data-type-section="${type}"] [data-field="options"]`)?.value || '';
@@ -1194,7 +1236,16 @@ class TimelineBuilder {
         const min_interval_ms = (minIntervalRaw !== undefined && minIntervalRaw !== null && minIntervalRaw !== '') ? Number(minIntervalRaw) : null;
         const max_interval_ms = (maxIntervalRaw !== undefined && maxIntervalRaw !== null && maxIntervalRaw !== '') ? Number(maxIntervalRaw) : null;
 
-        return { title, instructions, submit_label, allow_empty_on_timeout, timeout_ms, questions, min_interval_ms, max_interval_ms };
+        return {
+            title,
+            instructions,
+            submit_label,
+            allow_empty_on_timeout,
+            ...(timeout_ms !== undefined ? { timeout_ms } : {}),
+            questions,
+            min_interval_ms,
+            max_interval_ms
+        };
     }
 
     generateParameterFormFromComponentDefinitions(component) {
@@ -1373,7 +1424,7 @@ class TimelineBuilder {
             const shouldDisable = isDrtStart && isoLockedFieldNames.has(paramName) && !overrideIso;
             const label = (isDrtStart && paramName === 'override_iso_standard')
                 ? 'Override ISO standard'
-                : this.formatParameterName(paramName);
+                : this.formatParameterNameForComponent(type, paramName);
 
             const helpText = (isDrtStart && paramName === 'override_iso_standard')
                 ? '<div class="form-text">When unchecked, ISO timing/RT fields are locked to default values.</div>'
@@ -1567,7 +1618,7 @@ class TimelineBuilder {
             formHtml += `
                 <div class="mb-3 ${shouldDisable ? 'parameter-disabled' : ''}" data-param-name="${paramName}" ${responseGroup ? `data-response-group="${responseGroup}"` : ''} ${cueSubGroup ? `data-cue-subgroup="${cueSubGroup}"` : ''} ${feedbackSubGroup ? `data-feedback-subgroup="${feedbackSubGroup}"` : ''} ${dynamicTargetSubGroup ? `data-dynamic-target-subgroup="${dynamicTargetSubGroup}"` : ''} ${dependentDirectionSubGroup ? `data-dependent-direction-subgroup="${dependentDirectionSubGroup}"` : ''} ${blockTargetAttr} ${nbackParadigmAttr}>
                     <label for="param_${paramName}" class="form-label ${shouldDisable ? 'text-muted' : ''}">
-                        ${this.formatParameterName(paramName)}
+                        ${this.formatParameterNameForComponent(componentType, paramName)}
                         ${paramDef.required ? '<span class="text-danger">*</span>' : ''}
                         ${shouldDisable ? '<small class="text-muted">(Not used in trial-based experiments)</small>' : ''}
                     </label>
@@ -1787,6 +1838,26 @@ class TimelineBuilder {
     formatParameterName(paramName) {
         return paramName.replace(/_/g, ' ')
                        .replace(/\b\w/g, l => l.toUpperCase());
+    }
+
+    formatParameterNameForComponent(componentType, paramName) {
+        const type = (componentType ?? '').toString();
+
+        if (type === 'soc-subtask-sart-like' || type === 'sart-like') {
+            const sartLabelByParam = {
+                target_subdomains: 'Harmful Subdomains',
+                distractor_subdomains: 'Benign Subdomains',
+                target_probability: 'Harmful Probability',
+                distractor_probability: 'Benign Probability',
+                target_highlight_color: 'Harmful Highlight Color',
+                distractor_highlight_color: 'Benign Highlight Color'
+            };
+            if (Object.prototype.hasOwnProperty.call(sartLabelByParam, paramName)) {
+                return sartLabelByParam[paramName];
+            }
+        }
+
+        return this.formatParameterName(paramName);
     }
 
     setupParameterFormListeners(formContainer, component) {

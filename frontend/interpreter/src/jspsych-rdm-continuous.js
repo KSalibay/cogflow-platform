@@ -192,6 +192,24 @@
       let frameResponseAngleDeg = null;
       let frameResponseAngleRawDeg = null;
       let frameResponseSegmentIndex = null;
+      let frameResponseDistanceFromCenterPx = null;
+      let frameResponseWithinAperture = null;
+      let frameResponseWithinBoundaryBand = null;
+      let frameResponseWithinCanvas = null;
+
+      let frameMouseSelectionMode = null;
+      let frameMouseRegionPolicy = null;
+      let frameMouseBoundaryWidthPx = null;
+      let frameMouseApertureRadiusPx = null;
+      let frameMousePointerEvents = 0;
+      let frameMouseInsideCanvasEvents = 0;
+      let frameMouseRejectedOutsideCanvasEvents = 0;
+      let frameMouseRejectedOutsideBoundaryBandEvents = 0;
+      let frameMouseBoundaryBandEntryEvents = 0;
+      let frameMouseClickEvents = 0;
+      let frameMouseMoveEvents = 0;
+      let frameMouseLastPointerX = null;
+      let frameMouseLastPointerY = null;
 
       // Detection Response Task (DRT) state (per-frame)
       const drtKey = ' ';
@@ -331,6 +349,26 @@
           : rdm;
 
         const correctSide = computeCorrectSide(activeRdm);
+        const frameResponseRegistered = respondedThisFrame === true;
+        let frameResponseNotRegisteredReason = null;
+        if (!frameResponseRegistered) {
+          if (response.response_device === 'mouse' || response.response_device === 'touch') {
+            const isHoverMode = (frameMouseSelectionMode === 'hover' || frameMouseSelectionMode === 'mousemove');
+            if (isHoverMode && frameMouseBoundaryBandEntryEvents <= 0) {
+              frameResponseNotRegisteredReason = 'pointer_never_reached_aperture_boundary_band';
+            } else if (frameMousePointerEvents <= 0) {
+              frameResponseNotRegisteredReason = 'no_pointer_event_captured';
+            } else if (frameMouseInsideCanvasEvents <= 0) {
+              frameResponseNotRegisteredReason = 'pointer_never_entered_canvas';
+            } else {
+              frameResponseNotRegisteredReason = 'no_response_before_deadline';
+            }
+          } else if (response.response_device === 'keyboard') {
+            frameResponseNotRegisteredReason = 'no_valid_key_before_deadline';
+          } else {
+            frameResponseNotRegisteredReason = 'no_response_before_deadline';
+          }
+        }
 
         // Record end-of-frame even if no response
         records.push({
@@ -344,11 +382,30 @@
           rt_ms: frameRtMs,
           accuracy: frameIsCorrect,
           correctness: frameIsCorrect,
+          response_registered: frameResponseRegistered,
+          response_not_registered_reason: frameResponseNotRegisteredReason,
           response_side: frameResponseSide,
           response_key: frameResponseKey,
           response_angle_deg: frameResponseAngleDeg,
           response_angle_raw_deg: frameResponseAngleRawDeg,
           response_segment_index: frameResponseSegmentIndex,
+          response_distance_from_center_px: frameResponseDistanceFromCenterPx,
+          response_within_aperture: frameResponseWithinAperture,
+          response_within_boundary_band: frameResponseWithinBoundaryBand,
+          response_within_canvas: frameResponseWithinCanvas,
+          response_region_policy: frameMouseRegionPolicy,
+          response_selection_mode: frameMouseSelectionMode,
+          mouse_aperture_radius_px: frameMouseApertureRadiusPx,
+          mouse_boundary_width_px: frameMouseBoundaryWidthPx,
+          mouse_pointer_events_total: frameMousePointerEvents,
+          mouse_inside_canvas_events: frameMouseInsideCanvasEvents,
+          mouse_rejected_outside_canvas_events: frameMouseRejectedOutsideCanvasEvents,
+          mouse_rejected_outside_boundary_band_events: frameMouseRejectedOutsideBoundaryBandEvents,
+          mouse_boundary_band_entry_events: frameMouseBoundaryBandEntryEvents,
+          mouse_click_events: frameMouseClickEvents,
+          mouse_move_events: frameMouseMoveEvents,
+          mouse_last_pointer_x_px: frameMouseLastPointerX,
+          mouse_last_pointer_y_px: frameMouseLastPointerY,
           ...(rdm.detection_response_task_enabled ? {
             drt_enabled: true,
             drt_shown: drtShown,
@@ -367,6 +424,24 @@
         frameResponseAngleDeg = null;
         frameResponseAngleRawDeg = null;
         frameResponseSegmentIndex = null;
+        frameResponseDistanceFromCenterPx = null;
+        frameResponseWithinAperture = null;
+        frameResponseWithinBoundaryBand = null;
+        frameResponseWithinCanvas = null;
+
+        frameMouseSelectionMode = null;
+        frameMouseRegionPolicy = null;
+        frameMouseBoundaryWidthPx = null;
+        frameMouseApertureRadiusPx = null;
+        frameMousePointerEvents = 0;
+        frameMouseInsideCanvasEvents = 0;
+        frameMouseRejectedOutsideCanvasEvents = 0;
+        frameMouseRejectedOutsideBoundaryBandEvents = 0;
+        frameMouseBoundaryBandEntryEvents = 0;
+        frameMouseClickEvents = 0;
+        frameMouseMoveEvents = 0;
+        frameMouseLastPointerX = null;
+        frameMouseLastPointerY = null;
 
         clearDrt();
 
@@ -505,17 +580,40 @@
           frameResponseAngleDeg = (meta && Number.isFinite(meta.angle_deg)) ? meta.angle_deg : null;
           frameResponseAngleRawDeg = (meta && Number.isFinite(meta.raw_angle_deg)) ? meta.raw_angle_deg : null;
           frameResponseSegmentIndex = (meta && Number.isFinite(meta.segment_index)) ? meta.segment_index : null;
+          frameResponseDistanceFromCenterPx = (meta && Number.isFinite(meta.distance_from_center_px)) ? meta.distance_from_center_px : null;
+          frameResponseWithinAperture = (meta && typeof meta.within_aperture === 'boolean') ? meta.within_aperture : null;
+          frameResponseWithinBoundaryBand = (meta && typeof meta.within_boundary_band === 'boolean') ? meta.within_boundary_band : null;
+          frameResponseWithinCanvas = (meta && typeof meta.within_canvas === 'boolean') ? meta.within_canvas : null;
 
           // Attach response to the latest record (or create a response record)
           records.push({
             frame_index: frameIndex,
             event: 'response',
             t_ms: Math.round(nowMs() - trialStartTs),
+            response_registered: true,
+            response_not_registered_reason: null,
             response_side: side,
             response_key: key || null,
             response_angle_deg: frameResponseAngleDeg,
             response_angle_raw_deg: frameResponseAngleRawDeg,
             response_segment_index: frameResponseSegmentIndex,
+            response_distance_from_center_px: frameResponseDistanceFromCenterPx,
+            response_within_aperture: frameResponseWithinAperture,
+            response_within_boundary_band: frameResponseWithinBoundaryBand,
+            response_within_canvas: frameResponseWithinCanvas,
+            response_region_policy: frameMouseRegionPolicy,
+            response_selection_mode: frameMouseSelectionMode,
+            mouse_aperture_radius_px: frameMouseApertureRadiusPx,
+            mouse_boundary_width_px: frameMouseBoundaryWidthPx,
+            mouse_pointer_events_total: frameMousePointerEvents,
+            mouse_inside_canvas_events: frameMouseInsideCanvasEvents,
+            mouse_rejected_outside_canvas_events: frameMouseRejectedOutsideCanvasEvents,
+            mouse_rejected_outside_boundary_band_events: frameMouseRejectedOutsideBoundaryBandEvents,
+            mouse_boundary_band_entry_events: frameMouseBoundaryBandEntryEvents,
+            mouse_click_events: frameMouseClickEvents,
+            mouse_move_events: frameMouseMoveEvents,
+            mouse_last_pointer_x_px: frameMouseLastPointerX,
+            mouse_last_pointer_y_px: frameMouseLastPointerY,
             rt_ms: rt,
             correct_side: correctSide,
             accuracy: isCorrect,
@@ -655,18 +753,31 @@
         const boundaryWidthPx = Math.max(1, safeNum(mr.boundary_width_px, 16));
         let wasInBoundaryBand = false;
 
+        frameMouseSelectionMode = selectionMode;
+        frameMouseRegionPolicy = 'canvas';
+        frameMouseBoundaryWidthPx = boundaryWidthPx;
+        frameMouseApertureRadiusPx = apertureRadius;
+
         const computeMouseResponseInfo = (x, y) => {
           const dx = x - apertureCx;
           const dy = y - apertureCy;
+          const dist = Math.sqrt(dx * dx + dy * dy);
           const rawAngle = (Math.atan2(dy, dx) * 180) / Math.PI;
           const angleFromStart = (rawAngle - startAngle + 360) % 360;
           const seg = Math.floor((angleFromStart / 360) * segments);
           const side = (segments === 2) ? (seg === 0 ? 'right' : 'left') : (seg < segments / 2 ? 'right' : 'left');
+          const inner = Math.max(0, apertureRadius - boundaryWidthPx);
+          const outer = apertureRadius + boundaryWidthPx;
           return {
             side,
             segment_index: Math.max(0, Math.min(segments - 1, seg)),
             angle_deg: angleFromStart,
-            raw_angle_deg: rawAngle
+            raw_angle_deg: rawAngle,
+            distance_from_center_px: dist,
+            within_aperture: dist <= apertureRadius,
+            within_boundary_band: dist >= inner && dist <= outer,
+            within_canvas: true,
+            region_policy: 'canvas'
           };
         };
 
@@ -675,13 +786,22 @@
           const clientX = e && typeof e.clientX === 'number' ? e.clientX : null;
           const clientY = e && typeof e.clientY === 'number' ? e.clientY : null;
           if (clientX === null || clientY === null) return;
+          frameMousePointerEvents += 1;
+          if (selectionMode === 'hover' || selectionMode === 'mousemove') frameMouseMoveEvents += 1;
+          else frameMouseClickEvents += 1;
 
           const rect = canvas.getBoundingClientRect();
           const x = clientX - rect.left;
           const y = clientY - rect.top;
+          frameMouseLastPointerX = x;
+          frameMouseLastPointerY = y;
 
           // Ignore if outside canvas bounds (defensive)
-          if (x < 0 || y < 0 || x > rect.width || y > rect.height) return;
+          if (x < 0 || y < 0 || x > rect.width || y > rect.height) {
+            frameMouseRejectedOutsideCanvasEvents += 1;
+            return;
+          }
+          frameMouseInsideCanvasEvents += 1;
 
           // For hover selection, only accept when entering the boundary band around the aperture edge.
           if (selectionMode === 'hover' || selectionMode === 'mousemove') {
@@ -695,14 +815,18 @@
             // Trigger on first entry into the band (works for inward and outward crossings).
             if (!wasInBoundaryBand && !inBand) {
               wasInBoundaryBand = false;
+              frameMouseRejectedOutsideBoundaryBandEvents += 1;
               return;
             }
             if (wasInBoundaryBand) {
+              frameMouseRejectedOutsideBoundaryBandEvents += 1;
               return;
             }
             if (inBand) {
               wasInBoundaryBand = true;
+              frameMouseBoundaryBandEntryEvents += 1;
             } else {
+              frameMouseRejectedOutsideBoundaryBandEvents += 1;
               return;
             }
           }

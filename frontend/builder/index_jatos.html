@@ -191,7 +191,7 @@
 
       // Wrapper build id used to bust caches for Builder's local scripts.
       // If you update Builder JS and still see old behavior under JATOS, bump this string.
-      const BUILDER_WRAPPER_BUILD = '20260305-1';
+      const BUILDER_WRAPPER_BUILD = '20260407-5';
 
       const builderBase = (studyId && componentId) ? `/publix/${studyId}/${componentId}/builder/` : '';
       const builderIndexUrl = builderBase ? new URL(builderBase + 'index.html', window.location.origin).toString() : '';

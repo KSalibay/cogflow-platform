@@ -150,7 +150,7 @@ class JSPsychSchemas {
                     },
                     instructions: {
                         type: this.parameterTypes.HTML_STRING,
-                           default: '<p>Log entries will stream past. Your job is to triage each one:</p>\n<p>Press <b>{{GO_CONTROL}}</b> when the current entry matches the class configured for a response in this subtask.</p>\n<p><b>Withhold</b> your response for the other class.</p>\n<p><b>Harmful:</b> {{TARGETS}}</p>\n<p><b>Benign:</b> {{DISTRACTORS}}</p>\n<p><i>Click this popup to begin.</i></p>',
+                           default: '<p>Log entries will stream past. Your job is to triage each one:</p>\n<p>Press <b>{{GO_CONTROL}}</b> when the current entry matches the class configured for a response in this subtask.</p>\n<p><b>Withhold</b> your response for the other class.</p>\n<p><b>Harmful:</b> {{HARMFUL}}</p>\n<p><b>Benign:</b> {{BENIGN}}</p>\n<p><i>Click this popup to begin.</i></p>',
                         description: 'Optional instructions shown in a popup before this subtask begins (closing the popup marks the subtask start time)'
                     },
                     instructions_title: {
@@ -161,7 +161,7 @@ class JSPsychSchemas {
                     show_markers: {
                         type: this.parameterTypes.BOOL,
                         default: false,
-                        description: 'Show TARGET/DISTRACTOR markers inside the task UI (off by default)'
+                        description: 'Show HARMFUL/BENIGN markers inside the task UI (off by default)'
                     },
                     visible_entries: {
                         type: this.parameterTypes.INT,
@@ -212,32 +212,32 @@ class JSPsychSchemas {
                         type: this.parameterTypes.SELECT,
                         default: 'block',
                         options: ['block', 'allow'],
-                        description: 'Response condition: "block" to respond to distractors, "allow" to respond to targets'
+                        description: 'Response condition: "block" to respond to harmful entries, "allow" to respond to benign entries'
                     },
                     highlight_subdomains: {
                         type: this.parameterTypes.BOOL,
                         default: true,
-                        description: 'Highlight target/distractor entries in the feed'
+                        description: 'Highlight harmful/benign entries in the feed'
                     },
                     target_highlight_color: {
                         type: this.parameterTypes.COLOR,
                         default: '#ff4d4d',
-                        description: 'Target highlight color'
+                        description: 'Harmful highlight color'
                     },
                     distractor_highlight_color: {
                         type: this.parameterTypes.COLOR,
                         default: '#3dd6ff',
-                        description: 'Distractor highlight color'
+                        description: 'Benign highlight color'
                     },
                     target_subdomains: {
                         type: this.parameterTypes.HTML_STRING,
                         default: 'login.bank.example\nvpn.bank.example\nadmin.bank.example',
-                        description: 'Target domain/subdomain list (comma- or newline-separated)'
+                        description: 'Harmful domain/subdomain list (comma- or newline-separated)'
                     },
                     distractor_subdomains: {
                         type: this.parameterTypes.HTML_STRING,
                         default: 'cdn.news.example\nstatic.video.example\napi.store.example',
-                        description: 'Distractor domain/subdomain list (comma- or newline-separated)'
+                        description: 'Benign domain/subdomain list (comma- or newline-separated)'
                     },
                     neutral_subdomains: {
                         type: this.parameterTypes.HTML_STRING,
@@ -249,14 +249,19 @@ class JSPsychSchemas {
                         default: 0.15,
                         min: 0,
                         max: 1,
-                        description: 'Probability a new entry is a target (0–1)'
+                        description: 'Probability a new entry is harmful (0–1)'
                     },
                     distractor_probability: {
                         type: this.parameterTypes.FLOAT,
                         default: 0.35,
                         min: 0,
                         max: 1,
-                        description: 'Probability a new entry is a distractor (0–1). Remaining probability becomes neutral.'
+                        description: 'Probability a new entry is benign (0–1). Remaining probability becomes neutral.'
+                    },
+                    include_neutral_entries: {
+                        type: this.parameterTypes.BOOL,
+                        default: true,
+                        description: 'If false, feed contains only target and distractor entries (no neutral rows).'
                     }
                 }
             },
@@ -2011,8 +2016,25 @@ class JSPsychSchemas {
                     probe_mode: {
                         type: this.parameterTypes.SELECT,
                         default: 'click',
-                        options: ['click', 'number_entry'],
-                        description: 'Probe interaction: click objects to select targets, or type numbered labels shown inside objects'
+                        options: ['click', 'number_entry', 'yes_no_recognition'],
+                        description: 'Probe interaction: click selected targets, type numbered labels, or answer a yes/no recognition question for a probed object'
+                    },
+                    yes_key: {
+                        type: this.parameterTypes.STRING,
+                        default: 'y',
+                        description: 'Recognition mode: keyboard key for YES response'
+                    },
+                    no_key: {
+                        type: this.parameterTypes.STRING,
+                        default: 'n',
+                        description: 'Recognition mode: keyboard key for NO response'
+                    },
+                    recognition_probe_count: {
+                        type: this.parameterTypes.INT,
+                        default: 1,
+                        min: 1,
+                        max: 20,
+                        description: 'Recognition mode: number of yes/no probes to present before advancing to feedback/ITI'
                     },
                     probe_timeout_ms: {
                         type: this.parameterTypes.INT,
@@ -3496,9 +3518,29 @@ class JSPsychSchemas {
                     mot_probe_mode: {
                         type: this.parameterTypes.SELECT,
                         default: 'click',
-                        options: ['click', 'number_entry'],
+                        options: ['click', 'number_entry', 'yes_no_recognition'],
                         blockTarget: 'mot-trial',
                         description: 'MOT: fixed probe mode for all trials in this block'
+                    },
+                    mot_yes_key: {
+                        type: this.parameterTypes.STRING,
+                        default: 'y',
+                        blockTarget: 'mot-trial',
+                        description: 'MOT: yes key in yes/no recognition probe mode'
+                    },
+                    mot_no_key: {
+                        type: this.parameterTypes.STRING,
+                        default: 'n',
+                        blockTarget: 'mot-trial',
+                        description: 'MOT: no key in yes/no recognition probe mode'
+                    },
+                    mot_recognition_probe_count: {
+                        type: this.parameterTypes.INT,
+                        default: 1,
+                        min: 1,
+                        max: 20,
+                        blockTarget: 'mot-trial',
+                        description: 'MOT: number of yes/no probes per trial in recognition mode'
                     },
                     mot_aperture_shape: {
                         type: this.parameterTypes.SELECT,
@@ -4182,6 +4224,7 @@ class JSPsychSchemas {
 
         const seenIds = new Set();
         const knownTypes = new Set(['likert', 'radio', 'text', 'slider', 'number']);
+        const conditionalRefs = [];
 
         questions.forEach((q, qi) => {
             if (!q || typeof q !== 'object') {
@@ -4248,6 +4291,29 @@ class JSPsychSchemas {
                         errors.push(`Trial ${trialIndex} question ${qi} (${id || 'no-id'}): rows must be an integer >= 1`);
                     }
                 }
+            }
+
+            if (q.visible_if !== undefined) {
+                if (!q.visible_if || typeof q.visible_if !== 'object' || Array.isArray(q.visible_if)) {
+                    errors.push(`Trial ${trialIndex} question ${qi} (${id || 'no-id'}): visible_if must be an object`);
+                } else {
+                    const depId = (q.visible_if.question_id ?? '').toString().trim();
+                    if (!depId) {
+                        errors.push(`Trial ${trialIndex} question ${qi} (${id || 'no-id'}): visible_if.question_id is required`);
+                    } else {
+                        conditionalRefs.push({ sourceId: id, depId, qi });
+                    }
+                }
+            }
+        });
+
+        conditionalRefs.forEach(({ sourceId, depId, qi }) => {
+            if (sourceId && depId === sourceId) {
+                errors.push(`Trial ${trialIndex} question ${qi} (${sourceId}): visible_if.question_id cannot reference itself`);
+                return;
+            }
+            if (!seenIds.has(depId)) {
+                warnings.push(`Trial ${trialIndex} question ${qi} (${sourceId || 'no-id'}): visible_if references unknown question id '${depId}'`);
             }
         });
 
@@ -4328,6 +4394,18 @@ class JSPsychSchemas {
             }
             if (normalized.length !== undefined && normalized.block_length === undefined) {
                 normalized.block_length = normalized.length;
+            }
+        }
+
+        // Timeout hygiene for survey-like components:
+        // timeout_ms is only meaningful when allow_empty_on_timeout=true.
+        if (normalized.type === 'survey-response' || normalized.type === 'mw-probe') {
+            const allowEmpty = !!normalized.allow_empty_on_timeout;
+            if (!allowEmpty) {
+                delete normalized.timeout_ms;
+            } else if (normalized.timeout_ms === null) {
+                // Treat explicit null as absent so type validation does not fail on INT.
+                delete normalized.timeout_ms;
             }
         }
 

@@ -13,55 +13,9 @@
     <script>
         // Apply Accessibility Mode + Theme early to avoid flash of wrong styling
         (function () {
-            const normalizeA11yMode = (raw) => {
-                const mode = (raw || '').toString().trim().toLowerCase();
-                if (mode === 'contrast' || mode === 'large' || mode === 'contrast-large') return mode;
-                return 'standard';
-            };
-
-            const getUserScope = () => {
-                try {
-                    const params = new URLSearchParams(window.location.search || '');
-                    const fromQuery = (params.get('builder_user') || '').trim();
-                    if (fromQuery) {
-                        localStorage.setItem('cogflow_builder_user', fromQuery);
-                        return fromQuery;
-                    }
-                } catch (e) {
-                    // ignore
-                }
-                try {
-                    return (localStorage.getItem('cogflow_builder_user') || 'default').trim() || 'default';
-                } catch (e) {
-                    return 'default';
-                }
-            };
-
-            const applyA11yMode = (modeRaw) => {
-                const mode = normalizeA11yMode(modeRaw);
-                const html = document.documentElement;
-                html.classList.remove('cf-a11y', 'cf-a11y-contrast', 'cf-a11y-large');
-                if (mode === 'contrast') html.classList.add('cf-a11y-contrast');
-                if (mode === 'large') html.classList.add('cf-a11y-large');
-                if (mode === 'contrast-large') html.classList.add('cf-a11y-contrast', 'cf-a11y-large');
-            };
-
             try {
-                const params = new URLSearchParams(window.location.search || '');
-                const fromQuery = normalizeA11yMode((params.get('a11y_mode') || '').trim());
-                if (fromQuery !== 'standard') {
-                    applyA11yMode(fromQuery);
-                }
-
-                const scope = getUserScope();
-                const modeKey = `cogflow_builder_a11y_mode::${scope}`;
-                const mode = normalizeA11yMode(localStorage.getItem(modeKey));
-                if (fromQuery === 'standard' && mode !== 'standard') {
-                    applyA11yMode(mode);
-                } else {
-                    const legacyEnabled = fromQuery === 'standard' && localStorage.getItem('cogflow_builder_a11y') === '1';
-                    if (legacyEnabled) applyA11yMode('contrast');
-                }
+                const enabled = localStorage.getItem('cogflow_builder_a11y') === '1';
+                if (enabled) document.documentElement.classList.add('cf-a11y');
             } catch (e) {
                 // Ignore storage errors (privacy mode, etc.)
             }
@@ -87,7 +41,7 @@
     <link href="vendor/quill.snow.css" rel="stylesheet">
 
     <!-- App theme + Bootstrap overrides (must load AFTER Bootstrap) -->
-    <link rel="stylesheet" href="css/style.css?v=20260331-2">
+    <link rel="stylesheet" href="css/style.css?v=20260324-1">
 
     <!-- Prevent aggressive caching when opened via file:// or a simple static server -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
@@ -105,14 +59,14 @@
             <span class="navbar-brand mb-0 h1">
                 <img src="img/logo_builder_light.png" alt="CogFlow Builder" class="cf-brand-logo">
             </span>
-            <div class="d-flex cf-navbar-actions">
+            <div class="d-flex">
                 <button class="btn btn-outline-light me-2" id="loadTemplateBtn">
                     <i class="fas fa-folder-open"></i> Load Template
                 </button>
                 <button class="btn btn-outline-light me-2" id="saveTemplateBtn">
                     <i class="fas fa-save"></i> Save Template
                 </button>
-                <button class="btn btn-outline-light me-2" id="uploadAssetsFolderBtn" title="Upload a local assets folder to CogFlow Platform internal storage so you can refer to images by filename in your config">
+                <button class="btn btn-outline-light me-2" id="uploadAssetsFolderBtn" title="Upload a local assets folder to Token Store so you can refer to images by filename in your config">
                     <i class="fas fa-folder-tree"></i> Upload Assets
                 </button>
                 <button class="btn btn-outline-light me-2" id="saveJsonBtn">
@@ -121,11 +75,17 @@
                 <button class="btn btn-outline-light me-2" id="importLocalJsonBtn">
                     <i class="fas fa-file-arrow-up"></i> Import JSON(s)
                 </button>
+                <button class="btn btn-outline-light me-2" id="prepJatosPropsBtn">
+                    <i class="fas fa-clipboard"></i> JATOS Props
+                </button>
                 <button class="btn btn-warning me-2" id="platformPublishBtn" style="display:none" title="Publish config to CogFlow Platform">
                     <i class="fas fa-server"></i> Publish
                 </button>
+                <button class="btn btn-success" id="exportJsonBtn">
+                    <i class="fas fa-cloud-arrow-up"></i> Export
+                </button>
 
-                <!-- Hidden input: local JSON import / builder rehydrate -->
+                <!-- Hidden input: local JSON import for Token Store uploads -->
                 <input id="importLocalJsonInput" type="file" accept=".json,application/json" multiple style="display:none" />
 
                 <!-- Hidden input: local assets folder selection (Chromium supports webkitdirectory) -->
@@ -442,7 +402,10 @@
     <footer class="cf-footer">
         <div class="container-fluid cf-footer-inner">
             <div class="cf-footer-a11y">
-                <span style="font-size:.75rem;opacity:.9;">Accessibility is managed from the Portal top bar.</span>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" role="switch" id="accessibilityModeToggle">
+                    <label class="form-check-label" for="accessibilityModeToggle">Accessibility Mode</label>
+                </div>
             </div>
             <div class="cf-footer-spacer"></div>
             <div class="cf-footer-text">
@@ -465,26 +428,26 @@
     <script src="src/graphConfig.js?v=20260123-1"></script>
     <script src="src/GraphSharePointClient.js?v=20260123-1"></script>
 
-    <!-- Platform mode defaults -->
+    <!-- Demo default: Token Store (Cloudflare Worker) base URL -->
     <script>
-        // In platform deployments we prefer Django-backed APIs (publish + internal asset upload).
-        // Leave Token Store URL empty to avoid accidental Cloudflare/R2 dependency.
-        window.COGFLOW_TOKEN_STORE_BASE_URL = '';
+        // For distribution: change this value (or remove to re-enable prompt).
+        window.COGFLOW_TOKEN_STORE_BASE_URL = 'https://cool-star-379d.kami-salibayeva.workers.dev';
 
-        // Platform should not force Token Store-only initial deployment behavior.
-        window.COGFLOW_INITIAL_DEPLOYMENT = false;
+        // Initial deployment mode: disables SharePoint/Graph prompts and uses Token Store by default.
+        // Remove this line (or set to false) to re-enable Graph/SharePoint export setup prompts.
+        window.COGFLOW_INITIAL_DEPLOYMENT = true;
     </script>
 
     <!-- Cache-bust local scripts -->
-    <script src="src/JsonBuilder.js?v=20260402-3"></script>
+    <script src="src/JsonBuilder.js?v=20260407-2"></script>
     <script src="src/modules/DataCollectionModules.js?v=20260114-1"></script>
     <script src="src/modules/TrialManager.js?v=20260113-10"></script>
-    <script src="src/modules/TimelineBuilder.js?v=20260309-1"></script>
-    <script src="src/modules/SocDashboardPreview.js?v=20260218-1"></script>
-    <script src="src/modules/ComponentPreview.js?v=20260402-1"></script>
+    <script src="src/modules/TimelineBuilder.js?v=20260407-1"></script>
+    <script src="src/modules/SocDashboardPreview.js?v=20260406-3"></script>
+    <script src="src/modules/ComponentPreview.js?v=20260407-4"></script>
     <script src="src/schemas/RDMTaskSchema.js?v=20260113-10"></script>
-    <script src="src/schemas/JSPsychSchemas.js?v=20260402-1"></script>
-    <script src="src/schemas/UnifiedSchema.js?v=20260402-1"></script>
+    <script src="src/schemas/JSPsychSchemas.js?v=20260407-3"></script>
+    <script src="src/schemas/UnifiedSchema.js?v=20260407-2"></script>
 
     <script>
         function setBuilderTheme(theme) {
@@ -547,9 +510,6 @@
                 if (!e || e.origin !== window.location.origin) return;
                 if (e.data && e.data.type === 'cogflow:set-theme') {
                     setBuilderTheme(e.data.theme);
-                }
-                if (e.data && e.data.type === 'cogflow:set-a11y' && window.jsonBuilderInstance && typeof window.jsonBuilderInstance.setAccessibilityMode === 'function') {
-                    window.jsonBuilderInstance.setAccessibilityMode(e.data.mode || 'standard');
                 }
             });
 

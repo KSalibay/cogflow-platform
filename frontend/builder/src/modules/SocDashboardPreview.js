@@ -222,6 +222,8 @@
       : `${nonMatchKey === ' ' ? 'SPACE' : escHtml(nonMatchKey)} (NO) / ${matchKey === ' ' ? 'SPACE' : escHtml(matchKey)} (YES)`;
     const noGoControl = (paradigm === 'go_nogo') ? 'withhold' : (nonMatchKey === ' ' ? 'SPACE' : nonMatchKey);
 
+    const goClassLabel = (goCondition === 'allow') ? 'benign' : 'harmful';
+
     const shell = document.createElement('div');
     shell.style.position = 'relative';
     shell.innerHTML = `
@@ -414,8 +416,8 @@
     const instructionsTitle = (subtask?.instructions_title ?? 'Filtering harmful logins').toString() || 'Filtering harmful logins';
 
     const highlightSubdomains = !!(subtask?.highlight_subdomains ?? true);
-    const targetColor = (subtask?.target_highlight_color ?? '#22c55e').toString();
-    const distractorColor = (subtask?.distractor_highlight_color ?? '#ef4444').toString();
+    const harmfulColor = (subtask?.harmful_highlight_color ?? subtask?.target_highlight_color ?? '#22c55e').toString();
+    const benignColor = (subtask?.benign_highlight_color ?? subtask?.distractor_highlight_color ?? '#ef4444').toString();
     let goCondition = (subtask?.go_condition ?? 'block').toString().trim().toLowerCase();
     // Backward compatibility: map old values (target/distractor) to new (allow/block)
     if (goCondition === 'target') goCondition = 'allow';
@@ -424,16 +426,17 @@
     // Keep action outcomes consistent within a run.
     const triageActionOnGo = (goCondition === 'block') ? 'BLOCK' : 'ALLOW';
 
-    const targets = parseList(subtask?.target_subdomains);
-    const distractors = parseList(subtask?.distractor_subdomains);
+    const harmful = parseList(subtask?.harmful_subdomains ?? subtask?.target_subdomains);
+    const benign = parseList(subtask?.benign_subdomains ?? subtask?.distractor_subdomains);
     const neutrals = parseList(subtask?.neutral_subdomains);
 
-    const targetProbability = clamp01(subtask?.target_probability ?? 0.2);
-    const distractorProbability = clamp01(subtask?.distractor_probability ?? 0.1);
-    const neutralProbability = Math.max(0, 1 - targetProbability - distractorProbability);
+    const harmfulProbability = clamp01(subtask?.harmful_probability ?? subtask?.target_probability ?? 0.2);
+    const benignProbability = clamp01(subtask?.benign_probability ?? subtask?.distractor_probability ?? 0.1);
+    const includeNeutralEntries = !!(subtask?.include_neutral_entries ?? true);
+    const neutralProbability = Math.max(0, 1 - harmfulProbability - benignProbability);
 
-    const defaultTargets = ['secure-login.example', 'admin-portal.example', 'alerts.example'];
-    const defaultDistractors = ['status.example', 'helpdesk.example', 'cdn.example'];
+    const defaultHarmful = ['secure-login.example', 'admin-portal.example', 'alerts.example'];
+    const defaultBenign = ['status.example', 'helpdesk.example', 'cdn.example'];
     const defaultNeutrals = ['mail.example', 'files.example', 'intranet.example'];
 
     const resolvedGoControl = (responseDevice === 'keyboard')
@@ -448,7 +451,8 @@
         <div class="meta">
           <span class="pill">Visible: ${escHtml(String(visibleEntries))}</span>
           <span class="pill">Scroll: ${escHtml(String(scrollIntervalMs))}ms</span>
-          <span class="pill">GO on: ${escHtml(goCondition)}</span>
+          <span class="pill">GO on: ${escHtml(goClassLabel)}</span>
+          <span class="pill">Neutral: ${includeNeutralEntries ? 'on' : 'off'}</span>
           <span class="pill">Device: ${escHtml(responseDevice)}</span>
           <span class="pill">${responseDevice === 'keyboard' ? `Key: ${escHtml(goKey === ' ' ? 'SPACE' : goKey)}` : `Button: ${escHtml(goButton)}`}</span>
         </div>
@@ -506,14 +510,23 @@
       // Decide class
       const r = Math.random();
       let kind = 'neutral';
-      if (r < targetProbability) kind = 'target';
-      else if (r < targetProbability + distractorProbability) kind = 'distractor';
-      else kind = (neutralProbability > 0 ? 'neutral' : 'target');
+      if (includeNeutralEntries) {
+        if (r < harmfulProbability) kind = 'harmful';
+        else if (r < harmfulProbability + benignProbability) kind = 'benign';
+      } else {
+        const tdTotal = Math.max(0, harmfulProbability) + Math.max(0, benignProbability);
+        if (tdTotal > 0) {
+          const pHarmfulRenorm = Math.max(0, harmfulProbability) / tdTotal;
+          kind = (r < pHarmfulRenorm) ? 'harmful' : 'benign';
+        } else {
+          kind = 'harmful';
+        }
+      }
 
-      const dst = (kind === 'target')
-        ? pick(targets, pick(defaultTargets, 'secure-login.example'))
-        : (kind === 'distractor')
-          ? pick(distractors, pick(defaultDistractors, 'status.example'))
+      const dst = (kind === 'harmful')
+        ? pick(harmful, pick(defaultHarmful, 'secure-login.example'))
+        : (kind === 'benign')
+          ? pick(benign, pick(defaultBenign, 'status.example'))
           : pick(neutrals, pick(defaultNeutrals, 'mail.example'));
 
       const event = pick(eventTypes, 'HTTP GET');
@@ -546,8 +559,8 @@
         if (row.responded) tr.classList.add('soc-sart-responded');
 
         const dstText = escHtml(row.dst);
-        const shouldHighlight = highlightSubdomains && (row.kind === 'target' || row.kind === 'distractor');
-        const color = (row.kind === 'target') ? targetColor : distractorColor;
+        const shouldHighlight = highlightSubdomains && (row.kind === 'harmful' || row.kind === 'benign');
+        const color = (row.kind === 'harmful') ? harmfulColor : benignColor;
 
         const goBtnHtml = (responseDevice === 'mouse')
           ? `<button type="button" class="soc-sart-go-btn" data-row-id="${escHtml(row.id)}" ${row.id !== currentId || row.responded ? 'disabled' : ''}>${escHtml(goButton === 'change' ? 'Change' : 'Action')}</button>`
@@ -562,8 +575,8 @@
             ${shouldHighlight
               ? `<span class="soc-sart-highlight" style="background: ${escHtml(color)}22; border: 1px solid ${escHtml(color)}55; color: #fff;">${dstText}</span>`
               : dstText}
-            ${showMarkers && row.kind === 'target' ? ` <span class="soc-sart-badge" style="border-color:${escHtml(targetColor)}55;">target</span>` : ''}
-            ${showMarkers && row.kind === 'distractor' ? ` <span class="soc-sart-badge" style="border-color:${escHtml(distractorColor)}55;">distractor</span>` : ''}
+            ${showMarkers && row.kind === 'harmful' ? ` <span class="soc-sart-badge" style="border-color:${escHtml(harmfulColor)}55;">harmful</span>` : ''}
+            ${showMarkers && row.kind === 'benign' ? ` <span class="soc-sart-badge" style="border-color:${escHtml(benignColor)}55;">benign</span>` : ''}
           </td>
           <td>${escHtml(row.event)}</td>
           <td style="white-space: nowrap;">
@@ -630,8 +643,10 @@
       if (body) {
         const resolved = substitutePlaceholders(instructionsHtmlRaw, {
           GO_CONTROL: resolvedGoControl,
-          TARGETS: (targets.length ? targets.join(', ') : '(set target_subdomains)'),
-          DISTRACTORS: (distractors.length ? distractors.join(', ') : '(set distractor_subdomains)')
+          HARMFUL: (harmful.length ? harmful.join(', ') : '(set harmful_subdomains)'),
+          BENIGN: (benign.length ? benign.join(', ') : '(set benign_subdomains)'),
+          TARGETS: (harmful.length ? harmful.join(', ') : '(set harmful_subdomains)'),
+          DISTRACTORS: (benign.length ? benign.join(', ') : '(set benign_subdomains)')
         });
         body.innerHTML = resolved;
       }

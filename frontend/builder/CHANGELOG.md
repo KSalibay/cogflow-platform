@@ -1,5 +1,30 @@
 # CogFlow Builder & Interpreter Changelog
 
+## April 7, 2026
+
+### CRDM Mouse Diagnostics + MOT/DRT Choice-Phase Gating
+
+- CRDM mouse-response exports now include explicit response-region metadata to support null-response auditing while keeping full-canvas click behavior unchanged.
+  - Added response flags/metrics such as:
+    - `response_registered`, `response_not_registered_reason`
+    - `response_within_canvas`, `response_within_aperture`, `response_within_boundary_band`
+    - `response_distance_from_center_px`, selection mode, and pointer-event counters
+  - Applies to both single-trial RDM and continuous RDM frame records.
+- MOT now auto-pauses DRT during the probe/choice phase and auto-resumes DRT immediately after probe completion.
+  - This mirrors the existing MW-probe DRT stop/start behavior and requires no Builder schema/UI changes.
+  - Goal: keep DRT active during tracking but suppress DRT overlays while participants are making MOT choices.
+- Added MOT yes/no recognition probe mode (`yes_no_recognition`) across authoring and runtime.
+  - Builder: mode available in MOT defaults, component modal, and MOT block settings.
+  - Builder Preview: MOT preview now reflects recognition mode and yes/no keys.
+  - Interpreter: MOT runtime now supports yes/no recognition responses with configurable `yes_key` / `no_key` and emits recognition-specific trial fields.
+- Added MOT recognition probe-count control to run multiple yes/no probes per trial before advancing.
+  - Builder: new `recognition_probe_count` / `mot_recognition_probe_count` parameter wiring in defaults, schema, export, and block settings.
+  - Builder Preview: yes/no probe hint now includes probes-per-trial count.
+  - Interpreter: yes/no recognition now asks `N` probes sequentially (without replacement), aggregates scoring across probes, and exports per-probe response details.
+- Added conditional visibility for `survey-response` / `mw-probe` questions.
+  - Builder question editor now supports optional per-question `visible_if` rules (`question_id` + expected value).
+  - Interpreter survey runtime now applies conditional show/hide live as answers change, validates required fields only for visible questions, and remains backward compatible with legacy `show_if_*` keys.
+
 ## April 2, 2026
 
 ### Builder Import Rehydration + SOC/DRT/MOT Alignment

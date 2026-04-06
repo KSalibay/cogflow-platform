@@ -41,7 +41,10 @@
       cue_flash_rate_hz:    { type: PT.FLOAT,  default: 3 },
       tracking_duration_ms: { type: PT.INT,    default: 8000 },
       iti_ms:               { type: PT.INT,    default: 1000 },
-      probe_mode:           { type: PT.SELECT, default: 'click', options: ['click', 'number_entry'] },
+      probe_mode:           { type: PT.SELECT, default: 'click', options: ['click', 'number_entry', 'yes_no_recognition'] },
+      yes_key:              { type: PT.STRING, default: 'y' },
+      no_key:               { type: PT.STRING, default: 'n' },
+      recognition_probe_count: { type: PT.INT, default: 1 },
       probe_timeout_ms:     { type: PT.INT,    default: 0 },
       show_feedback:        { type: PT.BOOL,   default: false },
       feedback_duration_ms: { type: PT.INT,    default: 1500 }
@@ -55,6 +58,15 @@
       rt_first_response_ms: { type: PT.FLOAT },
       selected_objects:     { type: PT.STRING },
       clicks:               { type: PT.STRING },
+      probe_object_index:   { type: PT.INT },
+      probe_object_is_target: { type: PT.BOOL },
+      recognition_response: { type: PT.STRING },
+      recognition_response_key: { type: PT.STRING },
+      recognition_is_yes:   { type: PT.BOOL },
+      recognition_correct:  { type: PT.BOOL },
+      recognition_probe_count: { type: PT.INT },
+      recognition_probe_indices: { type: PT.STRING },
+      recognition_trials:   { type: PT.STRING },
       ended_reason:         { type: PT.STRING },
       plugin_version:       { type: PT.STRING }
     }
@@ -88,7 +100,7 @@
         boundary_behavior, min_separation_px,
         speed_px_per_s, speed_variability, motion_type, curve_strength,
         cue_duration_ms, cue_flash_rate_hz, tracking_duration_ms, iti_ms,
-        probe_mode, probe_timeout_ms, show_feedback, feedback_duration_ms
+        probe_mode, yes_key, no_key, recognition_probe_count, probe_timeout_ms, show_feedback, feedback_duration_ms
       } = trial;
 
       const r = object_radius_px;
@@ -181,6 +193,22 @@
       let clickLog         = [];
       let endedReason      = 'selection_complete';
       let probeTimerHandle = null;
+      let drtPausedForProbe = false;
+      let drtResumeConfig = null;
+      let probeObjectIndex = null;
+      let recognitionResponse = null;
+      let recognitionResponseKey = null;
+      let recognitionIsYes = null;
+      let recognitionCorrect = null;
+      let recognitionProbeIndices = [];
+      let recognitionProbeCursor = 0;
+      let recognitionTrials = [];
+
+      const requestedRecognitionProbeCount = (() => {
+        const n = Number.parseInt(recognition_probe_count, 10);
+        if (!Number.isFinite(n)) return 1;
+        return Math.max(1, Math.min(20, n));
+      })();
 
       // ── physics ──────────────────────────────────────────────────────────
       const MAX_TURN_RAD_S = 3.0;   // max turning speed for curved mode
@@ -285,6 +313,7 @@
           const o       = objects[i];
           const isTgt   = targetSet.has(i);
           const isSel   = selectedObjects.has(i);
+          const isRecognitionProbe = (probe_mode === 'yes_no_recognition' && Number.isInteger(probeObjectIndex) && i === probeObjectIndex);
 
           // fill color
           let fillColor = object_color;
@@ -309,8 +338,25 @@
             ctx.fillText(String(i + 1), o.x, o.y);
           }
 
+          if (phase === 'probe' && isRecognitionProbe) {
+            ctx.beginPath();
+            ctx.arc(o.x, o.y, r + 6, 0, 2 * Math.PI);
+            ctx.strokeStyle = '#facc15';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+          }
+
           // feedback rings
           if (phase === 'feedback') {
+            if (isRecognitionProbe && (recognitionCorrect === true || recognitionCorrect === false)) {
+              ctx.beginPath();
+              ctx.arc(o.x, o.y, r + 6, 0, 2 * Math.PI);
+              ctx.strokeStyle = recognitionCorrect ? '#00cc44' : '#cc0000';
+              ctx.lineWidth = 4;
+              ctx.stroke();
+              continue;
+            }
+
             let ringColor = null;
             if (isTgt && isSel)   ringColor = '#00cc44';  // correct hit
             if (isTgt && !isSel)  ringColor = '#cc0000';  // missed
@@ -332,12 +378,24 @@
         if (probeTimerHandle) clearTimeout(probeTimerHandle);
         canvas.removeEventListener('click', handleCanvasClick);
         document.removeEventListener('keydown', handleEnterKey);
+        document.removeEventListener('keydown', handleYesNoKey);
 
         const selArr = Array.from(selectedObjects);
-        let numCorrect = 0, numFalseAlarms = 0;
-        for (const idx of selArr) {
-          if (targetSet.has(idx)) numCorrect++;
-          else                    numFalseAlarms++;
+        let numCorrect = 0;
+        let numFalseAlarms = 0;
+        let numMissed = 0;
+
+        if (probe_mode === 'yes_no_recognition') {
+          const respondedTrials = recognitionTrials.filter(t => t && (t.recognition_is_yes === true || t.recognition_is_yes === false));
+          numCorrect = respondedTrials.filter(t => t.recognition_correct === true).length;
+          numFalseAlarms = respondedTrials.filter(t => t.recognition_is_yes === true && t.probe_object_is_target === false).length;
+          numMissed = respondedTrials.filter(t => t.recognition_is_yes === false && t.probe_object_is_target === true).length;
+        } else {
+          for (const idx of selArr) {
+            if (targetSet.has(idx)) numCorrect++;
+            else                    numFalseAlarms++;
+          }
+          numMissed = Math.max(0, num_targets - numCorrect);
         }
 
         display_element.innerHTML = '';
@@ -346,10 +404,20 @@
           num_targets,
           num_correct:          numCorrect,
           num_false_alarms:     numFalseAlarms,
-          num_missed:           num_targets - numCorrect,
+          num_missed:           numMissed,
           rt_first_response_ms: firstResponseMs,
           selected_objects:     JSON.stringify(selArr),
           clicks:               JSON.stringify(clickLog),
+          probe_object_index:   Number.isInteger(probeObjectIndex) ? probeObjectIndex : null,
+          probe_object_is_target: Number.isInteger(probeObjectIndex) ? targetSet.has(probeObjectIndex) : null,
+          recognition_response: recognitionResponse,
+          recognition_response_key: recognitionResponseKey,
+          recognition_is_yes: recognitionIsYes,
+          recognition_correct: recognitionCorrect,
+          recognition_probe_count: recognitionProbeIndices.length,
+          recognition_probe_indices: JSON.stringify(recognitionProbeIndices),
+          recognition_trials: JSON.stringify(recognitionTrials),
+          drt_paused_during_choice_phase: drtPausedForProbe,
           ended_reason:         endedReason,
           plugin_version:       '1.0.0'
         });
@@ -394,6 +462,19 @@
         if (evt.key === 'Enter') submitNumberEntry();
       }
 
+      function handleYesNoKey(evt) {
+        if (phase !== 'probe' || probe_mode !== 'yes_no_recognition') return;
+        const key = (evt && typeof evt.key === 'string') ? evt.key.trim().toLowerCase() : '';
+        if (!key) return;
+        const yes = (yes_key || 'y').toString().trim().toLowerCase();
+        const no = (no_key || 'n').toString().trim().toLowerCase();
+        if (key === yes) {
+          submitRecognition(true, 'keyboard', evt.key);
+        } else if (key === no) {
+          submitRecognition(false, 'keyboard', evt.key);
+        }
+      }
+
       function parseNumbers(str) {
         return str.split(/[\s,;]+/)
           .map(s => parseInt(s, 10))
@@ -409,15 +490,107 @@
         beginFeedbackOrIti();
       }
 
+      function submitRecognition(isYes, source, keyRaw) {
+        if (phase !== 'probe' || probe_mode !== 'yes_no_recognition') return;
+        if (firstResponseMs === null) firstResponseMs = performance.now() - probeStartMs;
+
+        const probeIsTarget = Number.isInteger(probeObjectIndex) ? targetSet.has(probeObjectIndex) : false;
+        recognitionIsYes = !!isYes;
+        recognitionResponse = recognitionIsYes ? 'yes' : 'no';
+        recognitionResponseKey = keyRaw ?? null;
+        recognitionCorrect = recognitionIsYes === probeIsTarget;
+
+        const entry = {
+          probe_index_ordinal: recognitionProbeCursor + 1,
+          probe_object_index: probeObjectIndex,
+          probe_object_is_target: probeIsTarget,
+          recognition_response: recognitionResponse,
+          recognition_response_key: recognitionResponseKey,
+          recognition_is_yes: recognitionIsYes,
+          recognition_correct: recognitionCorrect,
+          response_source: source || 'keyboard',
+          t_ms: performance.now() - probeStartMs
+        };
+        recognitionTrials.push(entry);
+
+        clickLog.push(entry);
+
+        const hasMoreRecognitionProbes = (recognitionProbeCursor + 1) < recognitionProbeIndices.length;
+        if (hasMoreRecognitionProbes) {
+          recognitionProbeCursor += 1;
+          probeObjectIndex = recognitionProbeIndices[recognitionProbeCursor];
+          instrEl.textContent = `Was this dot a target? (Probe ${recognitionProbeCursor + 1}/${recognitionProbeIndices.length})`;
+          return;
+        }
+
+        endedReason = (source === 'button') ? 'button_complete' : 'keypress_complete';
+        beginFeedbackOrIti();
+      }
+
       // ── probe start ──────────────────────────────────────────────────────
       function startProbe() {
+        // If DRT is currently running from an outer segment, pause it for choice/probe.
+        // We resume with the same config once probe exits.
+        drtPausedForProbe = false;
+        drtResumeConfig = null;
+        try {
+          const drt = window.DrtEngine;
+          if (drt && typeof drt.isRunning === 'function' && drt.isRunning()) {
+            if (typeof drt.getCurrentConfig === 'function') {
+              drtResumeConfig = drt.getCurrentConfig();
+            }
+            if (typeof drt.stop === 'function') {
+              drt.stop();
+              drtPausedForProbe = true;
+            }
+          }
+        } catch {
+          // Keep MOT running even if DRT orchestration fails.
+          drtPausedForProbe = false;
+          drtResumeConfig = null;
+        }
+
         phase        = 'probe';
         probeStartMs = performance.now();
         canvas.style.cursor = probe_mode === 'click' ? 'pointer' : 'default';
+        probeObjectIndex = null;
+        recognitionResponse = null;
+        recognitionResponseKey = null;
+        recognitionIsYes = null;
+        recognitionCorrect = null;
+        recognitionProbeIndices = [];
+        recognitionProbeCursor = 0;
+        recognitionTrials = [];
 
         if (probe_mode === 'click') {
           instrEl.textContent = `Click the ${num_targets} object(s) you were tracking.`;
           canvas.addEventListener('click', handleCanvasClick);
+        } else if (probe_mode === 'yes_no_recognition') {
+          const maxUnique = Math.max(1, objects.length);
+          const count = Math.min(maxUnique, requestedRecognitionProbeCount);
+          recognitionProbeIndices = shuffle(objects.map((_, i) => i).slice()).slice(0, count);
+          recognitionProbeCursor = 0;
+          probeObjectIndex = recognitionProbeIndices[0];
+          instrEl.textContent = `Was this dot a target? (Probe 1/${recognitionProbeIndices.length})`;
+          inputRow.style.display = 'flex';
+          inputRow.innerHTML = `
+            <span>Was this dot a target?</span>
+            <button id="mot-yes-btn"
+              style="padding:4px 14px;font-size:14px;background:#1f6f3f;color:#fff;
+                     border:1px solid #2c8f56;border-radius:3px;cursor:pointer;">
+              Yes (${(yes_key || 'y').toString()})
+            </button>
+            <button id="mot-no-btn"
+              style="padding:4px 14px;font-size:14px;background:#6f1f1f;color:#fff;
+                     border:1px solid #9b2d2d;border-radius:3px;cursor:pointer;">
+              No (${(no_key || 'n').toString()})
+            </button>`;
+
+          const yesBtn = document.getElementById('mot-yes-btn');
+          const noBtn = document.getElementById('mot-no-btn');
+          if (yesBtn) yesBtn.addEventListener('click', () => submitRecognition(true, 'button', null));
+          if (noBtn) noBtn.addEventListener('click', () => submitRecognition(false, 'button', null));
+          document.addEventListener('keydown', handleYesNoKey);
         } else {
           instrEl.textContent = `Type the number(s) of the object(s) you tracked, then press Enter.`;
           document.addEventListener('keydown', handleEnterKey);
@@ -467,9 +640,25 @@
         if (probeTimerHandle) { clearTimeout(probeTimerHandle); probeTimerHandle = null; }
         canvas.removeEventListener('click', handleCanvasClick);
         document.removeEventListener('keydown', handleEnterKey);
+        document.removeEventListener('keydown', handleYesNoKey);
         inputRow.style.display = 'none';
+        inputRow.innerHTML = '';
         instrEl.textContent    = '';
         canvas.style.cursor    = 'default';
+
+        // Resume DRT after choice/probe so it remains active for non-choice phases.
+        if (drtPausedForProbe) {
+          try {
+            const drt = window.DrtEngine;
+            if (drt && typeof drt.start === 'function' && drtResumeConfig) {
+              drt.start(drtResumeConfig);
+            }
+          } catch {
+            // Non-fatal: do not block MOT completion if DRT resume fails.
+          }
+        }
+        drtPausedForProbe = false;
+        drtResumeConfig = null;
 
         if (show_feedback) {
           phase      = 'feedback';

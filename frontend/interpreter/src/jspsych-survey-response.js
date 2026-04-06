@@ -51,7 +51,51 @@
   }
 
   function coerceQuestions(raw) {
-    return Array.isArray(raw) ? raw.filter((q) => q && typeof q === 'object') : [];
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .filter((q) => q && typeof q === 'object')
+      .map((q) => {
+        const visibleIfRaw = (q.visible_if && typeof q.visible_if === 'object')
+          ? q.visible_if
+          : ((q.show_if_question_id !== undefined || q.show_if_value !== undefined)
+            ? { question_id: q.show_if_question_id, equals: q.show_if_value }
+            : null);
+
+        let visible_if = null;
+        if (visibleIfRaw && typeof visibleIfRaw === 'object') {
+          const questionId = (visibleIfRaw.question_id ?? visibleIfRaw.id ?? '').toString().trim();
+          if (questionId) {
+            visible_if = {
+              question_id: questionId,
+              equals: Object.prototype.hasOwnProperty.call(visibleIfRaw, 'equals')
+                ? visibleIfRaw.equals
+                : (Object.prototype.hasOwnProperty.call(visibleIfRaw, 'value') ? visibleIfRaw.value : '')
+            };
+          }
+        }
+
+        return {
+          ...q,
+          visible_if
+        };
+      });
+  }
+
+  function valuesEqual(a, b) {
+    if (a === b) return true;
+    const an = Number(a);
+    const bn = Number(b);
+    if (Number.isFinite(an) && Number.isFinite(bn)) return an === bn;
+    return String(a ?? '').trim().toLowerCase() === String(b ?? '').trim().toLowerCase();
+  }
+
+  function evaluateVisible(question, responses) {
+    const rule = question?.visible_if;
+    if (!rule || typeof rule !== 'object') return true;
+    const depId = (rule.question_id ?? '').toString().trim();
+    if (!depId) return true;
+    const actual = responses ? responses[depId] : null;
+    return valuesEqual(actual, rule.equals);
   }
 
   function getFormData(formEl, questions) {
@@ -60,6 +104,13 @@
     for (const q of questions) {
       const id = (q && typeof q.id === 'string' && q.id.trim()) ? q.id.trim() : null;
       if (!id) continue;
+
+      const qEl = formEl.querySelector(`.sr-q[data-question-id="${CSS.escape(id)}"]`);
+      const hidden = qEl && qEl.getAttribute('data-visible') === 'false';
+      if (hidden) {
+        out[id] = null;
+        continue;
+      }
 
       const type = (q.type || 'text').toLowerCase();
 
@@ -118,6 +169,38 @@
     return missing;
   }
 
+  function resetQuestionInputs(questionEl) {
+    if (!questionEl) return;
+    const fields = questionEl.querySelectorAll('input, textarea, select');
+    fields.forEach((field) => {
+      const tag = (field.tagName || '').toLowerCase();
+      const type = (field.type || '').toLowerCase();
+
+      if (tag === 'select') {
+        field.selectedIndex = 0;
+        return;
+      }
+
+      if (tag === 'textarea') {
+        field.value = '';
+        return;
+      }
+
+      if (type === 'radio' || type === 'checkbox') {
+        field.checked = false;
+        return;
+      }
+
+      if (type === 'range') {
+        const min = Number(field.min);
+        field.value = Number.isFinite(min) ? String(min) : '0';
+        return;
+      }
+
+      field.value = '';
+    });
+  }
+
   class JsPsychSurveyResponsePlugin {
     constructor(jsPsych) {
       this.jsPsych = jsPsych;
@@ -151,7 +234,7 @@
           }).join('');
 
           return `
-            <div class="sr-q" style="margin: 14px 0;">
+            <div class="sr-q" data-question-id="${esc(id)}" data-visible="true" style="margin: 14px 0;">
               <div style="font-weight:600; margin-bottom:6px;">${prompt} ${requiredMark}</div>
               <div>${inputs}</div>
             </div>
@@ -167,7 +250,7 @@
           const initValue = Number.isFinite(Number(q.value)) ? Number(q.value) : min;
 
           return `
-            <div class="sr-q" style="margin: 14px 0;">
+            <div class="sr-q" data-question-id="${esc(id)}" data-visible="true" style="margin: 14px 0;">
               <div style="font-weight:600; margin-bottom:6px;">${prompt} ${requiredMark}</div>
               <div style="display:flex; gap:10px; align-items:center;">
                 <span style="opacity:0.8; min-width: 32px;">${minLabel}</span>
@@ -186,7 +269,7 @@
           const placeholder = esc(q.placeholder || '');
 
           return `
-            <div class="sr-q" style="margin: 14px 0;">
+            <div class="sr-q" data-question-id="${esc(id)}" data-visible="true" style="margin: 14px 0;">
               <div style="font-weight:600; margin-bottom:6px;">${prompt} ${requiredMark}</div>
               <input type="number" name="${esc(id)}" class="sr-input" placeholder="${placeholder}" ${minAttr} ${maxAttr} ${stepAttr} ${required ? 'required' : ''}
                 style="width:100%; padding:10px; border-radius:10px; border:1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.2); color: inherit;" />
@@ -200,7 +283,7 @@
         const placeholder = esc(q.placeholder || '');
 
         return `
-          <div class="sr-q" style="margin: 14px 0;">
+          <div class="sr-q" data-question-id="${esc(id)}" data-visible="true" style="margin: 14px 0;">
             <div style="font-weight:600; margin-bottom:6px;">${prompt} ${requiredMark}</div>
             ${multiline
               ? `<textarea name="${esc(id)}" rows="${rows}" placeholder="${placeholder}" ${required ? 'required' : ''}
@@ -232,6 +315,29 @@
 
       let ended = false;
 
+      const applyConditionalVisibility = () => {
+        const responses = getFormData(formEl, questions);
+        for (const q of questions) {
+          const id = (q && typeof q.id === 'string' && q.id.trim()) ? q.id.trim() : null;
+          if (!id) continue;
+          const qEl = formEl.querySelector(`.sr-q[data-question-id="${CSS.escape(id)}"]`);
+          if (!qEl) continue;
+
+          const visible = evaluateVisible(q, responses);
+          qEl.setAttribute('data-visible', visible ? 'true' : 'false');
+          qEl.style.display = visible ? '' : 'none';
+
+          const fields = qEl.querySelectorAll('input, textarea, select');
+          fields.forEach((field) => {
+            field.disabled = !visible;
+          });
+
+          if (!visible) {
+            resetQuestionInputs(qEl);
+          }
+        }
+      };
+
       const finish = (reason) => {
         if (ended) return;
         ended = true;
@@ -249,8 +355,10 @@
 
       const onSubmit = (e) => {
         e.preventDefault();
+        applyConditionalVisibility();
         const responses = getFormData(formEl, questions);
-        const missing = validateRequired(questions, responses);
+        const visibleQuestions = questions.filter((q) => evaluateVisible(q, responses));
+        const missing = validateRequired(visibleQuestions, responses);
 
         if (missing.length > 0) {
           if (errorEl) {
@@ -264,6 +372,13 @@
       };
 
       formEl.addEventListener('submit', onSubmit);
+
+      try {
+        formEl.addEventListener('change', applyConditionalVisibility);
+        formEl.addEventListener('input', applyConditionalVisibility);
+      } catch {
+        // ignore
+      }
 
       // Slider live value labels
       try {
@@ -285,6 +400,8 @@
       } catch {
         // ignore
       }
+
+      applyConditionalVisibility();
 
       // Timeout handling
       if (Number.isFinite(timeoutMs) && timeoutMs > 0) {

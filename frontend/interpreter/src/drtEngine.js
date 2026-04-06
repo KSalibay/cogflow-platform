@@ -452,6 +452,10 @@
   window.DrtEngine = {
     start,
     stop,
-    isRunning: () => state.running === true
+    isRunning: () => state.running === true,
+    getCurrentConfig: () => {
+      if (!state.running || !state.cfg) return null;
+      return { ...state.cfg };
+    }
   };
 })();

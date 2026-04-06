@@ -283,8 +283,25 @@ class UnifiedSchema {
             probe_mode: {
                 type: this.parameterTypes.SELECT,
                 default: 'click',
-                options: ['click', 'number_entry'],
+                options: ['click', 'number_entry', 'yes_no_recognition'],
                 description: 'Probe interaction mode'
+            },
+            yes_key: {
+                type: this.parameterTypes.STRING,
+                default: 'y',
+                description: 'Recognition mode: keyboard key for YES response'
+            },
+            no_key: {
+                type: this.parameterTypes.STRING,
+                default: 'n',
+                description: 'Recognition mode: keyboard key for NO response'
+            },
+            recognition_probe_count: {
+                type: this.parameterTypes.NUMBER,
+                default: 1,
+                min: 1,
+                max: 20,
+                description: 'Recognition mode: number of yes/no probes before advancing'
             }
         };
     }

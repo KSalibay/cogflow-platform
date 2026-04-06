@@ -150,7 +150,7 @@
       .soc-modal-layer { position:absolute; inset:0; z-index: 8; pointer-events: none; }
       .soc-appwin { position: relative; background: rgba(12,16,26,0.88); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; box-shadow: 0 18px 55px rgba(0,0,0,0.50); overflow:hidden; min-height: 0; }
       /* Keep grid position stable when windows hide/show */
-      .soc-appwin.soc-win-hidden { visibility: hidden; pointer-events: none; }
+      .soc-appwin.soc-win-hidden { display: none; pointer-events: none; }
       .soc-appwin .titlebar { height: 38px; display:flex; align-items:center; gap: 10px; padding: 0 12px; background: rgba(255,255,255,0.06); border-bottom: 1px solid rgba(255,255,255,0.10); }
       .soc-appwin .titlebar .ttl { font-weight: 600; font-size: 13px; }
       .soc-appwin .titlebar .soc-title-debug { margin-left: auto; font-size: 11px; opacity: 0.85; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
@@ -173,8 +173,8 @@
       .soc-log-feed { width:100%; border-collapse: collapse; font-size: 12px; }
       .soc-log-feed th, .soc-log-feed td { border-bottom: 1px solid rgba(255,255,255,0.08); padding: 6px 6px; text-align:left; }
       .soc-log-feed tbody tr { transition: background 120ms ease; }
-      .soc-log-feed tbody tr.target { background: rgba(255, 77, 77, 0.12); }
-      .soc-log-feed tbody tr.distractor { background: rgba(61, 214, 255, 0.10); }
+      .soc-log-feed tbody tr.harmful { background: rgba(255, 77, 77, 0.12); }
+      .soc-log-feed tbody tr.benign { background: rgba(61, 214, 255, 0.10); }
       .soc-log-feed tbody tr.current { box-shadow: inset 0 0 0 2px rgba(250,204,21,0.55); }
       .soc-log-feed tbody tr.responded { opacity: 0.78; }
       .soc-log-feed tbody tr:hover { background: rgba(255,255,255,0.06); }
@@ -338,6 +338,7 @@
 
     function coerceSchedule(rawSubtask) {
       const o = (rawSubtask && typeof rawSubtask === 'object') ? rawSubtask : {};
+      const subtaskType = (o.type ?? o.subtask_type ?? '').toString().trim().toLowerCase();
 
       const startAtRaw = Number(o.start_at_ms);
       const startDelayRaw = Number(o.start_delay_ms);
@@ -352,6 +353,27 @@
       );
 
       if (!hasSchedule) {
+        // MW-probe fallback schedule:
+        // If no explicit schedule is set, respect min/max interval as the delay
+        // from SOC session start before the probe window appears.
+        if (subtaskType === 'mw-probe') {
+          const minRaw = Number(o.min_interval_ms);
+          const maxRaw = Number(o.max_interval_ms);
+          const hasMwInterval = (
+            (Number.isFinite(minRaw) && minRaw > 0)
+            || (Number.isFinite(maxRaw) && maxRaw > 0)
+          );
+
+          if (hasMwInterval) {
+            const minMs = Number.isFinite(minRaw) ? Math.max(0, Math.floor(minRaw)) : 0;
+            const maxMs = Number.isFinite(maxRaw) ? Math.max(0, Math.floor(maxRaw)) : minMs;
+            const lo = Math.min(minMs, maxMs);
+            const hi = Math.max(minMs, maxMs);
+            const startAt = Math.round(lo + Math.random() * (hi - lo));
+            return { has_schedule: true, start_at_ms: startAt, end_at_ms: null };
+          }
+        }
+
         return { has_schedule: false, start_at_ms: 0, end_at_ms: null };
       }
 
@@ -502,8 +524,44 @@
       return out;
     };
 
-    const nonMwWindowCount = windowsSpec.filter((w) => ((w?.subtask_type ?? '').toString().toLowerCase() !== 'mw-probe')).length;
-    const cols = (nonMwWindowCount <= 1) ? 1 : Math.min(nonMwWindowCount, 2);
+    const maxConcurrentNonMwWindows = (() => {
+      const nonMw = windowsSpec.filter((w) => ((w?.subtask_type ?? '').toString().toLowerCase() !== 'mw-probe'));
+      if (!nonMw.length) return 1;
+
+      const unscheduledCount = nonMw.filter((w) => !(w?.schedule?.has_schedule)).length;
+      const events = [];
+
+      for (const w of nonMw) {
+        const sch = w?.schedule || { has_schedule: false, start_at_ms: 0, end_at_ms: null };
+        if (!sch.has_schedule) continue;
+        const start = Math.max(0, Math.floor(Number(sch.start_at_ms) || 0));
+        const end = (sch.end_at_ms === null || sch.end_at_ms === undefined)
+          ? ((Number.isFinite(trialMs) && trialMs > 0) ? Math.floor(trialMs) : Infinity)
+          : Math.max(start, Math.floor(Number(sch.end_at_ms) || 0));
+
+        events.push({ t: start, d: +1 });
+        if (Number.isFinite(end)) {
+          events.push({ t: end, d: -1 });
+        }
+      }
+
+      if (!events.length) return Math.max(1, unscheduledCount);
+
+      events.sort((a, b) => {
+        if (a.t !== b.t) return a.t - b.t;
+        return a.d - b.d;
+      });
+
+      let running = 0;
+      let maxRunning = 0;
+      for (const ev of events) {
+        running += ev.d;
+        if (running > maxRunning) maxRunning = running;
+      }
+
+      return Math.max(1, unscheduledCount + maxRunning);
+    })();
+    const cols = (maxConcurrentNonMwWindows <= 1) ? 1 : Math.min(maxConcurrentNonMwWindows, 2);
 
     const logIconClicks = (trial.log_icon_clicks !== undefined) ? !!trial.log_icon_clicks : true;
     const iconsClickable = (trial.icons_clickable !== undefined) ? !!trial.icons_clickable : true;
@@ -578,6 +636,17 @@
 
     const isMwProbeWindow = (idx) => ((windowsSpec[idx]?.subtask_type ?? '').toString().toLowerCase() === 'mw-probe');
 
+    let mwPauseTotalMs = 0;
+    let mwPauseStartedAt = null;
+
+    const logicalElapsedMs = () => {
+      const now = nowMs();
+      const currentPause = (Number.isFinite(mwPauseStartedAt) && mwPauseStartedAt !== null)
+        ? Math.max(0, now - mwPauseStartedAt)
+        : 0;
+      return Math.max(0, Math.round((now - startTs) - mwPauseTotalMs - currentPause));
+    };
+
     const activeMwProbeIndex = () => {
       for (let j = 0; j < windowsSpec.length; j++) {
         if (!isMwProbeWindow(j)) continue;
@@ -589,7 +658,7 @@
     const shouldBeVisibleNow = (idx) => {
       const sch = windowsSpec[idx]?.schedule || { has_schedule: false, start_at_ms: 0, end_at_ms: null };
       if (!sch.has_schedule) return true;
-      const t = Math.max(0, Math.floor(nowMs() - startTs));
+      const t = Math.max(0, Math.floor(logicalElapsedMs()));
       const startAt = Math.max(0, Math.floor(Number(sch.start_at_ms) || 0));
       const endAt = (sch.end_at_ms === null || sch.end_at_ms === undefined)
         ? null
@@ -618,6 +687,9 @@
       const wasHidden = el.classList.contains('soc-win-hidden');
       if (wasHidden) {
         el.classList.remove('soc-win-hidden');
+        if (isMw && mwPauseStartedAt === null) {
+          mwPauseStartedAt = nowMs();
+        }
         events.push({
           t_ms: Math.round(nowMs() - startTs),
           type: 'subtask_window_show',
@@ -656,8 +728,25 @@
       }
 
       if (isMwProbeWindow(idx) && activeMwProbeIndex() === null) {
+        if (mwPauseStartedAt !== null) {
+          mwPauseTotalMs += Math.max(0, nowMs() - mwPauseStartedAt);
+          mwPauseStartedAt = null;
+        }
         restoreEligibleNonMwWindows();
       }
+    };
+
+    const setLogicalTimeout = (targetLogicalMs, fn) => {
+      const tick = () => {
+        if (ended) return;
+        const remaining = Math.max(0, Math.floor(targetLogicalMs - logicalElapsedMs()));
+        if (remaining <= 0) {
+          fn();
+          return;
+        }
+        setSafeTimeout(tick, Math.min(100, remaining));
+      };
+      tick();
     };
 
     const startWindowIfNeeded = (idx) => {
@@ -669,11 +758,12 @@
       const pendingDuration = windowEndDurationMs[idx];
       if (Number.isFinite(pendingDuration) && pendingDuration >= 0) {
         windowEndDurationMs[idx] = null;
-        setSafeTimeout(() => {
+        const targetLogical = logicalElapsedMs() + Math.max(0, Math.floor(pendingDuration));
+        setLogicalTimeout(targetLogical, () => {
           if (ended) return;
           forceEndWindow(idx, 'scheduled_end');
           hideWindow(idx);
-        }, pendingDuration);
+        });
       }
     };
 
@@ -733,15 +823,16 @@
       const showMarkers = (o.show_markers !== undefined) ? !!o.show_markers : false;
 
       const highlight = (o.highlight_subdomains !== undefined) ? !!o.highlight_subdomains : true;
-      const targetColor = (o.target_highlight_color ?? '#ff4d4d').toString();
-      const distractorColor = (o.distractor_highlight_color ?? '#3dd6ff').toString();
+      const harmfulColor = (o.harmful_highlight_color ?? o.target_highlight_color ?? '#ff4d4d').toString();
+      const benignColor = (o.benign_highlight_color ?? o.distractor_highlight_color ?? '#3dd6ff').toString();
 
-      const targetList = parseTokenList(o.target_subdomains);
-      const distractorList = parseTokenList(o.distractor_subdomains);
+      const harmfulList = parseTokenList(o.harmful_subdomains ?? o.target_subdomains);
+      const benignList = parseTokenList(o.benign_subdomains ?? o.distractor_subdomains);
       const neutralList = parseTokenList(o.neutral_subdomains);
 
-      const targetProb = clamp(o.target_probability, 0, 1);
-      const distractorProb = clamp(o.distractor_probability, 0, 1);
+      const harmfulProb = clamp((o.harmful_probability ?? o.target_probability), 0, 1);
+      const benignProb = clamp((o.benign_probability ?? o.distractor_probability), 0, 1);
+      const includeNeutralEntries = (o.include_neutral_entries !== undefined) ? !!o.include_neutral_entries : true;
 
       return {
         visible_entries: visibleEntries,
@@ -754,13 +845,20 @@
         go_condition: goCondition,
         show_markers: showMarkers,
         highlight_subdomains: highlight,
-        target_highlight_color: targetColor,
-        distractor_highlight_color: distractorColor,
-        target_subdomains: targetList,
-        distractor_subdomains: distractorList,
+        harmful_highlight_color: harmfulColor,
+        benign_highlight_color: benignColor,
+        target_highlight_color: harmfulColor,
+        distractor_highlight_color: benignColor,
+        harmful_subdomains: harmfulList,
+        benign_subdomains: benignList,
+        target_subdomains: harmfulList,
+        distractor_subdomains: benignList,
         neutral_subdomains: neutralList,
-        target_probability: targetProb,
-        distractor_probability: distractorProb
+        harmful_probability: harmfulProb,
+        benign_probability: benignProb,
+        target_probability: harmfulProb,
+        distractor_probability: benignProb,
+        include_neutral_entries: includeNeutralEntries
       };
     };
 
@@ -1035,6 +1133,7 @@
           ended: false,
           started: false,
           subtask_start_ts: null,
+          subtask_start_logical_ts: null,
           presented: 0,
           responded: 0,
           correct: 0,
@@ -1054,8 +1153,10 @@
         wcstStates[i] = state;
 
         const tSubtaskMs = () => {
-          const base = (state.subtask_start_ts ?? startTs);
-          return Math.round(nowMs() - base);
+          const baseLogical = Number.isFinite(state.subtask_start_logical_ts)
+            ? state.subtask_start_logical_ts
+            : 0;
+          return Math.max(0, Math.round(logicalElapsedMs() - baseLogical));
         };
 
         const dimLabels = {
@@ -3365,7 +3466,12 @@
         const tick = () => {
           if (ended || state.ended || !state.started) return;
 
-          const elapsed = nowMs() - startWall;
+          if (activeMwProbeIndex() !== null) {
+            setSafeTimeout(tick, 50);
+            return;
+          }
+
+          const elapsed = tSubtaskMs();
           if (elapsed >= stopAt) {
             finalizeOmissionIfNeeded();
             state.ended = true;
@@ -3455,7 +3561,8 @@
         hits: 0,
         misses: 0,
         false_alarms: 0,
-        correct_rejects: 0
+        correct_rejects: 0,
+        finalized: new Set()
       };
       sartStates[i] = state;
 
@@ -3469,8 +3576,10 @@
 
       const resolvedInstructionsHtml = substitutePlaceholders(subtaskInstructions, {
         GO_CONTROL: resolvedGoControl,
-        TARGETS: (cfg.target_subdomains.length ? cfg.target_subdomains.join(', ') : '(set target_subdomains)'),
-        DISTRACTORS: (cfg.distractor_subdomains.length ? cfg.distractor_subdomains.join(', ') : '(set distractor_subdomains)')
+        HARMFUL: (cfg.harmful_subdomains.length ? cfg.harmful_subdomains.join(', ') : '(set harmful_subdomains)'),
+        BENIGN: (cfg.benign_subdomains.length ? cfg.benign_subdomains.join(', ') : '(set benign_subdomains)'),
+        TARGETS: (cfg.harmful_subdomains.length ? cfg.harmful_subdomains.join(', ') : '(set target_subdomains)'),
+        DISTRACTORS: (cfg.benign_subdomains.length ? cfg.benign_subdomains.join(', ') : '(set distractor_subdomains)')
       });
 
       const goHint = (cfg.response_device === 'keyboard')
@@ -3478,8 +3587,8 @@
         : `Click "${cfg.go_button === 'change' ? 'Change' : 'Action'}" on the highlighted row`;
 
       const goRule = (cfg.go_condition === 'allow')
-        ? 'GO on TARGET entries; withhold otherwise.'
-        : 'GO on DISTRACTOR entries; withhold otherwise.';
+        ? 'GO on BENIGN entries; withhold on HARMFUL.'
+        : 'GO on HARMFUL entries; withhold on BENIGN.';
 
       host.innerHTML = `
         <div class="soc-log-header">
@@ -3501,14 +3610,20 @@
       const statusEl = host.querySelector(`#soc_sart_status_${i}`);
 
       const shouldGoFor = (entryClass) => {
-        if (cfg.go_condition === 'allow') return entryClass === 'target';
-        if (cfg.go_condition === 'block') return entryClass === 'distractor';
+        if (cfg.go_condition === 'allow') return entryClass === 'benign';
+        if (cfg.go_condition === 'block') return entryClass === 'harmful';
         return false;
       };
 
       const classifyEntry = (kind) => {
-        if (kind === 'target') return 'target';
-        if (kind === 'distractor') return 'distractor';
+        if (kind === 'harmful') return 'harmful';
+        if (kind === 'benign') return 'benign';
+        return 'neutral';
+      };
+
+      const legacyClassFor = (entryClass) => {
+        if (entryClass === 'harmful') return 'target';
+        if (entryClass === 'benign') return 'distractor';
         return 'neutral';
       };
 
@@ -3522,17 +3637,27 @@
       };
 
       const makeEntry = () => {
-        const pTarget = cfg.target_probability;
-        const pDistractor = cfg.distractor_probability;
+        const pHarmful = cfg.harmful_probability;
+        const pBenign = cfg.benign_probability;
         const r = Math.random();
 
         let kind = 'neutral';
-        if (r < pTarget) kind = 'target';
-        else if (r < (pTarget + pDistractor)) kind = 'distractor';
+        if (cfg.include_neutral_entries) {
+          if (r < pHarmful) kind = 'harmful';
+          else if (r < (pHarmful + pBenign)) kind = 'benign';
+        } else {
+          const tdTotal = Math.max(0, pHarmful) + Math.max(0, pBenign);
+          if (tdTotal > 0) {
+            const pHarmfulRenorm = Math.max(0, pHarmful) / tdTotal;
+            kind = (r < pHarmfulRenorm) ? 'harmful' : 'benign';
+          } else {
+            kind = 'harmful';
+          }
+        }
 
         let dest = null;
-        if (kind === 'target') dest = pickRandom(cfg.target_subdomains);
-        if (kind === 'distractor') dest = pickRandom(cfg.distractor_subdomains);
+        if (kind === 'harmful') dest = pickRandom(cfg.harmful_subdomains);
+        if (kind === 'benign') dest = pickRandom(cfg.benign_subdomains);
         if (!dest) {
           // If list empty, degrade gracefully.
           kind = 'neutral';
@@ -3550,7 +3675,12 @@
           id,
           kind,
           cls: classifyEntry(kind),
+          responded: false,
+          response_device: null,
+          responded_at_ms: null,
+          rt_ms: null,
           t_presented_ms: Math.round(createdAt - (state.subtask_start_ts ?? startTs)),
+          t_presented_global_ms: Math.round(createdAt - startTs),
           createdAt,
           clock,
           src_ip: randomIp(),
@@ -3567,8 +3697,8 @@
         if (!entry) return;
         // Semantics: GO commits a triage decision.
         // To avoid mixing ALLOW/BLOCK in the same run, bind the action to the configured GO rule:
-        // - GO on target (allow mode)  => ALLOW (even if a participant responds on a distractor)
-        // - GO on distractor (block mode) => BLOCK (even if a participant responds on a target)
+        // - GO on BENIGN (allow mode)  => ALLOW
+        // - GO on HARMFUL (block mode) => BLOCK
         entry.triage_action = (cfg.go_condition === 'block') ? 'BLOCK' : 'ALLOW';
       };
 
@@ -3587,19 +3717,19 @@
 
           const flags = `${isCurrent ? ' current' : ''}${already ? ' responded' : ''}`;
 
-          const tag = (e.cls === 'target')
-            ? '<span class="soc-log-tag">TARGET</span>'
-            : (e.cls === 'distractor')
-              ? '<span class="soc-log-tag">DISTRACTOR</span>'
+          const tag = (e.cls === 'harmful')
+            ? '<span class="soc-log-tag">HARMFUL</span>'
+            : (e.cls === 'benign')
+              ? '<span class="soc-log-tag">BENIGN</span>'
               : '<span class="soc-log-tag">NEUTRAL</span>';
 
           // Optional per-class tint overrides
           let style = '';
-          if (cfg.highlight_subdomains && e.cls === 'target') {
-            style = `style="background: ${escHtml(cfg.target_highlight_color)}22;"`;
+          if (cfg.highlight_subdomains && e.cls === 'harmful') {
+            style = `style="background: ${escHtml(cfg.harmful_highlight_color)}22;"`;
           }
-          if (cfg.highlight_subdomains && e.cls === 'distractor') {
-            style = `style="background: ${escHtml(cfg.distractor_highlight_color)}22;"`;
+          if (cfg.highlight_subdomains && e.cls === 'benign') {
+            style = `style="background: ${escHtml(cfg.benign_highlight_color)}22;"`;
           }
 
           const actionCell = (() => {
@@ -3639,24 +3769,54 @@
         return Math.round(nowMs() - base);
       };
 
-      const recordMissIfNeeded = (entry) => {
+      const finalizeEntry = (entry, endedReason) => {
         if (!entry) return;
-        if (!shouldGoFor(entry.cls)) {
-          state.correct_rejects += 1;
-          return;
-        }
+        if (state.finalized.has(entry.id)) return;
+        state.finalized.add(entry.id);
 
-        if (state.responded.has(entry.id)) return;
-        state.misses += 1;
+        const shouldRespond = shouldGoFor(entry.cls);
+        const responded = !!entry.responded;
+
+        let outcome = 'correct_rejection';
+        if (responded && shouldRespond) outcome = 'hit';
+        else if (responded && !shouldRespond) outcome = 'false_alarm';
+        else if (!responded && shouldRespond) outcome = 'miss';
+
+        const correct = (outcome === 'hit' || outcome === 'correct_rejection');
+
+        if (outcome === 'hit') state.hits += 1;
+        else if (outcome === 'false_alarm') state.false_alarms += 1;
+        else if (outcome === 'miss') state.misses += 1;
+        else if (outcome === 'correct_rejection') state.correct_rejects += 1;
+
         events.push({
-          t_ms: Math.round(nowMs() - startTs),
-          t_subtask_ms: tSubtaskMs(),
-          type: 'sart_miss',
+          t_ms: Number.isFinite(entry.t_presented_global_ms) ? entry.t_presented_global_ms : Math.round(nowMs() - startTs),
+          t_subtask_ms: Number.isFinite(entry.t_presented_ms) ? entry.t_presented_ms : tSubtaskMs(),
+          type: 'sart_trial',
           subtask_index: i,
           subtask_title: state.title,
           entry_id: entry.id,
-          entry_class: entry.cls
+          entry_class: entry.cls,
+          entry_class_legacy: legacyClassFor(entry.cls),
+          is_nogo: !shouldRespond,
+          should_respond: shouldRespond,
+          responded,
+          response_device: entry.response_device,
+          triage_action: entry.triage_action,
+          correct,
+          outcome,
+          rt_ms: Number.isFinite(entry.rt_ms) ? entry.rt_ms : null,
+          responded_at_ms: Number.isFinite(entry.responded_at_ms) ? entry.responded_at_ms : null,
+          ended_reason: (endedReason ?? null),
+          dest: entry.dest,
+          src_ip: entry.src_ip,
+          action: entry.action
         });
+      };
+
+      const recordNonResponseIfNeeded = (entry, endedReason) => {
+        if (!entry || state.finalized.has(entry.id)) return;
+        finalizeEntry(entry, endedReason);
       };
 
       const recordResponse = (entry, device) => {
@@ -3667,29 +3827,17 @@
 
         applyTriageAction(entry);
 
-        const rt = Math.round(nowMs() - entry.createdAt);
-        const isGoTarget = shouldGoFor(entry.cls);
-        const correct = isGoTarget;
+        entry.responded = true;
+        entry.response_device = device;
+        entry.responded_at_ms = tSubtaskMs();
+        entry.rt_ms = Math.round(nowMs() - entry.createdAt);
 
-        if (correct) state.hits += 1;
-        else state.false_alarms += 1;
-
-        events.push({
-          t_ms: Math.round(nowMs() - startTs),
-          t_subtask_ms: tSubtaskMs(),
-          type: 'sart_response',
-          subtask_index: i,
-          subtask_title: state.title,
-          device,
-          entry_id: entry.id,
-          entry_class: entry.cls,
-          triage_action: entry.triage_action,
-          correct,
-          rt_ms: rt
-        });
+        finalizeEntry(entry, 'response');
 
         renderRows();
       };
+
+      state.recordResponse = recordResponse;
 
       // Mouse response: click the per-row button responds (current row only).
       if (cfg.response_device === 'mouse' && rowsEl) {
@@ -3725,6 +3873,8 @@
 
         const elapsed = nowMs() - startWall;
         if (elapsed >= stopAt) {
+          const latest = state.entries.length ? state.entries[state.entries.length - 1] : null;
+          recordNonResponseIfNeeded(latest, 'subtask_end');
           state.ended = true;
           if (statusEl) statusEl.textContent = 'Complete';
           events.push({
@@ -3742,27 +3892,16 @@
           return;
         }
 
+        const previousCurrent = state.entries.length ? state.entries[state.entries.length - 1] : null;
+        recordNonResponseIfNeeded(previousCurrent, 'next_entry');
+
         const entry = makeEntry();
         state.presented += 1;
-
-        events.push({
-          t_ms: Math.round(nowMs() - startTs),
-          t_subtask_ms: tSubtaskMs(),
-          type: 'sart_present',
-          subtask_index: i,
-          subtask_title: state.title,
-          entry_id: entry.id,
-          entry_class: entry.cls,
-          dest: entry.dest,
-          src_ip: entry.src_ip,
-          action: entry.action,
-          triage_action: entry.triage_action
-        });
 
         state.entries.push(entry);
         while (state.entries.length > cfg.visible_entries) {
           const removed = state.entries.shift();
-          recordMissIfNeeded(removed);
+          recordNonResponseIfNeeded(removed, 'buffer_rolloff');
         }
 
         renderRows();
@@ -3773,6 +3912,7 @@
         if (state.started) return;
         state.started = true;
         state.subtask_start_ts = nowMs();
+          state.subtask_start_logical_ts = logicalElapsedMs();
         startWall = state.subtask_start_ts;
         stopAt = computeStopAt();
 
@@ -3793,6 +3933,8 @@
       subtaskAutoStart[i] = startSartSubtask;
       subtaskForceEnd[i] = (reason) => {
         if (state.ended) return;
+        const latest = state.entries.length ? state.entries[state.entries.length - 1] : null;
+        recordNonResponseIfNeeded(latest, 'forced_end');
         state.ended = true;
         if (statusEl) statusEl.textContent = 'Complete';
         events.push({
@@ -3861,43 +4003,7 @@
           consumed = true;
           const latest = st.entries.length ? st.entries[st.entries.length - 1] : null;
           if (latest) {
-            // Inline response logic to avoid cross-closure lookups.
-            const shouldGoFor = (entryClass) => {
-              if (st.cfg.go_condition === 'allow') return entryClass === 'target';
-              if (st.cfg.go_condition === 'block') return entryClass === 'distractor';
-              return false;
-            };
-
-            if (!st.responded.has(latest.id)) {
-              st.responded.add(latest.id);
-
-              // Apply action update for realism
-              latest.triage_action = (st.cfg.go_condition === 'block') ? 'BLOCK' : 'ALLOW';
-
-              const rt = Math.round(nowMs() - latest.createdAt);
-              const correct = shouldGoFor(latest.cls);
-              if (correct) st.hits += 1;
-              else st.false_alarms += 1;
-
-              events.push({
-                t_ms: Math.round(nowMs() - startTs),
-                type: 'sart_response',
-                subtask_index: activeWindowIndex,
-                subtask_title: st.title,
-                device: 'keyboard',
-                entry_id: latest.id,
-                entry_class: latest.cls,
-                triage_action: latest.triage_action,
-                correct,
-                rt_ms: rt
-              });
-
-              try {
-                if (typeof st.renderRows === 'function') st.renderRows();
-              } catch {
-                // ignore
-              }
-            }
+            try { st.recordResponse?.(latest, 'keyboard'); } catch { /* ignore */ }
           }
         }
       }
@@ -4288,11 +4394,7 @@
         }
       };
 
-      if (startAt > 0) {
-        setSafeTimeout(doStart, startAt);
-      } else {
-        doStart();
-      }
+      setLogicalTimeout(startAt, doStart);
 
       if (Number.isFinite(endAt)) {
         // If this window has an instructions popup, the participant must dismiss it first.
@@ -4303,11 +4405,11 @@
           // Store duration from window-start; startWindowIfNeeded will set the timer.
           windowEndDurationMs[i] = Math.max(0, endAt - startAt);
         } else {
-          setSafeTimeout(() => {
+          setLogicalTimeout(endAt, () => {
             if (ended) return;
             forceEndWindow(i, 'scheduled_end');
             hideWindow(i);
-          }, endAt);
+          });
         }
       }
     }

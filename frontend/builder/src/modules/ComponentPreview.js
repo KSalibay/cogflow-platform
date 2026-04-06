@@ -2252,6 +2252,31 @@ class ComponentPreview {
             ? componentData.questions
             : (Array.isArray(componentData?.parameters?.questions) ? componentData.parameters.questions : []);
 
+        const normalizeVisibleIf = (q) => {
+            if (!q || typeof q !== 'object') return null;
+            const raw = (q.visible_if && typeof q.visible_if === 'object')
+                ? q.visible_if
+                : ((q.show_if_question_id !== undefined || q.show_if_value !== undefined)
+                    ? { question_id: q.show_if_question_id, equals: q.show_if_value }
+                    : null);
+            if (!raw || typeof raw !== 'object') return null;
+            const dep = (raw.question_id ?? raw.id ?? '').toString().trim();
+            if (!dep) return null;
+            const eq = Object.prototype.hasOwnProperty.call(raw, 'equals')
+                ? raw.equals
+                : (Object.prototype.hasOwnProperty.call(raw, 'value') ? raw.value : '');
+            return { question_id: dep, equals: eq };
+        };
+
+        const normalizedQuestions = (Array.isArray(questions) ? questions : []).map((q, i) => {
+            const idRaw = (q?.id ?? '').toString().trim();
+            return {
+                ...q,
+                id: idRaw || `q${i + 1}`,
+                visible_if: normalizeVisibleIf(q)
+            };
+        });
+
         const escape = (s) => {
             return (s ?? '')
                 .toString()
@@ -2263,7 +2288,8 @@ class ComponentPreview {
         };
 
         const renderQuestion = (q) => {
-            const id = escape(q?.id || 'q');
+            const qIdRaw = (q?.id || 'q').toString();
+            const id = escape(qIdRaw);
             const prompt = escape(q?.prompt || '');
             const required = q?.required ? 'required' : '';
             const type = (q?.type || 'text');
@@ -2276,14 +2302,14 @@ class ComponentPreview {
                         const inputType = 'radio';
                         return `
                             <div class="form-check">
-                                <input class="form-check-input" type="${inputType}" name="${id}" id="${id}_${idx}" ${required}>
+                                <input class="form-check-input" type="${inputType}" name="${id}" id="${id}_${idx}" value="${optEsc}" ${required}>
                                 <label class="form-check-label" for="${id}_${idx}">${optEsc}</label>
                             </div>
                         `;
                     })
                     .join('');
                 return `
-                    <div class="mb-3">
+                    <div class="mb-3 survey-preview-question" data-question-id="${id}">
                         <label class="form-label fw-bold">${prompt || id}${q?.required ? ' *' : ''}</label>
                         ${optionsHtml || '<div class="text-muted">(No options configured)</div>'}
                     </div>
@@ -2297,7 +2323,7 @@ class ComponentPreview {
                 const minLabel = escape(q?.min_label || '');
                 const maxLabel = escape(q?.max_label || '');
                 return `
-                    <div class="mb-3">
+                    <div class="mb-3 survey-preview-question" data-question-id="${id}">
                         <label class="form-label fw-bold" for="${id}">${prompt || id}${q?.required ? ' *' : ''}</label>
                         <input class="form-range" type="range" id="${id}" min="${min}" max="${max}" step="${step}" ${required}>
                         <div class="d-flex justify-content-between small text-muted">
@@ -2314,7 +2340,7 @@ class ComponentPreview {
                 const stepAttr = (q?.step !== undefined && q?.step !== null && q?.step !== '') ? `step="${escape(q.step)}"` : '';
                 const ph = escape(q?.placeholder || '');
                 return `
-                    <div class="mb-3">
+                    <div class="mb-3 survey-preview-question" data-question-id="${id}">
                         <label class="form-label fw-bold" for="${id}">${prompt || id}${q?.required ? ' *' : ''}</label>
                         <input class="form-control" type="number" id="${id}" name="${id}" placeholder="${ph}" ${minAttr} ${maxAttr} ${stepAttr} ${required}>
                     </div>
@@ -2326,7 +2352,7 @@ class ComponentPreview {
             const ph = escape(q?.placeholder || '');
             const rows = Number.isFinite(Number(q?.rows)) ? Math.max(1, Number(q.rows)) : 3;
             return `
-                <div class="mb-3">
+                <div class="mb-3 survey-preview-question" data-question-id="${id}">
                     <label class="form-label fw-bold" for="${id}">${prompt || id}${q?.required ? ' *' : ''}</label>
                     ${multiline
                         ? `<textarea class="form-control" id="${id}" name="${id}" rows="${rows}" placeholder="${ph}" ${required}></textarea>`
@@ -2345,16 +2371,80 @@ class ComponentPreview {
                     ${(allowEmptyOnTimeout && timeoutMs !== null && timeoutMs !== '')
                         ? `<div class="alert alert-warning py-2 small mb-2">Auto-continue enabled after <strong>${escape(timeoutMs)}</strong> ms (unanswered = empty/null).</div>`
                         : ''}
-                    <form onsubmit="return false;" class="mt-3">
-                        ${questions.map(renderQuestion).join('')}
+                    <form id="surveyPreviewForm" onsubmit="return false;" class="mt-3">
+                        ${normalizedQuestions.map(renderQuestion).join('')}
                         <button type="button" class="btn btn-primary">${escape(submitLabel)}</button>
                         <div class="mt-2 small text-muted">
                             Preview only — the interpreter app should capture and store responses by question id.
-                            ${questions.length === 0 ? '<br><strong>Note:</strong> No questions found on this component. (Expected `questions: [...]`.)' : ''}
+                            ${normalizedQuestions.length === 0 ? '<br><strong>Note:</strong> No questions found on this component. (Expected `questions: [...]`.)' : ''}
                         </div>
                     </form>
                 </div>
             `;
+
+            const formEl = modalBody.querySelector('#surveyPreviewForm');
+            if (formEl) {
+                const valuesEqual = (a, b) => {
+                    if (a === b) return true;
+                    const an = Number(a);
+                    const bn = Number(b);
+                    if (Number.isFinite(an) && Number.isFinite(bn)) return an === bn;
+                    return String(a ?? '').trim().toLowerCase() === String(b ?? '').trim().toLowerCase();
+                };
+
+                const getAnswers = () => {
+                    const out = {};
+                    normalizedQuestions.forEach((q) => {
+                        const idRaw = (q?.id ?? '').toString().trim();
+                        if (!idRaw) return;
+                        const type = (q?.type || 'text').toString().toLowerCase();
+                        const idSel = CSS.escape(idRaw);
+
+                        if (type === 'likert' || type === 'radio') {
+                            const checked = formEl.querySelector(`input[name="${idSel}"]:checked`);
+                            out[idRaw] = checked ? checked.value : null;
+                            return;
+                        }
+
+                        const el = formEl.querySelector(`[name="${idSel}"], #${idSel}`);
+                        if (!el) {
+                            out[idRaw] = null;
+                            return;
+                        }
+                        if (type === 'number' || type === 'slider') {
+                            out[idRaw] = (el.value === '' || el.value === null || el.value === undefined) ? null : Number(el.value);
+                            return;
+                        }
+                        out[idRaw] = (el.value ?? '').toString();
+                    });
+                    return out;
+                };
+
+                const applyVisibility = () => {
+                    const answers = getAnswers();
+                    normalizedQuestions.forEach((q) => {
+                        const idRaw = (q?.id ?? '').toString().trim();
+                        if (!idRaw) return;
+                        const rule = q.visible_if;
+                        const qEl = formEl.querySelector(`.survey-preview-question[data-question-id="${CSS.escape(idRaw)}"]`);
+                        if (!qEl) return;
+
+                        let visible = true;
+                        if (rule && typeof rule === 'object') {
+                            const depId = (rule.question_id ?? '').toString().trim();
+                            if (depId) {
+                                visible = valuesEqual(answers[depId], rule.equals);
+                            }
+                        }
+
+                        qEl.style.display = visible ? '' : 'none';
+                    });
+                };
+
+                formEl.addEventListener('input', applyVisibility);
+                formEl.addEventListener('change', applyVisibility);
+                applyVisibility();
+            }
         }
 
         modal.show();
@@ -3724,6 +3814,7 @@ class ComponentPreview {
             if (itiMot !== null) sampled.iti_ms = itiMot;
             sampled.motion_type      = (src.mot_motion_type || 'linear').toString();
             sampled.probe_mode       = (src.mot_probe_mode  || 'click').toString();
+            sampled.recognition_probe_count = Number.isFinite(Number(src.mot_recognition_probe_count)) ? Math.max(1, Number(src.mot_recognition_probe_count)) : 1;
             sampled.show_feedback    = !!src.mot_show_feedback;
             sampled.object_color     = src.object_color     || '#FFFFFF';
             sampled.target_cue_color = src.target_cue_color || '#FF9900';
@@ -4891,16 +4982,25 @@ class ComponentPreview {
         const apertureShape = String(params.aperture_shape || 'rectangle').toLowerCase();
         const borderEnabled = params.aperture_border_enabled !== false;
         const borderColor = params.aperture_border_color || '#444444';
+        const probeMode = String(params.probe_mode || 'click');
+        const recognitionProbeCount = Number.isFinite(Number(params.recognition_probe_count))
+            ? Math.max(1, Number(params.recognition_probe_count))
+            : 1;
+        const yesKey = String(params.yes_key || 'y');
+        const noKey = String(params.no_key || 'n');
 
         const canvasId = 'motPreviewCanvas_' + Date.now();
         const borderInfo = borderEnabled ? ` (border: ${borderColor})` : '';
+        const probeHint = (probeMode === 'yes_no_recognition')
+            ? `Yes/No recognition &middot; keys: ${yesKey}/${noKey} &middot; probes/trial: ${recognitionProbeCount}`
+            : `${probeMode} probe`;
         const bodyHtml = `
             <div class="text-center">
                 <canvas id="${canvasId}" width="${W}" height="${H}"
                     style="background:${bg};max-width:100%;border:1px solid #555;"></canvas>
                 ${note ? `<p class="text-muted small mt-1">${note}</p>` : ''}
                 <p class="text-muted small">Static preview — ${T} target(s) (orange flash) among ${N} object(s).
-                  Speed: ${params.speed_px_per_s ?? 150} px/s &middot; ${params.motion_type ?? 'linear'} &middot; ${params.probe_mode ?? 'click'} probe
+                  Speed: ${params.speed_px_per_s ?? 150} px/s &middot; ${params.motion_type ?? 'linear'} &middot; ${probeHint}
                   <br/>Aperture: <strong>${apertureShape}</strong>${borderInfo}</p>
             </div>`;
 
@@ -4926,6 +5026,10 @@ class ComponentPreview {
         const r   = Math.max(5, parseInt(params.object_radius_px, 10) || 22);
         const N   = Math.max(2, parseInt(params.num_objects, 10) || 8);
         const T   = Math.min(N - 1, Math.max(1, parseInt(params.num_targets, 10) || 4));
+        const probeMode = String(params.probe_mode || 'click');
+        const recognitionProbeCount = Number.isFinite(Number(params.recognition_probe_count))
+            ? Math.max(1, Number(params.recognition_probe_count))
+            : 1;
 
         // Aperture settings
         const apertureShape = String(params.aperture_shape || 'rectangle').toLowerCase();
@@ -4991,6 +5095,23 @@ class ComponentPreview {
             ctx.stroke();
         }
 
+        if (probeMode === 'yes_no_recognition' && positions.length > 0) {
+            const probe = positions[Math.floor(Math.random() * positions.length)];
+            ctx.beginPath();
+            ctx.arc(probe.x, probe.y, r + 8, 0, 2 * Math.PI);
+            ctx.strokeStyle = '#facc15';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            ctx.fillStyle = 'rgba(0,0,0,0.55)';
+            ctx.fillRect(8, H - 40, Math.max(220, W - 16), 32);
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '14px sans-serif';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(`Probe 1/${recognitionProbeCount}: Was this dot a target? (Yes/No)`, 16, H - 24);
+        }
+
         // Draw aperture border if enabled
         if (borderEnabled) {
             ctx.strokeStyle = borderColor;
@@ -5000,7 +5121,8 @@ class ComponentPreview {
                 ctx.arc(cx, cy, apertureRadius, 0, 2 * Math.PI);
                 ctx.stroke();
             } else {
-                ctx.strokeRect(r, r, W - 2 * r, H - 2 * r);
+                const inset = borderWidth / 2;
+                ctx.strokeRect(inset, inset, Math.max(0, W - borderWidth), Math.max(0, H - borderWidth));
             }
         }
     }
