@@ -112,7 +112,7 @@
                 <button class="btn btn-outline-light me-2" id="saveTemplateBtn">
                     <i class="fas fa-save"></i> Save Template
                 </button>
-                <button class="btn btn-outline-light me-2" id="uploadAssetsFolderBtn" title="Upload a local assets folder to CogFlow Platform internal storage so you can refer to images by filename in your config">
+                <button class="btn btn-outline-light me-2" id="uploadAssetsFolderBtn" title="Upload a local assets folder to Token Store so you can refer to images by filename in your config">
                     <i class="fas fa-folder-tree"></i> Upload Assets
                 </button>
                 <button class="btn btn-outline-light me-2" id="saveJsonBtn">
@@ -125,7 +125,7 @@
                     <i class="fas fa-server"></i> Publish
                 </button>
 
-                <!-- Hidden input: local JSON import / builder rehydrate -->
+                <!-- Hidden input: local JSON import for Token Store uploads -->
                 <input id="importLocalJsonInput" type="file" accept=".json,application/json" multiple style="display:none" />
 
                 <!-- Hidden input: local assets folder selection (Chromium supports webkitdirectory) -->
@@ -460,31 +460,21 @@
     <!-- Quill WYSIWYG editor (used by instructions/html-keyboard-response editor) -->
     <script src="vendor/quill.min.js"></script>
 
-    <!-- Microsoft Graph export (MSAL + helper). Requires serving via http(s), not file:// -->
-    <script src="vendor/msal-browser.min.js"></script>
-    <script src="src/graphConfig.js?v=20260123-1"></script>
-    <script src="src/GraphSharePointClient.js?v=20260123-1"></script>
-
-    <!-- Platform mode defaults -->
+    <!-- Platform runtime marker (Django-backed publish + internal asset storage) -->
     <script>
-        // In platform deployments we prefer Django-backed APIs (publish + internal asset upload).
-        // Leave Token Store URL empty to avoid accidental Cloudflare/R2 dependency.
-        window.COGFLOW_TOKEN_STORE_BASE_URL = '';
-
-        // Platform should not force Token Store-only initial deployment behavior.
-        window.COGFLOW_INITIAL_DEPLOYMENT = false;
+        window.COGFLOW_RUNTIME_MODE = 'django';
     </script>
 
     <!-- Cache-bust local scripts -->
-    <script src="src/JsonBuilder.js?v=20260402-3"></script>
+    <script src="src/JsonBuilder.js?v=20260331-2"></script>
     <script src="src/modules/DataCollectionModules.js?v=20260114-1"></script>
     <script src="src/modules/TrialManager.js?v=20260113-10"></script>
     <script src="src/modules/TimelineBuilder.js?v=20260309-1"></script>
     <script src="src/modules/SocDashboardPreview.js?v=20260218-1"></script>
-    <script src="src/modules/ComponentPreview.js?v=20260402-1"></script>
+    <script src="src/modules/ComponentPreview.js?v=20260305-4"></script>
     <script src="src/schemas/RDMTaskSchema.js?v=20260113-10"></script>
-    <script src="src/schemas/JSPsychSchemas.js?v=20260402-1"></script>
-    <script src="src/schemas/UnifiedSchema.js?v=20260402-1"></script>
+    <script src="src/schemas/JSPsychSchemas.js?v=20260305-1"></script>
+    <script src="src/schemas/UnifiedSchema.js?v=20260113-10"></script>
 
     <script>
         function setBuilderTheme(theme) {

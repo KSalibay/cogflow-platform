@@ -1,30 +1,5 @@
 # CogFlow Builder & Interpreter Changelog
 
-## April 7, 2026
-
-### CRDM Mouse Diagnostics + MOT/DRT Choice-Phase Gating
-
-- CRDM mouse-response exports now include explicit response-region metadata to support null-response auditing while keeping full-canvas click behavior unchanged.
-  - Added response flags/metrics such as:
-    - `response_registered`, `response_not_registered_reason`
-    - `response_within_canvas`, `response_within_aperture`, `response_within_boundary_band`
-    - `response_distance_from_center_px`, selection mode, and pointer-event counters
-  - Applies to both single-trial RDM and continuous RDM frame records.
-- MOT now auto-pauses DRT during the probe/choice phase and auto-resumes DRT immediately after probe completion.
-  - This mirrors the existing MW-probe DRT stop/start behavior and requires no Builder schema/UI changes.
-  - Goal: keep DRT active during tracking but suppress DRT overlays while participants are making MOT choices.
-- Added MOT yes/no recognition probe mode (`yes_no_recognition`) across authoring and runtime.
-  - Builder: mode available in MOT defaults, component modal, and MOT block settings.
-  - Builder Preview: MOT preview now reflects recognition mode and yes/no keys.
-  - Interpreter: MOT runtime now supports yes/no recognition responses with configurable `yes_key` / `no_key` and emits recognition-specific trial fields.
-- Added MOT recognition probe-count control to run multiple yes/no probes per trial before advancing.
-  - Builder: new `recognition_probe_count` / `mot_recognition_probe_count` parameter wiring in defaults, schema, export, and block settings.
-  - Builder Preview: yes/no probe hint now includes probes-per-trial count.
-  - Interpreter: yes/no recognition now asks `N` probes sequentially (without replacement), aggregates scoring across probes, and exports per-probe response details.
-- Added conditional visibility for `survey-response` / `mw-probe` questions.
-  - Builder question editor now supports optional per-question `visible_if` rules (`question_id` + expected value).
-  - Interpreter survey runtime now applies conditional show/hide live as answers change, validates required fields only for visible questions, and remains backward compatible with legacy `show_if_*` keys.
-
 ## April 2, 2026
 
 ### Builder Import Rehydration + SOC/DRT/MOT Alignment
@@ -166,7 +141,7 @@
 
 #### Manual Theme Toggle System (Builder)
 - Replaced OS-driven `prefers-color-scheme` detection with manual user control
-- Light/dark toggle button added to navbar (both `index.html` and `index_jatos.html`)
+- Light/dark toggle button added to navbar (platform entrypoint `index.html`)
 - Theme preference persists via localStorage (`cogflow_builder_theme` key)
 - Color palette: CogFlow palette-driven tokens for both themes
   - Light: ash-grey, lilac-ash, olive-wood backgrounds with twilight-indigo text
@@ -235,7 +210,7 @@
 
 **cogflow-builder-app:**
 - `index.html`: Added early theme bootstrap + toggle button
-- `index_jatos.html`: Added early theme bootstrap + toggle button (fixed top-right)
+- Entry page: Added early theme bootstrap + toggle button (fixed top-right)
 - `css/style.css`: Added theme tokens, data-attribute-driven theming, dark mode overrides, toggle styling
 - `src/JsonBuilder.js`: Added gabor-learning to block types; extended export mapping for learning/QUEST
 - `src/modules/TimelineBuilder.js`: Fixed visibility condition for gabor-learning
@@ -243,7 +218,7 @@
 - `src/schemas/JSPsychSchemas.js`: Added learning param definitions
 
 **cogflow-interpreter-app:**
-- `index_jatos.html`: Uses theme from Builder export (ui_settings.theme)
+- Entry page uses theme from Builder export (ui_settings.theme)
 - `src/jspsych-gabor.js`: Uses show_feedback + feedback_duration_ms post-trial
 - `src/timelineCompiler.js`: Gabor-learning loop logic + QUEST staircase management
 

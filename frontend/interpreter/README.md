@@ -33,12 +33,7 @@ The default “demo-ready” deployment path is:
 
 ## JATOS setup (Component Properties)
 
-This repo includes a JATOS entry wrapper: `index_jatos.html`.
-
-Recommended asset layout inside your JATOS study assets for the Interpreter component:
-
-- Component HTML file: `index_jatos.html`
-- Interpreter runtime files live under: `interpreter/` (so the wrapper can load `/publix/.../interpreter/src/...`)
+Use `index.html` as the Interpreter entrypoint in platform deployments.
 
 In the Interpreter component’s **Component Properties** (user-defined properties), set either **single-config** settings or a **multi-config bundle**.
 
@@ -80,7 +75,7 @@ If your JATOS UI can’t save arrays/objects as Component Properties, you can al
 Notes:
 
 - Do not show tokens to participants. The interpreter keeps token-store loading UI hidden unless `?debug=1`.
-- The interpreter no longer relies on `?id=...` in JATOS (see `window.COGFLOW_DISABLE_URL_ID` in `index_jatos.html`).
+- The interpreter no longer relies on `?id=...` in JATOS.
 
 Token Store note:
 
@@ -115,9 +110,7 @@ Key features:
 - RDM dot-groups dependent direction of movement:
   - if `dependent_direction_of_movement_enabled` is true, the independent group direction fields are replaced by `dependent_group_1_direction` (base range) and `dependent_group_direction_difference` (offset list); at block expansion time, group 1's direction is sampled from the base range and group 2's direction is computed as `(group_1_direction + sampled_difference) mod 360`
 - Trial-based tasks + continuous-mode tasks (including SOC Dashboard)
-- DRT (Detection Response Task) scheduling via explicit start/stop components (ISO defaults supported), with automatic probe-safe behavior:
-  - MW probes inside active DRT segments are auto-bracketed by inserted DRT stop/start markers
-  - MOT probe/choice phases pause DRT and resume it after probe completion
+- DRT (Detection Response Task) scheduling via explicit start/stop components (ISO defaults supported)
 - Rewards v2 integration (compile-time wrapping + runtime screens/milestones)
 - Optional eye tracking via WebGazer (permission + calibration injection, plus output bundling)
 - Theming support via `ui_settings.theme` (from Builder exports)
@@ -223,17 +216,10 @@ Common components:
 - `html-button-response`
 - `image-keyboard-response`
 - `survey-response`
-- `mw-probe` (compiled through the same survey-response plugin with `plugin_type: "mw-probe"`)
 - `visual-angle-calibration`
 - `reward-settings`
 - `block`
 - `detection-response-task-start`, `detection-response-task-stop`
-
-Survey / MW conditional question visibility:
-
-- `survey-response` and `mw-probe` questions can include `visible_if = { question_id, equals }`.
-- Runtime applies conditions live as responses change and validates required fields only for currently visible questions.
-- Legacy conditional keys (`show_if_question_id`, `show_if_value`) remain supported.
 
 Structural timeline nodes (typically normalized from Builder markers):
 
@@ -281,7 +267,7 @@ The CIP plugin must be available globally as:
 
 - `window.jsPsychContinuousImagePresentation`
 
-This repo’s `index.html` and `index_jatos.html` load `src/jspsych-continuous-image-presentation.js`.
+This repo’s `index.html` loads `src/jspsych-continuous-image-presentation.js`.
 
 #### Required exported fields
 
@@ -373,7 +359,6 @@ MOT runs via a custom jsPsych plugin (loaded as `window.jsPsychMot`).
 3. **Probe** — participant identifies targets. Two modes:
    - `click`: participant clicks objects; trial ends when `num_targets` are selected.
    - `number_entry`: each object shows its 1-based index; participant types numbers and presses Enter.
-  - `yes_no_recognition`: runtime highlights one probe object at a time; participant responds Yes/No (keyboard or buttons). `recognition_probe_count` controls how many probes are asked before advancing.
 4. **Feedback** (optional, `show_feedback: true`) — color rings indicate hits (green), misses (red), and false alarms (orange); shown for `feedback_duration_ms` ms.
 5. **ITI** — blank screen for `iti_ms` ms.
 
@@ -385,10 +370,7 @@ MOT runs via a custom jsPsych plugin (loaded as `window.jsPsychMot`).
 | `num_targets` | 4 | Number of objects to track (highlighted during cue) |
 | `speed_px_per_s` | 150 | Movement speed (pixels/second) |
 | `motion_type` | `"linear"` | `"linear"` (bounce/wrap) or `"curved"` (smooth turning) |
-| `probe_mode` | `"click"` | `"click"`, `"number_entry"`, or `"yes_no_recognition"` |
-| `yes_key` | `"y"` | Yes key used in recognition mode |
-| `no_key` | `"n"` | No key used in recognition mode |
-| `recognition_probe_count` | `1` | Number of sequential yes/no probes per trial (capped by object count) |
+| `probe_mode` | `"click"` | `"click"` or `"number_entry"` |
 | `cue_duration_ms` | 2000 | Duration of cue phase |
 | `tracking_duration_ms` | 8000 | Duration of tracking phase |
 | `iti_ms` | 1000 | Inter-trial interval |
@@ -402,10 +384,6 @@ MOT runs via a custom jsPsych plugin (loaded as `window.jsPsychMot`).
 - `rt_first_response_ms` — RT to first response from probe onset
 - `selected_objects` — JSON array of 0-based object indices selected
 - `clicks` — JSON array of click events (x, y, t_ms, object_hit, object_idx)
-- `recognition_response`, `recognition_response_key`, `recognition_is_yes`, `recognition_correct` — last recognition-probe response summary
-- `recognition_probe_count` — number of recognition probes asked in this trial
-- `recognition_probe_indices` — JSON array of object indices used as probes
-- `recognition_trials` — JSON array with per-probe recognition response records
 - `ended_reason` — `selection_complete` | `keypress_complete` | `timeout`
 
 ### DRT (Detection Response Task)
@@ -466,9 +444,8 @@ Implemented subtask types:
 
 - `sart-like` — log triage Go/No-Go
   - GO commits a triage action that is consistent for the whole run:
-    - `go_condition: "allow"`  → GO yields `ALLOW` (respond to benign entries)
-    - `go_condition: "block"` → GO yields `BLOCK` (respond to harmful entries)
-  - Backward compatibility: legacy `target`/`distractor` values are normalized to `allow`/`block` at runtime.
+    - `go_condition: "target"`  → GO yields `ALLOW`
+    - `go_condition: "distractor"` → GO yields `BLOCK`
   - `show_markers` (default false) toggles target/distractor badges.
   - `instructions` supports placeholder substitution: `{{GO_CONTROL}}`, `{{TARGETS}}`, `{{DISTRACTORS}}`.
 
@@ -632,7 +609,6 @@ The compiler accepts either of these `parameter_windows` shapes:
 High-level map:
 
 - `index.html`: local entry (loader UI + jsPsych boot)
-- `index_jatos.html`: JATOS entry wrapper (reads Component Properties, disables URL-id loading in JATOS)
 - `configs/`: sample configs + local/legacy configs
 - `scripts/generate-manifest.ps1`: generate `configs/manifest.json` when directory listing is unavailable
 - `src/main.js`: orchestration

@@ -875,7 +875,7 @@ class JsonBuilder {
             });
         }
 
-        // Assets folder upload -> Token Store assets + filename-to-URL index
+        // Assets folder upload -> CogFlow Platform internal storage (Django)
         const assetsBtn = document.getElementById('uploadAssetsFolderBtn');
         const assetsInput = document.getElementById('assetsFolderInput');
         if (assetsBtn && assetsInput && assetsBtn.dataset.bound !== '1') {
@@ -898,9 +898,9 @@ class JsonBuilder {
                 const files = Array.from(assetsInput.files || []);
                 if (files.length === 0) return;
                 try {
-                    await this.uploadAssetDirectoryToTokenStore(files);
+                    await this.uploadAssetDirectoryToPlatform(files);
                 } catch (e) {
-                    console.error('uploadAssetDirectoryToTokenStore failed:', e);
+                    console.error('uploadAssetDirectoryToPlatform failed:', e);
                     this.showValidationResult('error', `Asset folder upload failed. (${e?.message || 'Unknown error'})`);
                 }
             });
@@ -942,6 +942,10 @@ class JsonBuilder {
                         }
                     }
 
+                    if (this.isPlatformMode()) {
+                        this.showValidationResult('warning', 'Token Store import is disabled in Platform Builder. Use single-file import to load into the editor, then Publish.');
+                        return;
+                    }
                     await this.importLocalJsonFilesToTokenStore(files);
                 } catch (e) {
                     console.error('importLocalJsonFilesToTokenStore failed:', e);
@@ -1079,6 +1083,57 @@ class JsonBuilder {
         return window.COGFLOW_INITIAL_DEPLOYMENT === true;
     }
 
+    isPlatformMode() {
+        return typeof window.COGFLOW_PLATFORM_URL === 'string' && window.COGFLOW_PLATFORM_URL.trim().length > 0;
+    }
+
+    getPlatformBaseUrl() {
+        if (!this.isPlatformMode()) return '';
+        return String(window.COGFLOW_PLATFORM_URL || '').trim().replace(/\/+$/, '');
+    }
+
+    getPlatformAssetIndex() {
+        const key = 'cogflow_platform_asset_index_v1';
+        try {
+            const raw = localStorage.getItem(key) || '';
+            const parsed = raw ? JSON.parse(raw) : {};
+            if (parsed && typeof parsed === 'object') return parsed;
+        } catch {
+            // ignore
+        }
+        return {};
+    }
+
+    setPlatformAssetIndex(index) {
+        const key = 'cogflow_platform_asset_index_v1';
+        try {
+            const obj = (index && typeof index === 'object') ? index : {};
+            localStorage.setItem(key, JSON.stringify(obj));
+        } catch {
+            // ignore
+        }
+    }
+
+    getPlatformAssetMap(studySlug) {
+        const slug = (studySlug || 'unscoped').toString().trim().toLowerCase() || 'unscoped';
+        const all = this.getPlatformAssetIndex();
+        const bySlug = all[slug];
+        if (!bySlug || typeof bySlug !== 'object') return null;
+        const files = bySlug.files;
+        if (!files || typeof files !== 'object') return null;
+        return files;
+    }
+
+    setPlatformAssetMap(studySlug, filesMap) {
+        const slug = (studySlug || 'unscoped').toString().trim().toLowerCase() || 'unscoped';
+        const all = this.getPlatformAssetIndex();
+        all[slug] = {
+            updated_at_local: new Date().toISOString(),
+            files: (filesMap && typeof filesMap === 'object') ? filesMap : {}
+        };
+        this.setPlatformAssetIndex(all);
+    }
+
     getTokenStoreRecords() {
         const key = 'cogflow_token_store_records_v1';
         const legacyKey = 'psychjson_token_store_records_v1';
@@ -1206,6 +1261,10 @@ class JsonBuilder {
     }
 
     async uploadAssetDirectoryToTokenStore(files) {
+        if (this.isPlatformMode()) {
+            return this.uploadAssetDirectoryToPlatform(files);
+        }
+
         const inputFiles = Array.isArray(files) ? files : [];
         if (inputFiles.length === 0) return;
 
@@ -1282,6 +1341,167 @@ class JsonBuilder {
 
         this.setTokenStoreAssetMapForCodeAndTask(code, taskType, nextMap);
         this.showValidationResult('success', `Uploaded ${uploaded} asset(s) to Token Store and saved a filename→URL index for code ${code} (${String(taskType).toUpperCase()}).`);
+    }
+
+    async uploadAssetToPlatform(platformUrl, file, filename, studySlug = '') {
+        const safeBase = String(platformUrl || '').trim().replace(/\/+$/, '');
+        if (!safeBase) throw new Error('Missing platform base URL');
+
+        const form = new FormData();
+        const outName = (filename && String(filename).trim()) ? String(filename).trim() : (file?.name || 'asset');
+        form.append('file', file, outName);
+        if (studySlug && String(studySlug).trim()) {
+            form.append('study_slug', String(studySlug).trim());
+        }
+
+        const getCsrfToken = () => {
+            try {
+                const fromCookie = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+                if (fromCookie && fromCookie[1]) return decodeURIComponent(fromCookie[1]);
+                return '';
+            } catch {
+                return '';
+            }
+        };
+
+        const csrfToken = getCsrfToken();
+        const res = await fetch(`${safeBase}/api/v1/assets/upload`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+                ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {})
+            },
+            body: form
+        });
+
+        if (!res.ok) {
+            const text = await res.text().catch(() => '');
+            throw new Error(`Platform asset upload failed (${res.status})${text ? `: ${text.slice(0, 200)}` : ''}`);
+        }
+
+        const json = await res.json().catch(() => ({}));
+        const outUrl = (json && json.url) ? String(json.url).trim() : '';
+        if (!outUrl) throw new Error('Platform asset upload returned no URL');
+        return { url: outUrl, path: json.path || null };
+    }
+
+    async uploadAssetDirectoryToPlatform(files) {
+        const inputFiles = Array.isArray(files) ? files : [];
+        if (inputFiles.length === 0) return;
+
+        const platformUrl = this.getPlatformBaseUrl();
+        if (!platformUrl) {
+            this.showValidationResult('error', 'Platform URL is not configured for internal asset upload.');
+            return;
+        }
+
+        const studySlug = (window.COGFLOW_STUDY_SLUG || '').toString().trim();
+        const scopeKey = studySlug || 'unscoped';
+
+        const queue = inputFiles.slice().filter((f) => f && f.name).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+        const unique = [];
+        const seen = new Set();
+        for (const f of queue) {
+            const name = String(f.name || '').trim();
+            if (!name || seen.has(name)) continue;
+            seen.add(name);
+            unique.push(f);
+        }
+
+        const existing = this.getPlatformAssetMap(scopeKey) || {};
+        const nextMap = { ...existing };
+        let uploaded = 0;
+
+        for (const file of unique) {
+            const filename = String(file.name || '').trim();
+            if (!filename) continue;
+            const out = await this.uploadAssetToPlatform(platformUrl, file, filename, studySlug);
+            nextMap[filename] = { url: out.url };
+            uploaded += 1;
+        }
+
+        this.setPlatformAssetMap(scopeKey, nextMap);
+        this.showValidationResult('success', `Uploaded ${uploaded} asset(s) to CogFlow Platform internal storage (${scopeKey}).`);
+    }
+
+    rewriteBareAssetFilenamesToPlatformUrls(config, { studySlug }) {
+        const filesMap = this.getPlatformAssetMap(studySlug || 'unscoped');
+        if (!filesMap) return config;
+
+        const rewriteDeep = (x) => {
+            if (typeof x === 'string') {
+                return this.rewriteStringUsingTokenStoreAssets(x, filesMap);
+            }
+            if (Array.isArray(x)) return x.map(rewriteDeep);
+            if (x && typeof x === 'object') {
+                const out = {};
+                for (const [k, v] of Object.entries(x)) out[k] = rewriteDeep(v);
+                return out;
+            }
+            return x;
+        };
+
+        return rewriteDeep((config && typeof config === 'object') ? config : {});
+    }
+
+    async uploadAssetRefsToPlatformAndRewriteConfig(config, { studySlug, filenameBase }) {
+        const cfg = (config && typeof config === 'object') ? config : {};
+        const jsonText = JSON.stringify(cfg);
+        const refs = this.findAssetRefsInString(jsonText);
+        if (refs.length === 0) return cfg;
+
+        const platformUrl = this.getPlatformBaseUrl();
+        if (!platformUrl) return cfg;
+
+        const base = String(filenameBase || 'export').replace(/\.json$/i, '');
+        const sanitizeFileName = (s) => String(s || '').replace(/[^A-Za-z0-9._-]/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '').slice(0, 160) || 'asset';
+        const uploadedByRef = new Map();
+
+        for (const ref of refs) {
+            const m = /^asset:\/\/([^/]+)\/([^/]+)$/.exec(ref);
+            if (!m) continue;
+            const componentId = m[1];
+            const field = m[2];
+
+            const assetCache = window.CogFlowAssetCache || window.PsychJsonAssetCache;
+            const entry = assetCache?.get?.(componentId, field);
+            const file = entry?.file;
+            if (!file) continue;
+
+            const originalName = entry?.filename || file.name || `${field}`;
+            const extMatch = /\.[A-Za-z0-9]{1,8}$/.exec(originalName);
+            const ext = extMatch ? extMatch[0] : '';
+            const outName = sanitizeFileName(`${base}-asset-${componentId}-${field}`) + ext;
+
+            if (!uploadedByRef.has(ref)) {
+                const uploaded = await this.uploadAssetToPlatform(platformUrl, file, outName, studySlug || '');
+                uploadedByRef.set(ref, uploaded.url);
+            }
+        }
+
+        const replaceInString = (s) => {
+            const raw = (s ?? '').toString();
+            return raw.replace(/asset:\/\/([A-Za-z0-9_-]+)\/([A-Za-z0-9_-]+)/g, (full) => uploadedByRef.get(full) || full);
+        };
+
+        const rewriteDeep = (x) => {
+            if (typeof x === 'string') return replaceInString(x);
+            if (Array.isArray(x)) return x.map(rewriteDeep);
+            if (x && typeof x === 'object') {
+                const out = {};
+                for (const [k, v] of Object.entries(x)) out[k] = rewriteDeep(v);
+                return out;
+            }
+            return x;
+        };
+
+        const rewritten = rewriteDeep(cfg);
+        if (uploadedByRef.size > 0) {
+            this.showValidationResult('success', `Uploaded ${uploadedByRef.size} asset(s) to CogFlow Platform storage and rewrote asset:// refs.`);
+        } else {
+            this.showValidationResult('warning', `Found ${refs.length} asset reference(s), but no cached files were available to upload.`);
+        }
+        return rewritten;
     }
 
     normalizeTokenStoreTaskType(taskType) {
@@ -1880,6 +2100,11 @@ class JsonBuilder {
     }
 
     async importLocalJsonFilesToTokenStore(files) {
+        if (this.isPlatformMode()) {
+            this.showValidationResult('warning', 'Token Store import is disabled in Platform Builder. Import a file into the editor and use Publish.');
+            return;
+        }
+
         const inputFiles = Array.isArray(files) ? files : [];
         if (inputFiles.length === 0) return;
 
