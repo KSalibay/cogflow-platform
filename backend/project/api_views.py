@@ -1321,6 +1321,40 @@ class StudyRunsView(APIView):
         )
 
 
+class StudyLatestConfigView(APIView):
+    """Return the latest published config JSON for a study the researcher can access."""
+
+    def get(self, request, study_slug: str):
+        if not request.user.is_authenticated:
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        profile = get_or_create_profile(request.user)
+        if not _can_manage_researcher_resources(request, profile):
+            return Response({"error": "Insufficient role permissions"}, status=status.HTTP_403_FORBIDDEN)
+
+        study = Study.objects.filter(slug=study_slug, is_active=True).first()
+        if not study:
+            return Response({"error": "Study not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if not _has_study_access(study, request.user, profile):
+            return Response({"error": "Study is not owned by the current researcher"}, status=status.HTTP_403_FORBIDDEN)
+
+        config_version = study.config_versions.first()
+        if not config_version:
+            return Response({"error": "No published config version"}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response(
+            {
+                "study_slug": study.slug,
+                "study_name": study.name,
+                "config_version_id": config_version.id,
+                "config_version_label": config_version.version_label,
+                "config": config_version.config_json,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 class PublishConfigView(APIView):
     @transaction.atomic
     def post(self, request):

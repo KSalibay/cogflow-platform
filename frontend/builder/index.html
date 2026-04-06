@@ -106,6 +106,9 @@
                 <img src="img/logo_builder_light.png" alt="CogFlow Builder" class="cf-brand-logo">
             </span>
             <div class="d-flex cf-navbar-actions">
+                <button class="btn btn-outline-light me-2" id="loadStudyBtn" title="Load latest published study config from CogFlow Platform">
+                    <i class="fas fa-database"></i> Load Study
+                </button>
                 <button class="btn btn-outline-light me-2" id="loadTemplateBtn">
                     <i class="fas fa-folder-open"></i> Load Template
                 </button>
@@ -347,6 +350,31 @@
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                         <button type="button" class="btn btn-primary" id="publishMetaConfirmBtn">Continue Publish</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Load Published Study Modal -->
+        <div class="modal fade" id="loadStudyModal" tabindex="-1" aria-labelledby="loadStudyModalTitle" aria-hidden="true">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="loadStudyModalTitle">
+                            <i class="fas fa-database"></i> Load Published Study
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div id="loadStudyError" class="alert alert-danger py-2 d-none" role="alert"></div>
+                        <p class="text-muted mb-3">Select a study to load its latest published config from platform storage.</p>
+                        <div id="loadStudyLoading" class="text-muted mb-2 d-none">Loading studies...</div>
+                        <div id="loadStudyEmpty" class="text-muted mb-2 d-none">No published studies available for your account.</div>
+                        <div id="loadStudyList" class="list-group" style="max-height: 360px; overflow: auto;"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-primary" id="loadStudyConfirmBtn" disabled>Load Selected Study</button>
                     </div>
                 </div>
             </div>

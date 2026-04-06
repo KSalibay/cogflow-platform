@@ -972,6 +972,13 @@ class JsonBuilder {
             this.loadTemplate();
         });
 
+        const loadStudyBtn = document.getElementById('loadStudyBtn');
+        if (loadStudyBtn) {
+            loadStudyBtn.addEventListener('click', () => {
+                this.showLoadStudyModal();
+            });
+        }
+
         document.getElementById('saveTemplateBtn').addEventListener('click', () => {
             this.saveTemplate();
         });
@@ -1850,6 +1857,207 @@ class JsonBuilder {
         });
     }
 
+    async fetchAccessibleStudies() {
+        const platformBase = this.getPlatformBaseUrl();
+        if (!platformBase) {
+            throw new Error('Platform URL is not configured.');
+        }
+
+        const res = await fetch(`${platformBase}/api/v1/studies`, {
+            method: 'GET',
+            credentials: 'include',
+            headers: { 'Accept': 'application/json' }
+        });
+
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            const msg = data?.error || data?.detail || `Request failed (${res.status})`;
+            throw new Error(msg);
+        }
+
+        const rows = Array.isArray(data?.studies) ? data.studies : [];
+        return rows.filter((s) => (s?.latest_config_version || '').toString().trim() !== '');
+    }
+
+    async fetchLatestStudyConfig(studySlug) {
+        const slug = (studySlug || '').toString().trim();
+        if (!slug) throw new Error('Missing study slug');
+
+        const platformBase = this.getPlatformBaseUrl();
+        if (!platformBase) {
+            throw new Error('Platform URL is not configured.');
+        }
+
+        const res = await fetch(`${platformBase}/api/v1/studies/${encodeURIComponent(slug)}/latest-config`, {
+            method: 'GET',
+            credentials: 'include',
+            headers: { 'Accept': 'application/json' }
+        });
+
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            const msg = data?.error || data?.detail || `Request failed (${res.status})`;
+            throw new Error(msg);
+        }
+        if (!data || typeof data !== 'object' || typeof data.config !== 'object' || Array.isArray(data.config)) {
+            throw new Error('Latest config payload is malformed.');
+        }
+
+        return data;
+    }
+
+    async showLoadStudyModal() {
+        const modalEl = document.getElementById('loadStudyModal');
+        const listEl = document.getElementById('loadStudyList');
+        const loadingEl = document.getElementById('loadStudyLoading');
+        const emptyEl = document.getElementById('loadStudyEmpty');
+        const errorEl = document.getElementById('loadStudyError');
+        const confirmBtn = document.getElementById('loadStudyConfirmBtn');
+
+        if (!modalEl || !listEl || !loadingEl || !emptyEl || !errorEl || !confirmBtn || !window.bootstrap?.Modal) {
+            this.showValidationResult('error', 'Load Study UI is unavailable.');
+            return;
+        }
+
+        const setError = (msg) => {
+            const text = (msg || '').toString().trim();
+            errorEl.textContent = text;
+            errorEl.classList.toggle('d-none', !text);
+        };
+
+        const setLoading = (on) => {
+            loadingEl.classList.toggle('d-none', !on);
+            confirmBtn.disabled = true;
+        };
+
+        const clearList = () => {
+            listEl.innerHTML = '';
+        };
+
+        modalEl.dataset.selectedStudySlug = '';
+        const updateConfirmState = () => {
+            const selected = (modalEl.dataset.selectedStudySlug || '').toString().trim();
+            confirmBtn.disabled = !selected;
+        };
+
+        const renderRow = (study) => {
+            const slug = (study?.study_slug || '').toString().trim();
+            if (!slug) return null;
+
+            const name = (study?.study_name || slug).toString();
+            const version = (study?.latest_config_version || 'latest').toString();
+
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'list-group-item list-group-item-action';
+            btn.dataset.studySlug = slug;
+
+            const row = document.createElement('div');
+            row.className = 'd-flex w-100 justify-content-between align-items-start';
+
+            const left = document.createElement('div');
+            const title = document.createElement('div');
+            title.className = 'fw-bold';
+            title.textContent = name;
+            const slugEl = document.createElement('small');
+            slugEl.className = 'text-muted';
+            slugEl.textContent = slug;
+            left.appendChild(title);
+            left.appendChild(slugEl);
+
+            const badge = document.createElement('span');
+            badge.className = 'badge text-bg-secondary';
+            badge.textContent = version;
+
+            row.appendChild(left);
+            row.appendChild(badge);
+            btn.appendChild(row);
+
+            btn.addEventListener('click', () => {
+                modalEl.dataset.selectedStudySlug = slug;
+                listEl.querySelectorAll('.list-group-item').forEach((el) => el.classList.remove('active'));
+                btn.classList.add('active');
+                updateConfirmState();
+            });
+            return btn;
+        };
+
+        clearList();
+        setError('');
+        emptyEl.classList.add('d-none');
+        setLoading(true);
+
+        const modal = window.bootstrap.Modal.getOrCreateInstance(modalEl);
+        modal.show();
+
+        try {
+            const studies = await this.fetchAccessibleStudies();
+            clearList();
+
+            if (!Array.isArray(studies) || studies.length === 0) {
+                emptyEl.classList.remove('d-none');
+            } else {
+                studies.forEach((s) => {
+                    const row = renderRow(s);
+                    if (row) listEl.appendChild(row);
+                });
+                if (listEl.firstElementChild) {
+                    listEl.firstElementChild.click();
+                }
+            }
+        } catch (e) {
+            setError(`Could not load studies: ${e?.message || 'Unknown error'}`);
+        } finally {
+            setLoading(false);
+            updateConfirmState();
+        }
+
+        confirmBtn.onclick = async () => {
+            const selectedSlug = (modalEl.dataset.selectedStudySlug || '').toString().trim();
+            if (!selectedSlug) return;
+            confirmBtn.disabled = true;
+            setError('');
+            try {
+                await this.loadStudyIntoBuilder(selectedSlug);
+                modal.hide();
+            } catch (e) {
+                setError(e?.message || 'Failed to load selected study.');
+            } finally {
+                updateConfirmState();
+            }
+        };
+    }
+
+    rehydrateBuilderFromConfig(config, sourceLabel = 'config') {
+        if (!config || typeof config !== 'object' || Array.isArray(config)) {
+            throw new Error('Config payload must be a JSON object.');
+        }
+
+        const validation = this.schemaValidator?.validate?.(config);
+        if (validation && validation.valid === false) {
+            const errs = Array.isArray(validation.errors) ? validation.errors.filter(Boolean) : [];
+            const detail = errs.slice(0, 6).join(' | ');
+            throw new Error(`Import validation failed${detail ? `: ${detail}` : ''}`);
+        }
+
+        this.applyImportedConfigState(config);
+
+        const taskType = (config?.task_type || config?.taskType || this.currentTaskType || 'rdm').toString();
+        const importedTimeline = Array.isArray(config.timeline) ? config.timeline : [];
+        const builderComponents = this.convertImportedTimelineToBuilderComponents(importedTimeline, taskType);
+        const rebuiltCount = this.rebuildTimelineDOMFromImportedComponents(builderComponents);
+
+        this.updateJSON();
+        this.showValidationResult('success', `Loaded ${sourceLabel}. Rebuilt ${rebuiltCount} timeline component(s).`);
+    }
+
+    async loadStudyIntoBuilder(studySlug) {
+        const payload = await this.fetchLatestStudyConfig(studySlug);
+        const studyName = (payload?.study_name || payload?.study_slug || studySlug || 'study').toString();
+        const version = (payload?.config_version_label || 'latest').toString();
+        this.rehydrateBuilderFromConfig(payload.config, `${studyName} (${version})`);
+    }
+
     extractEnabledFlag(raw, fallback = false) {
         if (typeof raw === 'boolean') return raw;
         if (raw && typeof raw === 'object' && typeof raw.enabled === 'boolean') return raw.enabled;
@@ -2079,24 +2287,11 @@ class JsonBuilder {
             return;
         }
 
-        const validation = this.schemaValidator?.validate?.(config);
-        if (validation && validation.valid === false) {
-            const errs = Array.isArray(validation.errors) ? validation.errors.filter(Boolean) : [];
-            const detail = errs.slice(0, 6).join(' | ');
-            this.showValidationResult('error', `Import validation failed${detail ? `: ${detail}` : ''}`);
-            return;
+        try {
+            this.rehydrateBuilderFromConfig(config, filename);
+        } catch (e) {
+            this.showValidationResult('error', e?.message || `Import failed for ${filename}.`);
         }
-
-        this.applyImportedConfigState(config);
-
-        const taskType = (config?.task_type || config?.taskType || this.currentTaskType || 'rdm').toString();
-        const importedTimeline = Array.isArray(config.timeline) ? config.timeline : [];
-        const builderComponents = this.convertImportedTimelineToBuilderComponents(importedTimeline, taskType);
-        const rebuiltCount = this.rebuildTimelineDOMFromImportedComponents(builderComponents);
-
-        this.updateJSON();
-
-        this.showValidationResult('success', `Loaded ${filename}. Rebuilt ${rebuiltCount} timeline component(s).`);
     }
 
     async importLocalJsonFilesToTokenStore(files) {
