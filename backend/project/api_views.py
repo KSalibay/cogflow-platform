@@ -176,8 +176,6 @@ def _get_study_owner_usernames(study: Study) -> list[str]:
 def _has_study_access(study: Study, user, profile) -> bool:
     if not user or not getattr(user, "is_authenticated", False):
         return False
-    if profile.role == profile.ROLE_ADMIN:
-        return True
     if study.owner_user_id == user.id:
         return True
     return StudyResearcherAccess.objects.filter(study=study, user=user).exists()
@@ -1267,13 +1265,17 @@ class PortalDashboardView(APIView):
 
 class StudiesListView(APIView):
     def get(self, request):
+        if not request.user.is_authenticated:
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        profile = get_or_create_profile(request.user)
+        if not _can_manage_researcher_resources(request, profile):
+            return Response({"error": "Insufficient role permissions"}, status=status.HTTP_403_FORBIDDEN)
+
         studies_qs = Study.objects.all()
-        if request.user.is_authenticated:
-            profile = get_or_create_profile(request.user)
-            if profile.role == profile.ROLE_RESEARCHER:
-                studies_qs = studies_qs.filter(
-                    Q(owner_user=request.user) | Q(researcher_access__user=request.user)
-                ).distinct()
+        studies_qs = studies_qs.filter(
+            Q(owner_user=request.user) | Q(researcher_access__user=request.user)
+        ).distinct()
 
         studies_qs = studies_qs.annotate(
             run_count_agg=Count("run_sessions", distinct=True),
@@ -1387,24 +1389,39 @@ class PublishConfigView(APIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        study, _ = Study.objects.update_or_create(
-            slug=data["study_slug"],
-            defaults={
-                "name": data["study_name"],
-                "runtime_mode": data["runtime_mode"],
-            },
-        )
-
         actor = _get_actor_from_request(request)
+        profile = None
         if request.user.is_authenticated:
             profile = get_or_create_profile(request.user)
+
+        existing_study = Study.objects.filter(slug=data["study_slug"]).first()
+        if existing_study and request.user.is_authenticated and _can_manage_researcher_resources(request, profile):
+            if existing_study.owner_user_id and not _has_study_access(existing_study, request.user, profile):
+                return Response(
+                    {"error": "Study is not shared with the current researcher"},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
+        if existing_study:
+            study = existing_study
+            study.name = data["study_name"]
+            study.runtime_mode = data["runtime_mode"]
+            study.save(update_fields=["name", "runtime_mode"])
+        else:
+            study = Study.objects.create(
+                slug=data["study_slug"],
+                name=data["study_name"],
+                runtime_mode=data["runtime_mode"],
+            )
+
+        if request.user.is_authenticated:
             if _can_manage_researcher_resources(request, profile):
                 if study.owner_user_id and not _has_study_access(study, request.user, profile):
                     return Response(
                         {"error": "Study is not shared with the current researcher"},
                         status=status.HTTP_403_FORBIDDEN,
                     )
-                if not study.owner_user_id or study.owner_user_id == request.user.id or profile.role == profile.ROLE_ADMIN:
+                if not study.owner_user_id or study.owner_user_id == request.user.id:
                     study.owner_user = request.user
                     study.save(update_fields=["owner_user"])
                 elif study.owner_user_id != request.user.id:
@@ -1982,6 +1999,17 @@ class DecryptResultView(APIView):
                 metadata={"reason": "run_session_not_found"},
             )
             return Response({"error": "Run session not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        study = getattr(run_session, "study", None)
+        if not study or not _has_study_access(study, request.user, profile):
+            record_audit(
+                action="decrypt_result_denied",
+                resource_type="run_session",
+                resource_id=run_session.id,
+                actor=actor,
+                metadata={"reason": "study_access_denied"},
+            )
+            return Response({"error": "Study is not shared with the current researcher"}, status=status.HTTP_403_FORBIDDEN)
 
         envelope = getattr(run_session, "result_envelope", None)
         if not envelope:
