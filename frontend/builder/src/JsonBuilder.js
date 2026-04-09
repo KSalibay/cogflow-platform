@@ -2086,6 +2086,39 @@ class JsonBuilder {
         const defs = this.getComponentDefinitions({ taskTypeOverride: taskTypeForDefs });
         const defById = new Map((Array.isArray(defs) ? defs : []).map((d) => [d.id, d]));
 
+        const getTaskScopedBlockDisplayName = (taskTypeRaw) => {
+            const t = (taskTypeRaw || '').toString().trim().toLowerCase();
+            if (t === 'rdm') return 'RDM Block';
+            if (t === 'nback') return 'N-back Block';
+            if (t === 'flanker') return 'Flanker Block';
+            if (t === 'sart') return 'SART Block';
+            if (t === 'simon') return 'Simon Block';
+            if (t === 'task-switching') return 'Task Switching Block';
+            if (t === 'pvt') return 'PVT Block';
+            if (t === 'mot') return 'MOT Block';
+            if (t === 'gabor') return 'Gabor Block';
+            if (t === 'continuous-image') return 'Continuous Image Block';
+            if (t === 'stroop') return 'Stroop Block';
+            if (t === 'emotional-stroop') return 'Emotional Stroop Block';
+            return 'Block';
+        };
+
+        const isLikelyInstructionsTrial = (params, currentIndex) => {
+            const p = (params && typeof params === 'object') ? params : {};
+            const dataObj = (p.data && typeof p.data === 'object') ? p.data : {};
+            if (p.auto_generated === true || dataObj.auto_generated === true) return true;
+
+            const choiceRaw = p.choices;
+            const isAllKeys = (choiceRaw === 'ALL_KEYS')
+                || (Array.isArray(choiceRaw) && choiceRaw.length === 1 && choiceRaw[0] === 'ALL_KEYS');
+
+            // Published configs may strip builder metadata. First generic html-keyboard-response
+            // with ALL_KEYS is usually the Builder Instructions component.
+            if (currentIndex === 0 && isAllKeys) return true;
+
+            return false;
+        };
+
         const normalizeName = (value) => {
             return (value ?? '')
                 .toString()
@@ -2155,10 +2188,25 @@ class JsonBuilder {
                 if (pluginType === 'eye-tracking-calibration-instructions') {
                     comp.builderComponentId = 'eye-tracking-calibration-instructions';
                     preferredDef = defById.get('eye-tracking-calibration-instructions') || preferredDef;
-                } else if (params.auto_generated === true) {
+                } else if (params.auto_generated === true || params?.data?.auto_generated === true || isLikelyInstructionsTrial(params, out.length)) {
                     comp.builderComponentId = 'instructions';
                     preferredDef = defById.get('instructions') || preferredDef;
                 }
+            }
+
+            if (!comp.builderComponentId && type === 'block') {
+                comp.builderComponentId = 'block';
+                preferredDef = defById.get('block') || { name: getTaskScopedBlockDisplayName(taskTypeForDefs) };
+            }
+
+            if (!comp.builderComponentId && type === 'mw-probe') {
+                comp.builderComponentId = 'mw-probe';
+                preferredDef = defById.get('mw-probe') || { name: 'Mind Wandering Probe' };
+            }
+
+            if (!comp.builderComponentId && type === 'survey-response') {
+                comp.builderComponentId = 'survey-response';
+                preferredDef = defById.get('survey-response') || { name: 'Survey Response' };
             }
 
             if (!comp.builderComponentId && defById.has(type)) {
