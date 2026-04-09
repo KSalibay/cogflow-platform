@@ -84,11 +84,73 @@ class TimelineBuilder {
         const componentElement = document.createElement('div');
         componentElement.className = 'timeline-component card mb-2';
         componentElement.dataset.componentType = component.type;
+        if (component && component.builderComponentId) {
+            componentElement.dataset.builderComponentId = component.builderComponentId;
+        }
+
+        const normalizeName = (value) => {
+            return (value ?? '')
+                .toString()
+                .trim()
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '');
+        };
+
+        const isGenericName = (name, type) => {
+            const n = normalizeName(name);
+            const t = normalizeName(type);
+            if (!n) return true;
+            if (n === t) return true;
+            if (n === normalizeName((type || '').toString().replace(/[-_]+/g, ' '))) return true;
+            if (n === 'component') return true;
+            if (t === 'htmlkeyboardresponse' && (n === 'htmlkeyboardresponse' || n === 'htmlkeyboardres')) return true;
+            if (t === 'imagekeyboardresponse' && (n === 'imagekeyboardresponse' || n === 'imagekeyboardres')) return true;
+            return false;
+        };
+
+        const blockNameForTask = (taskTypeRaw) => {
+            const t = (taskTypeRaw || '').toString().trim().toLowerCase();
+            if (t === 'rdm') return 'RDM Block';
+            if (t === 'nback') return 'N-back Block';
+            if (t === 'flanker') return 'Flanker Block';
+            if (t === 'sart') return 'SART Block';
+            if (t === 'simon') return 'Simon Block';
+            if (t === 'task-switching') return 'Task Switching Block';
+            if (t === 'pvt') return 'PVT Block';
+            if (t === 'mot') return 'MOT Block';
+            if (t === 'gabor') return 'Gabor Block';
+            if (t === 'continuous-image') return 'Continuous Image Block';
+            if (t === 'stroop') return 'Stroop Block';
+            if (t === 'emotional-stroop') return 'Emotional Stroop Block';
+            return 'Block';
+        };
+
+        const getCanonicalTitle = (c) => {
+            const id = (c?.builderComponentId || '').toString().trim().toLowerCase();
+            if (id === 'instructions') return 'Instructions';
+            if (id === 'eye-tracking-calibration-instructions') return 'Calibration Instructions';
+            if (id === 'mw-probe') return 'Mind Wandering Probe';
+            if (id === 'survey-response') return 'Survey Response';
+            if (id === 'block' || (c?.type || '') === 'block') {
+                const taskType = document.getElementById('taskType')?.value || this.jsonBuilder?.currentTaskType || 'rdm';
+                return blockNameForTask(taskType);
+            }
+            return '';
+        };
+
+        const canonicalTitle = getCanonicalTitle(component);
+        const currentName = (component?.name ?? '').toString();
+        const fallbackTitle = this.jsonBuilder?.toBuilderTimelineComponentName
+            ? this.jsonBuilder.toBuilderTimelineComponentName(component?.type)
+            : (component?.type || 'Component');
+        const displayTitle = (canonicalTitle && isGenericName(currentName, component?.type))
+            ? canonicalTitle
+            : (currentName || canonicalTitle || fallbackTitle);
         
         // Store component data
         const componentData = {
             type: component.type,
-            name: component.name,
+            name: displayTitle,
             ...component.parameters
         };
         // Preserve top-level label (not inside parameters)
@@ -112,7 +174,7 @@ class TimelineBuilder {
                             <i class="fas fa-grip-vertical"></i>
                         </div>
                         <div>
-                            <h6 class="card-title mb-1">${component.name}</h6>
+                            <h6 class="card-title mb-1">${displayTitle}</h6>
                             ${_subtitleHtml}
                         </div>
                     </div>

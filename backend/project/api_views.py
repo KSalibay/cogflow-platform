@@ -1190,7 +1190,32 @@ class BuilderAppView(APIView):
                 f"window.COGFLOW_RESEARCHER_ROLE = {json.dumps(role)};",
             ]),
         )
-        return HttpResponse(html, content_type="text/html; charset=utf-8")
+
+        # Runtime cache buster for local Builder scripts so browser cache never pins old JS.
+        try:
+            json_builder_js = builder_dir / "src" / "JsonBuilder.js"
+            timeline_builder_js = builder_dir / "src" / "modules" / "TimelineBuilder.js"
+            mtimes = []
+            for p in (json_builder_js, timeline_builder_js, index_path):
+                if p.exists():
+                    mtimes.append(int(p.stat().st_mtime))
+            cache_bust = str(max(mtimes)) if mtimes else str(int(timezone.now().timestamp()))
+
+            html = re.sub(
+                r'(src="src/[^"]+\.js)(\?v=[^"]*)?(")',
+                rf'\1?v={cache_bust}\3',
+                html,
+                flags=re.IGNORECASE,
+            )
+        except Exception:
+            # If cache-buster generation fails, continue serving Builder as usual.
+            pass
+
+        response = HttpResponse(html, content_type="text/html; charset=utf-8")
+        response["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response["Pragma"] = "no-cache"
+        response["Expires"] = "0"
+        return response
 
 
 class InterpreterAppView(APIView):
