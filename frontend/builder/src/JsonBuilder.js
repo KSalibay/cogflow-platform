@@ -2086,6 +2086,39 @@ class JsonBuilder {
         const defs = this.getComponentDefinitions({ taskTypeOverride: taskTypeForDefs });
         const defById = new Map((Array.isArray(defs) ? defs : []).map((d) => [d.id, d]));
 
+        const normalizeName = (value) => {
+            return (value ?? '')
+                .toString()
+                .trim()
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '');
+        };
+
+        const isGenericImportedName = (name, type) => {
+            const raw = (name ?? '').toString().trim();
+            if (!raw) return true;
+
+            const n = normalizeName(raw);
+            const normalizedType = normalizeName(type);
+            const normalizedTitleCase = normalizeName(this.toBuilderTimelineComponentName(type));
+
+            if (!n) return true;
+            if (n === normalizedType || n === normalizedTitleCase) return true;
+            if (n === 'component') return true;
+
+            if (type === 'html-keyboard-response') {
+                return n === 'htmlkeyboardresponse' || n === 'htmlkeyboardres';
+            }
+            if (type === 'image-keyboard-response') {
+                return n === 'imagekeyboardresponse' || n === 'imagekeyboardres';
+            }
+            if (type === 'mw-probe') {
+                return n === 'mwprobe' || n === 'mindwanderingprobe';
+            }
+
+            return false;
+        };
+
         const out = [];
         let loopCounter = 0;
         let randomCounter = 0;
@@ -2102,9 +2135,14 @@ class JsonBuilder {
                 params[k] = v;
             }
 
+            const explicitName = (item.name ?? '').toString();
+            const hasGenericName = isGenericImportedName(explicitName, type);
+            const defaultName = this.toBuilderTimelineComponentName(type);
+            let preferredDef = null;
+
             const comp = {
                 type,
-                name: (item.name || this.toBuilderTimelineComponentName(type)).toString(),
+                name: hasGenericName ? defaultName : explicitName,
                 parameters: params
             };
 
@@ -2116,13 +2154,20 @@ class JsonBuilder {
                 const pluginType = (params?.data?.plugin_type || '').toString();
                 if (pluginType === 'eye-tracking-calibration-instructions') {
                     comp.builderComponentId = 'eye-tracking-calibration-instructions';
+                    preferredDef = defById.get('eye-tracking-calibration-instructions') || preferredDef;
                 } else if (params.auto_generated === true) {
                     comp.builderComponentId = 'instructions';
+                    preferredDef = defById.get('instructions') || preferredDef;
                 }
             }
 
             if (!comp.builderComponentId && defById.has(type)) {
                 comp.builderComponentId = type;
+                preferredDef = defById.get(type) || preferredDef;
+            }
+
+            if (hasGenericName && preferredDef?.name) {
+                comp.name = preferredDef.name.toString();
             }
 
             out.push(comp);
@@ -2266,6 +2311,22 @@ class JsonBuilder {
         });
 
         this.updateExperimentTypeUI();
+
+        // Restore experiment-level controls after panel re-render.
+        if (nextExperimentType === 'trial-based') {
+            this.setElementValue('numTrials', config?.num_trials);
+            this.setElementValue('iti', config?.default_iti);
+            if (config?.randomize_order !== undefined) {
+                this.setElementChecked('randomizeOrder', !!config.randomize_order);
+            }
+        } else if (nextExperimentType === 'continuous') {
+            this.setElementValue('frameRate', config?.frame_rate);
+            this.setElementValue('duration', config?.duration);
+            this.setElementValue('updateInterval', config?.update_interval);
+            this.setElementValue('defaultTransitionDuration', config?.transition_settings?.duration_ms);
+            this.setElementValue('defaultTransitionType', config?.transition_settings?.type);
+        }
+
         this.loadComponentLibrary();
         this.updateConditionalUI();
     }

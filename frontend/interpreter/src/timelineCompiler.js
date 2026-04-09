@@ -1756,27 +1756,28 @@
       const minRaw = Number(probe.min_interval_ms);
       const maxMs = Number.isFinite(maxRaw) ? Math.max(0, maxRaw) : (Number.isFinite(minRaw) ? Math.max(0, minRaw) : 0);
 
-      let runStart = i;
-      while (runStart - 1 >= 0) {
-        const candidate = out[runStart - 1];
+      // Anchor each probe to ONE neighboring generated run so probes are not
+      // pooled across two blocks when the marker sits at a boundary.
+      const prevIdx = [];
+      for (let k = i - 1; k >= 0; k--) {
+        const candidate = out[k];
         if (!isObject(candidate) || candidate._generated_from_block !== true) break;
-        runStart -= 1;
+        prevIdx.push(k);
+      }
+      prevIdx.reverse();
+
+      const nextIdx = [];
+      for (let k = i + 1; k < out.length; k++) {
+        const candidate = out[k];
+        if (!isObject(candidate) || candidate._generated_from_block !== true) break;
+        nextIdx.push(k);
       }
 
-      let runEnd = i + 1;
-      while (runEnd < out.length) {
-        const candidate = out[runEnd];
-        if (!isObject(candidate) || candidate._generated_from_block !== true) break;
-        runEnd += 1;
-      }
-
-      const generatedIdx = [];
+      const generatedIdx = prevIdx.length > 0 ? prevIdx : nextIdx;
       let totalDurationMs = 0;
-      for (let k = runStart; k < runEnd; k++) {
-        if (k === i) continue;
+      for (const k of generatedIdx) {
         const trial = out[k];
-        if (!isObject(trial) || trial._generated_from_block !== true) continue;
-        generatedIdx.push(k);
+        if (!isObject(trial)) continue;
         totalDurationMs += estimateTrialDurationMs(trial);
       }
 
