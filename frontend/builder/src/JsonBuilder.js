@@ -2086,6 +2086,230 @@ class JsonBuilder {
         const defs = this.getComponentDefinitions({ taskTypeOverride: taskTypeForDefs });
         const defById = new Map((Array.isArray(defs) ? defs : []).map((d) => [d.id, d]));
 
+        const csv = (arr) => Array.isArray(arr) ? arr.map((v) => String(v)).join(',') : '';
+
+        const inflateBlockImportedParams = (rawParams) => {
+            const src = (rawParams && typeof rawParams === 'object') ? rawParams : {};
+            const out = { ...src };
+
+            const windows = (src.parameter_windows && typeof src.parameter_windows === 'object') ? src.parameter_windows : {};
+            const values = (src.parameter_values && typeof src.parameter_values === 'object') ? src.parameter_values : {};
+
+            const innerType = (
+                src.block_component_type
+                || src.component_type
+                || values.block_component_type
+                || values.component_type
+                || ''
+            ).toString();
+
+            if (!out.block_component_type && innerType) out.block_component_type = innerType;
+            if ((out.block_length === undefined || out.block_length === null || out.block_length === '') && src.length !== undefined) {
+                out.block_length = src.length;
+            }
+
+            const mapWindow = (sourceKey, minKey, maxKey) => {
+                const w = windows[sourceKey];
+                if (!w || typeof w !== 'object') return;
+                if (w.min !== undefined) out[minKey] = w.min;
+                if (w.max !== undefined) out[maxKey] = w.max;
+            };
+
+            // Generic fallback for tasks with matching names.
+            Object.entries(windows).forEach(([k, w]) => {
+                if (!w || typeof w !== 'object') return;
+                if (w.min !== undefined && out[`${k}_min`] === undefined) out[`${k}_min`] = w.min;
+                if (w.max !== undefined && out[`${k}_max`] === undefined) out[`${k}_max`] = w.max;
+            });
+
+            // Task-specific block window aliases used by Builder editors.
+            if (innerType === 'flanker-trial') {
+                mapWindow('stimulus_duration_ms', 'flanker_stimulus_duration_min', 'flanker_stimulus_duration_max');
+                mapWindow('trial_duration_ms', 'flanker_trial_duration_min', 'flanker_trial_duration_max');
+                mapWindow('iti_ms', 'flanker_iti_min', 'flanker_iti_max');
+            } else if (innerType === 'sart-trial') {
+                mapWindow('stimulus_duration_ms', 'sart_stimulus_duration_min', 'sart_stimulus_duration_max');
+                mapWindow('mask_duration_ms', 'sart_mask_duration_min', 'sart_mask_duration_max');
+                mapWindow('trial_duration_ms', 'sart_trial_duration_min', 'sart_trial_duration_max');
+                mapWindow('iti_ms', 'sart_iti_min', 'sart_iti_max');
+            } else if (innerType === 'mot-trial') {
+                mapWindow('speed_px_per_s', 'mot_speed_px_per_s_min', 'mot_speed_px_per_s_max');
+                mapWindow('tracking_duration_ms', 'mot_tracking_duration_ms_min', 'mot_tracking_duration_ms_max');
+                mapWindow('cue_duration_ms', 'mot_cue_duration_ms_min', 'mot_cue_duration_ms_max');
+                mapWindow('iti_ms', 'mot_iti_ms_min', 'mot_iti_ms_max');
+                mapWindow('aperture_border_width_px', 'mot_aperture_border_width_px_min', 'mot_aperture_border_width_px_max');
+            } else if (innerType === 'stroop-trial') {
+                mapWindow('stimulus_duration_ms', 'stroop_stimulus_duration_min', 'stroop_stimulus_duration_max');
+                mapWindow('trial_duration_ms', 'stroop_trial_duration_min', 'stroop_trial_duration_max');
+                mapWindow('iti_ms', 'stroop_iti_min', 'stroop_iti_max');
+            } else if (innerType === 'emotional-stroop-trial') {
+                mapWindow('stimulus_duration_ms', 'emostroop_stimulus_duration_min', 'emostroop_stimulus_duration_max');
+                mapWindow('trial_duration_ms', 'emostroop_trial_duration_min', 'emostroop_trial_duration_max');
+                mapWindow('iti_ms', 'emostroop_iti_min', 'emostroop_iti_max');
+            } else if (innerType === 'simon-trial') {
+                mapWindow('stimulus_duration_ms', 'simon_stimulus_duration_min', 'simon_stimulus_duration_max');
+                mapWindow('trial_duration_ms', 'simon_trial_duration_min', 'simon_trial_duration_max');
+                mapWindow('iti_ms', 'simon_iti_min', 'simon_iti_max');
+            } else if (innerType === 'task-switching-trial') {
+                mapWindow('stimulus_duration_ms', 'ts_stimulus_duration_min', 'ts_stimulus_duration_max');
+                mapWindow('trial_duration_ms', 'ts_trial_duration_min', 'ts_trial_duration_max');
+                mapWindow('iti_ms', 'ts_iti_min', 'ts_iti_max');
+            } else if (innerType === 'pvt-trial') {
+                mapWindow('foreperiod_ms', 'pvt_foreperiod_min', 'pvt_foreperiod_max');
+                mapWindow('trial_duration_ms', 'pvt_trial_duration_min', 'pvt_trial_duration_max');
+                mapWindow('iti_ms', 'pvt_iti_min', 'pvt_iti_max');
+            } else if (innerType === 'gabor-trial' || innerType === 'gabor-quest' || innerType === 'gabor-learning') {
+                mapWindow('spatial_frequency_cyc_per_px', 'gabor_spatial_frequency_min', 'gabor_spatial_frequency_max');
+                mapWindow('contrast', 'gabor_contrast_min', 'gabor_contrast_max');
+                mapWindow('patch_diameter_deg', 'gabor_patch_diameter_deg_min', 'gabor_patch_diameter_deg_max');
+                mapWindow('stimulus_duration_ms', 'gabor_stimulus_duration_min', 'gabor_stimulus_duration_max');
+                mapWindow('mask_duration_ms', 'gabor_mask_duration_min', 'gabor_mask_duration_max');
+            }
+
+            // Bring parameter_values back into Builder editor keys.
+            Object.entries(values).forEach(([k, v]) => {
+                if (out[k] === undefined) out[k] = v;
+            });
+
+            if (innerType === 'rdm-trial') {
+                if (Array.isArray(values.direction)) out.direction_options = csv(values.direction);
+                if (values.dot_color !== undefined) out.dot_color = values.dot_color;
+            } else if (innerType === 'rdm-practice') {
+                if (Array.isArray(values.direction)) out.practice_direction_options = csv(values.direction);
+                if (values.dot_color !== undefined) out.dot_color = values.dot_color;
+            } else if (innerType === 'rdm-adaptive') {
+                if (values.algorithm !== undefined) out.adaptive_algorithm = values.algorithm;
+                if (values.target_performance !== undefined) out.adaptive_target_performance = values.target_performance;
+                if (values.dot_color !== undefined) out.dot_color = values.dot_color;
+            } else if (innerType === 'rdm-dot-groups') {
+                if (Array.isArray(values.group_1_direction)) out.group_1_direction_options = csv(values.group_1_direction);
+                if (Array.isArray(values.group_2_direction)) out.group_2_direction_options = csv(values.group_2_direction);
+                if (Array.isArray(values.dependent_group_1_direction)) out.dependent_group_1_direction_options = csv(values.dependent_group_1_direction);
+                if (Array.isArray(values.dependent_group_direction_difference)) out.dependent_group_direction_difference_options = csv(values.dependent_group_direction_difference);
+                if (values.dependent_direction_of_movement_enabled !== undefined) out.dependent_direction_of_movement_enabled = !!values.dependent_direction_of_movement_enabled;
+                if (values.group_1_color !== undefined) out.group_1_color = values.group_1_color;
+                if (values.group_2_color !== undefined) out.group_2_color = values.group_2_color;
+                if (values.dynamic_target_group_switch_enabled !== undefined) out.dynamic_target_group_switch_enabled = !!values.dynamic_target_group_switch_enabled;
+                if (values.dynamic_target_group_every_n_frames !== undefined) out.dynamic_target_group_every_n_frames = values.dynamic_target_group_every_n_frames;
+            } else if (innerType === 'flanker-trial') {
+                if (Array.isArray(values.congruency)) out.flanker_congruency_options = csv(values.congruency);
+                if (values.stimulus_type !== undefined) out.flanker_stimulus_type = values.stimulus_type;
+                if (Array.isArray(values.target_direction)) out.flanker_target_direction_options = csv(values.target_direction);
+                if (Array.isArray(values.target_stimulus)) out.flanker_target_stimulus_options = csv(values.target_stimulus);
+                if (Array.isArray(values.distractor_stimulus)) out.flanker_distractor_stimulus_options = csv(values.distractor_stimulus);
+                if (Array.isArray(values.neutral_stimulus)) out.flanker_neutral_stimulus_options = csv(values.neutral_stimulus);
+                if (values.left_key !== undefined) out.flanker_left_key = values.left_key;
+                if (values.right_key !== undefined) out.flanker_right_key = values.right_key;
+                if (values.show_fixation_dot !== undefined) out.flanker_show_fixation_dot = !!values.show_fixation_dot;
+                if (values.show_fixation_cross_between_trials !== undefined) out.flanker_show_fixation_cross_between_trials = !!values.show_fixation_cross_between_trials;
+            } else if (innerType === 'sart-trial') {
+                if (Array.isArray(values.digit)) out.sart_digit_options = csv(values.digit);
+                if (values.nogo_digit !== undefined) out.sart_nogo_digit = values.nogo_digit;
+                if (values.nogo_probability !== undefined) out.sart_nogo_probability = values.nogo_probability;
+                if (values.go_key !== undefined) out.sart_go_key = values.go_key;
+            } else if (innerType === 'mot-trial') {
+                if (Array.isArray(values.num_objects)) out.mot_num_objects_options = csv(values.num_objects);
+                if (Array.isArray(values.num_targets)) out.mot_num_targets_options = csv(values.num_targets);
+                if (values.motion_type !== undefined) out.mot_motion_type = values.motion_type;
+                if (values.probe_mode !== undefined) out.mot_probe_mode = values.probe_mode;
+                if (values.yes_key !== undefined) out.mot_yes_key = values.yes_key;
+                if (values.no_key !== undefined) out.mot_no_key = values.no_key;
+                if (values.recognition_probe_count !== undefined) out.mot_recognition_probe_count = values.recognition_probe_count;
+                if (values.aperture_shape !== undefined) out.mot_aperture_shape = values.aperture_shape;
+                if (values.aperture_border_enabled !== undefined) out.mot_aperture_border_enabled = !!values.aperture_border_enabled;
+                if (values.aperture_border_color !== undefined) out.mot_aperture_border_color = values.aperture_border_color;
+                if (values.show_feedback !== undefined) out.mot_show_feedback = !!values.show_feedback;
+            } else if (innerType === 'stroop-trial') {
+                if (Array.isArray(values.word)) out.stroop_word_options = csv(values.word);
+                if (Array.isArray(values.ink_color_name)) out.stroop_ink_color_options = csv(values.ink_color_name);
+                if (Array.isArray(values.congruency)) out.stroop_congruency_options = csv(values.congruency);
+                if (values.response_mode !== undefined) out.stroop_response_mode = values.response_mode;
+                if (values.response_device !== undefined) out.stroop_response_device = values.response_device;
+                if (Array.isArray(values.choice_keys)) out.stroop_choice_keys = csv(values.choice_keys);
+                if (values.congruent_key !== undefined) out.stroop_congruent_key = values.congruent_key;
+                if (values.incongruent_key !== undefined) out.stroop_incongruent_key = values.incongruent_key;
+            } else if (innerType === 'emotional-stroop-trial') {
+                if (Array.isArray(values.ink_color_name)) out.emostroop_ink_color_options = csv(values.ink_color_name);
+                if (values.response_device !== undefined) out.emostroop_response_device = values.response_device;
+                if (Array.isArray(values.choice_keys)) out.emostroop_choice_keys = csv(values.choice_keys);
+            } else if (innerType === 'simon-trial') {
+                if (Array.isArray(values.stimulus_color_name)) out.simon_color_options = csv(values.stimulus_color_name);
+                if (Array.isArray(values.stimulus_side)) out.simon_side_options = csv(values.stimulus_side);
+                if (values.response_device !== undefined) out.simon_response_device = values.response_device;
+                if (values.left_key !== undefined) out.simon_left_key = values.left_key;
+                if (values.right_key !== undefined) out.simon_right_key = values.right_key;
+            } else if (innerType === 'task-switching-trial') {
+                if (values.trial_type !== undefined) out.ts_trial_type = values.trial_type;
+                if (values.single_task_index !== undefined) out.ts_single_task_index = values.single_task_index;
+                if (values.cue_type !== undefined) out.ts_cue_type = values.cue_type;
+                if (values.task_1_position !== undefined) out.ts_task_1_position = values.task_1_position;
+                if (values.task_2_position !== undefined) out.ts_task_2_position = values.task_2_position;
+                if (values.task_1_color_hex !== undefined) out.ts_task_1_color_hex = values.task_1_color_hex;
+                if (values.task_2_color_hex !== undefined) out.ts_task_2_color_hex = values.task_2_color_hex;
+                if (values.task_1_cue_text !== undefined) out.ts_task_1_cue_text = values.task_1_cue_text;
+                if (values.task_2_cue_text !== undefined) out.ts_task_2_cue_text = values.task_2_cue_text;
+                if (values.cue_font_size_px !== undefined) out.ts_cue_font_size_px = values.cue_font_size_px;
+                if (values.cue_duration_ms !== undefined) out.ts_cue_duration_ms = values.cue_duration_ms;
+                if (values.cue_gap_ms !== undefined) out.ts_cue_gap_ms = values.cue_gap_ms;
+                if (values.cue_color_hex !== undefined) out.ts_cue_color_hex = values.cue_color_hex;
+                if (values.stimulus_position !== undefined) out.ts_stimulus_position = values.stimulus_position;
+                if (values.stimulus_color_hex !== undefined) out.ts_stimulus_color_hex = values.stimulus_color_hex;
+                if (values.border_enabled !== undefined) out.ts_border_enabled = !!values.border_enabled;
+                if (values.left_key !== undefined) out.ts_left_key = values.left_key;
+                if (values.right_key !== undefined) out.ts_right_key = values.right_key;
+            } else if (innerType === 'pvt-trial') {
+                if (values.response_device !== undefined) out.pvt_response_device = values.response_device;
+                if (values.response_key !== undefined) out.pvt_response_key = values.response_key;
+            } else if (innerType === 'gabor-trial' || innerType === 'gabor-quest' || innerType === 'gabor-learning') {
+                if (values.response_task !== undefined) out.gabor_response_task = values.response_task;
+                if (values.left_key !== undefined) out.gabor_left_key = values.left_key;
+                if (values.right_key !== undefined) out.gabor_right_key = values.right_key;
+                if (values.yes_key !== undefined) out.gabor_yes_key = values.yes_key;
+                if (values.no_key !== undefined) out.gabor_no_key = values.no_key;
+                if (Array.isArray(values.target_location)) out.gabor_target_location_options = csv(values.target_location);
+                if (Array.isArray(values.target_tilt_deg)) out.gabor_target_tilt_options = csv(values.target_tilt_deg);
+                if (Array.isArray(values.distractor_orientation_deg)) out.gabor_distractor_orientation_options = csv(values.distractor_orientation_deg);
+                if (Array.isArray(values.spatial_cue)) out.gabor_spatial_cue_options = csv(values.spatial_cue);
+                if (values.spatial_cue_enabled !== undefined) out.gabor_spatial_cue_enabled = !!values.spatial_cue_enabled;
+                if (values.spatial_cue_probability !== undefined) out.gabor_spatial_cue_probability = values.spatial_cue_probability;
+                if (values.spatial_cue_validity_probability !== undefined) out.gabor_spatial_cue_validity_probability = values.spatial_cue_validity_probability;
+                if (values.value_cue_enabled !== undefined) out.gabor_value_cue_enabled = !!values.value_cue_enabled;
+                if (Array.isArray(values.left_value)) out.gabor_left_value_options = csv(values.left_value);
+                if (Array.isArray(values.right_value)) out.gabor_right_value_options = csv(values.right_value);
+                if (values.value_cue_probability !== undefined) out.gabor_value_cue_probability = values.value_cue_probability;
+                if (values.value_target_value !== undefined) out.gabor_value_target_value = values.value_target_value;
+                if (values.reward_availability_high !== undefined) out.gabor_reward_availability_high = values.reward_availability_high;
+                if (values.reward_availability_low !== undefined) out.gabor_reward_availability_low = values.reward_availability_low;
+                if (values.reward_availability_neutral !== undefined) out.gabor_reward_availability_neutral = values.reward_availability_neutral;
+                if (Array.isArray(values.grating_waveform)) out.gabor_grating_waveform_options = csv(values.grating_waveform);
+                if (values.patch_border_enabled !== undefined) out.gabor_patch_border_enabled = !!values.patch_border_enabled;
+                if (values.patch_border_width_px !== undefined) out.gabor_patch_border_width_px = values.patch_border_width_px;
+                if (values.patch_border_color !== undefined) out.gabor_patch_border_color = values.patch_border_color;
+                if (values.patch_border_opacity !== undefined) out.gabor_patch_border_opacity = values.patch_border_opacity;
+                if (values.learning_streak_length !== undefined) out.gabor_learning_streak_length = values.learning_streak_length;
+                if (values.learning_target_accuracy !== undefined) out.gabor_learning_target_accuracy = values.learning_target_accuracy;
+                if (values.learning_max_trials !== undefined) out.gabor_learning_max_trials = values.learning_max_trials;
+                if (values.show_feedback !== undefined) out.gabor_show_feedback = !!values.show_feedback;
+                if (values.feedback_duration_ms !== undefined) out.gabor_feedback_duration_ms = values.feedback_duration_ms;
+            } else if (innerType === 'html-keyboard-response') {
+                if (values.stimulus_html !== undefined && out.stimulus === undefined) out.stimulus = values.stimulus_html;
+                if (values.prompt !== undefined) out.prompt = values.prompt;
+                if (values.choices !== undefined) out.choices = values.choices;
+            } else if (innerType === 'html-button-response') {
+                if (values.stimulus_html !== undefined && out.stimulus === undefined) out.stimulus = values.stimulus_html;
+                if (values.prompt !== undefined) out.prompt = values.prompt;
+                if (values.choices !== undefined) out.choices = values.choices;
+                if (values.button_html !== undefined) out.button_html = values.button_html;
+            } else if (innerType === 'image-keyboard-response') {
+                if (values.stimulus_image !== undefined && out.stimulus === undefined) out.stimulus = values.stimulus_image;
+                if (values.stimulus_images !== undefined) out.stimulus_images = values.stimulus_images;
+                if (values.prompt !== undefined) out.prompt = values.prompt;
+                if (values.choices !== undefined) out.choices = values.choices;
+            }
+
+            return out;
+        };
+
         const getTaskScopedBlockDisplayName = (taskTypeRaw) => {
             const t = (taskTypeRaw || '').toString().trim().toLowerCase();
             if (t === 'rdm') return 'RDM Block';
@@ -2168,6 +2392,8 @@ class JsonBuilder {
                 params[k] = v;
             }
 
+            const inflatedParams = (type === 'block') ? inflateBlockImportedParams(params) : params;
+
             const explicitName = (item.name ?? '').toString();
             const hasGenericName = isGenericImportedName(explicitName, type);
             const defaultName = this.toBuilderTimelineComponentName(type);
@@ -2176,7 +2402,7 @@ class JsonBuilder {
             const comp = {
                 type,
                 name: hasGenericName ? defaultName : explicitName,
-                parameters: params
+                parameters: inflatedParams
             };
 
             if (item.label !== undefined && item.label !== null && item.label !== '') {
@@ -2184,11 +2410,11 @@ class JsonBuilder {
             }
 
             if (type === 'html-keyboard-response') {
-                const pluginType = (params?.data?.plugin_type || '').toString();
+                const pluginType = (inflatedParams?.data?.plugin_type || '').toString();
                 if (pluginType === 'eye-tracking-calibration-instructions') {
                     comp.builderComponentId = 'eye-tracking-calibration-instructions';
                     preferredDef = defById.get('eye-tracking-calibration-instructions') || preferredDef;
-                } else if (params.auto_generated === true || params?.data?.auto_generated === true || isLikelyInstructionsTrial(params, out.length)) {
+                } else if (inflatedParams.auto_generated === true || inflatedParams?.data?.auto_generated === true || isLikelyInstructionsTrial(inflatedParams, out.length)) {
                     comp.builderComponentId = 'instructions';
                     preferredDef = defById.get('instructions') || preferredDef;
                 }
