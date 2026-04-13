@@ -933,17 +933,22 @@ class JsonBuilder {
                     // Single-file imports can now rehydrate the Builder timeline directly.
                     if (files.length === 1) {
                         const shouldLoadIntoBuilder = confirm(
-                            'Load this JSON into the Builder and rebuild the Timeline?\n\nClick OK to rehydrate the Builder.\nClick Cancel to keep using Token Store import only.'
+                            'Rebuild the Timeline from this JSON for editing?\n\nClick OK to load the file into the Builder and restore the editable Timeline.\nClick Cancel to skip Builder rehydration.'
                         );
 
                         if (shouldLoadIntoBuilder) {
                             await this.importJsonFileIntoBuilder(files[0]);
                             return;
                         }
+
+                        if (this.isPlatformMode()) {
+                            this.showValidationResult('warning', 'Import canceled. In Platform Builder, single-file JSON import must be loaded into the editor with OK before you can edit and publish it.');
+                            return;
+                        }
                     }
 
                     if (this.isPlatformMode()) {
-                        this.showValidationResult('warning', 'Token Store import is disabled in Platform Builder. Use single-file import to load into the editor, then Publish.');
+                        this.showValidationResult('warning', 'Builder rehydration was skipped. Token Store import is disabled in Platform Builder, so use single-file import and click OK to load the study into the editor before publishing.');
                         return;
                     }
                     await this.importLocalJsonFilesToTokenStore(files);
@@ -2273,11 +2278,15 @@ class JsonBuilder {
                 if (values.spatial_cue_enabled !== undefined) out.gabor_spatial_cue_enabled = !!values.spatial_cue_enabled;
                 if (values.spatial_cue_probability !== undefined) out.gabor_spatial_cue_probability = values.spatial_cue_probability;
                 if (values.spatial_cue_validity_probability !== undefined) out.gabor_spatial_cue_validity_probability = values.spatial_cue_validity_probability;
+                if (values.target_left_probability !== undefined) out.gabor_target_left_probability = values.target_left_probability;
+                if (values.spatial_cue_target_mode !== undefined) out.gabor_spatial_cue_target_mode = values.spatial_cue_target_mode;
                 if (values.value_cue_enabled !== undefined) out.gabor_value_cue_enabled = !!values.value_cue_enabled;
                 if (Array.isArray(values.left_value)) out.gabor_left_value_options = csv(values.left_value);
                 if (Array.isArray(values.right_value)) out.gabor_right_value_options = csv(values.right_value);
                 if (values.value_cue_probability !== undefined) out.gabor_value_cue_probability = values.value_cue_probability;
                 if (values.value_target_value !== undefined) out.gabor_value_target_value = values.value_target_value;
+                if (values.value_non_target_value !== undefined) out.gabor_value_non_target_value = values.value_non_target_value;
+                if (values.use_stored_thresholds !== undefined) out.gabor_use_stored_thresholds = !!values.use_stored_thresholds;
                 if (values.reward_availability_high !== undefined) out.gabor_reward_availability_high = values.reward_availability_high;
                 if (values.reward_availability_low !== undefined) out.gabor_reward_availability_low = values.reward_availability_low;
                 if (values.reward_availability_neutral !== undefined) out.gabor_reward_availability_neutral = values.reward_availability_neutral;
@@ -2291,6 +2300,23 @@ class JsonBuilder {
                 if (values.learning_max_trials !== undefined) out.gabor_learning_max_trials = values.learning_max_trials;
                 if (values.show_feedback !== undefined) out.gabor_show_feedback = !!values.show_feedback;
                 if (values.feedback_duration_ms !== undefined) out.gabor_feedback_duration_ms = values.feedback_duration_ms;
+                if (values.adaptive && typeof values.adaptive === 'object' && (values.adaptive.mode || '').toString() === 'quest') {
+                    const adaptive = values.adaptive;
+                    out.gabor_adaptive_mode = 'quest';
+                    if (adaptive.parameter !== undefined) out.gabor_quest_parameter = adaptive.parameter;
+                    if (adaptive.target_performance !== undefined) out.gabor_quest_target_performance = adaptive.target_performance;
+                    if (adaptive.start_value !== undefined) out.gabor_quest_start_value = adaptive.start_value;
+                    if (adaptive.start_sd !== undefined) out.gabor_quest_start_sd = adaptive.start_sd;
+                    if (adaptive.beta !== undefined) out.gabor_quest_beta = adaptive.beta;
+                    if (adaptive.delta !== undefined) out.gabor_quest_delta = adaptive.delta;
+                    if (adaptive.gamma !== undefined) out.gabor_quest_gamma = adaptive.gamma;
+                    if (adaptive.min_value !== undefined) out.gabor_quest_min_value = adaptive.min_value;
+                    if (adaptive.max_value !== undefined) out.gabor_quest_max_value = adaptive.max_value;
+                    if (adaptive.quest_trials_coarse !== undefined) out.gabor_quest_trials_coarse = adaptive.quest_trials_coarse;
+                    if (adaptive.quest_trials_fine !== undefined) out.gabor_quest_trials_fine = adaptive.quest_trials_fine;
+                    if (adaptive.staircase_per_location !== undefined) out.gabor_quest_staircase_per_location = !!adaptive.staircase_per_location;
+                    if (adaptive.store_location_threshold !== undefined) out.gabor_quest_store_location_threshold = !!adaptive.store_location_threshold;
+                }
             } else if (innerType === 'html-keyboard-response') {
                 if (values.stimulus_html !== undefined && out.stimulus === undefined) out.stimulus = values.stimulus_html;
                 if (values.prompt !== undefined) out.prompt = values.prompt;
@@ -4763,7 +4789,7 @@ class JsonBuilder {
                 <div class="parameter-row">
                     <label class="parameter-label">Session Duration (ms):</label>
                     <input type="number" class="form-control parameter-input" id="socSessionDurationMs" value="60000" min="0" max="3600000">
-                    <div class="parameter-help">0 = no auto-end (participant ends with end key)</div>
+                    <div class="parameter-help">Duration of each SOC Dashboard session component. This is separate from the experiment-wide continuous duration.</div>
                 </div>
 
                 <div class="parameter-row">
@@ -6332,14 +6358,18 @@ class JsonBuilder {
                 gabor_target_tilt_options: { type: 'string', default: '-45,45' },
                 gabor_distractor_orientation_options: { type: 'string', default: '0,90' },
                 gabor_spatial_cue_enabled: { type: 'boolean', default: true },
-                gabor_spatial_cue_options: { type: 'string', default: 'none,left,right,both' },
-                gabor_spatial_cue_probability: { type: 'number', default: 1, min: 0, max: 1, step: 0.01 },
-                gabor_spatial_cue_validity_probability: { type: 'number', default: 1, min: 0, max: 1, step: 0.01 },
+                gabor_spatial_cue_options: { type: 'string', default: 'none,left,right,both', description: 'Allowed spatial cues sampled for the block.' },
+                gabor_spatial_cue_probability: { type: 'number', default: 1, min: 0, max: 1, step: 0.01, description: 'Probability that a spatial cue appears on a given trial.' },
+                gabor_spatial_cue_validity_probability: { type: 'number', default: 1, min: 0, max: 1, step: 0.01, description: 'When target-cue coupling is enabled, probability that a unilateral cue is valid.' },
+                gabor_target_left_probability: { type: 'number', default: null, min: 0, max: 1, step: 0.01, description: 'Optional target-side bias. When both target locations are available, this sets P(target = left). Leave blank for uniform sampling.' },
+                gabor_spatial_cue_target_mode: { type: 'select', default: 'couple_target_to_cue', options: ['couple_target_to_cue', 'preserve_target_distribution'], description: 'Choose whether cue validity flips the target side, or whether the sampled target distribution is preserved.' },
                 gabor_value_cue_enabled: { type: 'boolean', default: true },
-                gabor_left_value_options: { type: 'string', default: 'neutral,high,low' },
-                gabor_right_value_options: { type: 'string', default: 'neutral,high,low' },
-                gabor_value_cue_probability: { type: 'number', default: 1, min: 0, max: 1, step: 0.01 },
-                gabor_value_target_value: { type: 'select', default: 'any', options: ['any', 'high', 'low', 'neutral'] },
+                gabor_left_value_options: { type: 'string', default: 'neutral,high,low', description: 'Allowed value cues for the left side.' },
+                gabor_right_value_options: { type: 'string', default: 'neutral,high,low', description: 'Allowed value cues for the right side.' },
+                gabor_value_cue_probability: { type: 'number', default: 1, min: 0, max: 1, step: 0.01, description: 'Probability that value cues appear on a given trial.' },
+                gabor_value_target_value: { type: 'select', default: 'any', options: ['any', 'high', 'low', 'neutral'], description: 'If set, the target is forced onto a side carrying this value cue.' },
+                gabor_value_non_target_value: { type: 'select', default: 'any', options: ['any', 'high', 'low', 'neutral'], description: 'Optional forced value for the non-target side after target-value coupling is applied.' },
+                gabor_use_stored_thresholds: { type: 'boolean', default: false, description: 'Reuse threshold values stored by an earlier QUEST block when they are available.' },
                 gabor_reward_availability_high: { type: 'number', default: 0.8, min: 0, max: 1, step: 0.01 },
                 gabor_reward_availability_low: { type: 'number', default: 0.8, min: 0, max: 1, step: 0.01 },
                 gabor_reward_availability_neutral: { type: 'number', default: 0, min: 0, max: 1, step: 0.01 },
@@ -6358,8 +6388,8 @@ class JsonBuilder {
 
                 // Optional adaptive staircase per-block (stored in exported block.parameter_values.adaptive)
                 gabor_adaptive_mode: { type: 'select', default: 'none', options: ['none', 'quest'] },
-                gabor_quest_parameter: { type: 'select', default: 'target_tilt_deg', options: ['target_tilt_deg', 'spatial_frequency_cyc_per_px', 'contrast'] },
-                gabor_quest_target_performance: { type: 'number', default: 0.82, min: 0.5, max: 0.99, step: 0.01 },
+                gabor_quest_parameter: { type: 'select', default: 'target_tilt_deg', options: ['target_tilt_deg', 'spatial_frequency_cyc_per_px', 'contrast'], description: 'Stimulus parameter adjusted by QUEST.' },
+                gabor_quest_target_performance: { type: 'number', default: 0.82, min: 0.5, max: 0.99, step: 0.01, description: 'Target performance level for the QUEST posterior.' },
                 gabor_quest_start_value: { type: 'number', default: 45, step: 0.1 },
                 gabor_quest_start_sd: { type: 'number', default: 20, min: 0.001, step: 0.1 },
                 gabor_quest_beta: { type: 'number', default: 3.5, min: 0.001, step: 0.1 },
@@ -6367,18 +6397,18 @@ class JsonBuilder {
                 gabor_quest_gamma: { type: 'number', default: 0.5, min: 0, max: 1, step: 0.01 },
                 gabor_quest_min_value: { type: 'number', default: -90, step: 0.1 },
                 gabor_quest_max_value: { type: 'number', default: 90, step: 0.1 },
-                gabor_quest_trials_coarse: { type: 'number', default: 32, min: 0, max: 10000, step: 1 },
-                gabor_quest_trials_fine: { type: 'number', default: 32, min: 0, max: 10000, step: 1 },
-                gabor_quest_staircase_per_location: { type: 'boolean', default: false },
-                gabor_quest_store_location_threshold: { type: 'boolean', default: false },
+                gabor_quest_trials_coarse: { type: 'number', default: 32, min: 0, max: 10000, step: 1, description: 'Number of coarse-phase QUEST trials before fine tuning begins.' },
+                gabor_quest_trials_fine: { type: 'number', default: 32, min: 0, max: 10000, step: 1, description: 'Number of fine-phase QUEST trials after the coarse phase.' },
+                gabor_quest_staircase_per_location: { type: 'boolean', default: false, description: 'Maintain independent QUEST staircases for left and right target locations.' },
+                gabor_quest_store_location_threshold: { type: 'boolean', default: false, description: 'Store the estimated QUEST threshold(s) for later use in window.cogflowState.gabor_thresholds.' },
 
                 gabor_contrast_min: { type: 'number', default: 0.05, min: 0, max: 1, step: 0.01 },
                 gabor_contrast_max: { type: 'number', default: 0.95, min: 0, max: 1, step: 0.01 },
 
-                gabor_learning_streak_length: { type: 'number', default: 20, min: 1, max: 10000, step: 1 },
+                gabor_learning_streak_length: { type: 'number', default: 20, min: 1, max: 10000, step: 1, description: 'Rolling window length used to evaluate learning accuracy, not a strict consecutive-correct streak.' },
                 gabor_learning_target_accuracy: { type: 'number', default: 0.9, min: 0, max: 1, step: 0.01 },
                 gabor_learning_max_trials: { type: 'number', default: 200, min: 1, max: 100000, step: 1 },
-                gabor_show_feedback: { type: 'boolean', default: true },
+                gabor_show_feedback: { type: 'boolean', default: true, description: 'Show correctness feedback during learning or QUEST trials.' },
                 gabor_feedback_duration_ms: { type: 'number', default: 800, min: 0, max: 30000, step: 1 },
 
                 gabor_stimulus_duration_min: { type: 'number', default: 67, min: 0, max: 10000 },
@@ -9882,11 +9912,14 @@ class JsonBuilder {
             gabor_spatial_cue_enabled: !!document.getElementById('gaborSpatialCueEnabled')?.checked,
             gabor_spatial_cue_options: (document.getElementById('gaborSpatialCueOptions')?.value || 'none,left,right,both').toString(),
             gabor_spatial_cue_probability: Number.parseFloat(document.getElementById('gaborSpatialCueProbability')?.value || '1'),
+            gabor_spatial_cue_target_mode: 'couple_target_to_cue',
+            gabor_target_left_probability: null,
 
             gabor_value_cue_enabled: !!document.getElementById('gaborValueCueEnabled')?.checked,
             gabor_left_value_options: (document.getElementById('gaborLeftValueOptions')?.value || 'neutral,high,low').toString(),
             gabor_right_value_options: (document.getElementById('gaborRightValueOptions')?.value || 'neutral,high,low').toString(),
             gabor_value_cue_probability: Number.parseFloat(document.getElementById('gaborValueCueProbability')?.value || '1'),
+            gabor_value_non_target_value: 'any',
 
             gabor_adaptive_mode: 'none',
             gabor_quest_parameter: 'target_tilt_deg',
@@ -9898,6 +9931,7 @@ class JsonBuilder {
             gabor_quest_gamma: 0.5,
             gabor_quest_min_value: -90,
             gabor_quest_max_value: 90,
+            gabor_use_stored_thresholds: false,
             gabor_stimulus_duration_min: Number.isFinite(stim) ? stim : 67,
             gabor_stimulus_duration_max: Number.isFinite(stim) ? stim : 67,
             gabor_mask_duration_min: Number.isFinite(mask) ? mask : 67,
@@ -10821,6 +10855,14 @@ class JsonBuilder {
             if (Number.isFinite(pSpatialValidity)) {
                 values.spatial_cue_validity_probability = Math.max(0, Math.min(1, pSpatialValidity));
             }
+            const pTargetLeft = Number(blockComponent.gabor_target_left_probability);
+            if (Number.isFinite(pTargetLeft)) {
+                values.target_left_probability = Math.max(0, Math.min(1, pTargetLeft));
+            }
+            const spatialCueTargetMode = (blockComponent.gabor_spatial_cue_target_mode ?? '').toString().trim().toLowerCase();
+            if (spatialCueTargetMode === 'couple_target_to_cue' || spatialCueTargetMode === 'preserve_target_distribution') {
+                values.spatial_cue_target_mode = spatialCueTargetMode;
+            }
 
             const lv = parseStringList(blockComponent.gabor_left_value_options);
             if (lv.length > 0) {
@@ -10843,6 +10885,13 @@ class JsonBuilder {
             const valueTarget = (blockComponent.gabor_value_target_value ?? '').toString().trim().toLowerCase();
             if (valueTarget === 'high' || valueTarget === 'low' || valueTarget === 'neutral' || valueTarget === 'any') {
                 values.value_target_value = valueTarget;
+            }
+            const valueNonTarget = (blockComponent.gabor_value_non_target_value ?? '').toString().trim().toLowerCase();
+            if (valueNonTarget === 'high' || valueNonTarget === 'low' || valueNonTarget === 'neutral' || valueNonTarget === 'any') {
+                values.value_non_target_value = valueNonTarget;
+            }
+            if (blockComponent.gabor_use_stored_thresholds !== undefined) {
+                values.use_stored_thresholds = !!blockComponent.gabor_use_stored_thresholds;
             }
 
             const pRewardHigh = Number(blockComponent.gabor_reward_availability_high);

@@ -2520,19 +2520,26 @@ class TimelineBuilder {
             // If switching away from Gabor, ensure these are hidden.
             if (selected !== 'gabor-trial' && selected !== 'gabor-quest' && selected !== 'gabor-learning') {
                 [
+                    'gabor_use_stored_thresholds',
+                    'gabor_target_left_probability',
                     'gabor_spatial_cue_options',
                     'gabor_spatial_cue_probability',
                     'gabor_spatial_cue_validity_probability',
+                    'gabor_spatial_cue_target_mode',
                     'gabor_left_value_options',
                     'gabor_right_value_options',
                     'gabor_value_cue_probability',
                     'gabor_value_target_value',
+                    'gabor_value_non_target_value',
                     'gabor_reward_availability_high',
                     'gabor_reward_availability_low',
                     'gabor_reward_availability_neutral'
                 ].forEach(p => setParamVisible(p, false));
                 return;
             }
+
+            setParamVisible('gabor_use_stored_thresholds', selected === 'gabor-trial' || selected === 'gabor-learning');
+            setParamVisible('gabor_target_left_probability', true);
 
             const spatialEnabledEl = formContainer.querySelector('#param_gabor_spatial_cue_enabled');
             const spatialEnabled = spatialEnabledEl ? !!spatialEnabledEl.checked : true;
@@ -2545,6 +2552,7 @@ class TimelineBuilder {
             setParamVisible('gabor_spatial_cue_options', spatialEnabled);
             setParamVisible('gabor_spatial_cue_probability', spatialEnabled);
             setParamVisible('gabor_spatial_cue_validity_probability', spatialEnabled);
+            setParamVisible('gabor_spatial_cue_target_mode', spatialEnabled);
 
             const valueEnabledEl = formContainer.querySelector('#param_gabor_value_cue_enabled');
             const valueEnabled = valueEnabledEl ? !!valueEnabledEl.checked : true;
@@ -2560,6 +2568,7 @@ class TimelineBuilder {
             setParamVisible('gabor_right_value_options', valueEnabled);
             setParamVisible('gabor_value_cue_probability', valueEnabled);
             setParamVisible('gabor_value_target_value', valueEnabled);
+            setParamVisible('gabor_value_non_target_value', valueEnabled);
             setParamVisible('gabor_reward_availability_high', valueEnabled);
             setParamVisible('gabor_reward_availability_low', valueEnabled);
             setParamVisible('gabor_reward_availability_neutral', valueEnabled);
@@ -4442,7 +4451,7 @@ class TimelineBuilder {
         // Gabor block cue toggles: when disabled, reset dependent fields so the saved component stays clean.
         if ((currentData.type || '') === 'block') {
             const blockType = (newParameters.block_component_type ?? currentData.block_component_type ?? '').toString();
-            const isGaborBlock = (blockType === 'gabor-trial' || blockType === 'gabor-quest');
+            const isGaborBlock = (blockType === 'gabor-trial' || blockType === 'gabor-quest' || blockType === 'gabor-learning');
 
             const isStroopBlock = (blockType === 'stroop-trial');
 
@@ -4450,11 +4459,13 @@ class TimelineBuilder {
                 if (newParameters.gabor_spatial_cue_enabled === false) {
                     newParameters.gabor_spatial_cue_options = 'none,left,right,both';
                     newParameters.gabor_spatial_cue_probability = 1;
+                    newParameters.gabor_spatial_cue_target_mode = 'couple_target_to_cue';
                 }
                 if (newParameters.gabor_value_cue_enabled === false) {
                     newParameters.gabor_left_value_options = 'neutral,high,low';
                     newParameters.gabor_right_value_options = 'neutral,high,low';
                     newParameters.gabor_value_cue_probability = 1;
+                    newParameters.gabor_value_non_target_value = 'any';
                 }
             }
 

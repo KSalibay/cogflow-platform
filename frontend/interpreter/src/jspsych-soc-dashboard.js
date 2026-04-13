@@ -370,11 +370,11 @@
             const lo = Math.min(minMs, maxMs);
             const hi = Math.max(minMs, maxMs);
             const startAt = Math.round(lo + Math.random() * (hi - lo));
-            return { has_schedule: true, start_at_ms: startAt, end_at_ms: null };
+            return { has_schedule: true, start_at_ms: startAt, end_at_ms: null, _source: 'mw_interval_fallback' };
           }
         }
 
-        return { has_schedule: false, start_at_ms: 0, end_at_ms: null };
+        return { has_schedule: false, start_at_ms: 0, end_at_ms: null, _source: 'none' };
       }
 
       let startAt = startAtRaw;
@@ -397,10 +397,10 @@
         endAt = startAt;
       }
 
-      return { has_schedule: true, start_at_ms: startAt, end_at_ms: Number.isFinite(endAt) ? endAt : null };
+      return { has_schedule: true, start_at_ms: startAt, end_at_ms: Number.isFinite(endAt) ? endAt : null, _source: 'explicit' };
     }
 
-    const windowsSpec = subtasks.length
+    let windowsSpec = subtasks.length
       ? subtasks.map((s, idx) => ({
           subtask_type: s.type || null,
           subtask_title: s.title || (s.type ? s.type : `Subtask ${idx + 1}`),
@@ -411,15 +411,78 @@
           subtask_type: null,
           subtask_title: `Task ${i + 1}`,
           subtask: null,
-          schedule: { has_schedule: false, start_at_ms: 0, end_at_ms: null }
+          schedule: { has_schedule: false, start_at_ms: 0, end_at_ms: null, _source: 'none' }
         }));
+
+    // Expand MW-probe interval-only subtasks into repeated probes across the SOC session.
+    // This supports "probe every X-Y ms" behavior without requiring manual duplication.
+    if (Number.isFinite(trialMs) && trialMs > 0) {
+      const expanded = [];
+      for (const w of windowsSpec) {
+        const stType = (w?.subtask_type ?? '').toString().toLowerCase();
+        const sch = w?.schedule || { has_schedule: false, start_at_ms: 0, end_at_ms: null, _source: 'none' };
+        if (stType !== 'mw-probe' || sch._source !== 'mw_interval_fallback') {
+          expanded.push(w);
+          continue;
+        }
+
+        const subtask = (w?.subtask && typeof w.subtask === 'object') ? w.subtask : {};
+        const minRaw = Number(subtask.min_interval_ms);
+        const maxRaw = Number(subtask.max_interval_ms);
+        const hasInterval = (
+          (Number.isFinite(minRaw) && minRaw > 0)
+          || (Number.isFinite(maxRaw) && maxRaw > 0)
+        );
+        if (!hasInterval) {
+          expanded.push(w);
+          continue;
+        }
+
+        const minMs = Number.isFinite(minRaw) ? Math.max(0, Math.floor(minRaw)) : 0;
+        const maxMs = Number.isFinite(maxRaw) ? Math.max(0, Math.floor(maxRaw)) : minMs;
+        const lo = Math.min(minMs, maxMs);
+        const hi = Math.max(minMs, maxMs);
+
+        const durRaw = Number(subtask.duration_ms);
+        const probeDurationMs = (Number.isFinite(durRaw) && durRaw > 0)
+          ? Math.max(1, Math.floor(durRaw))
+          : null;
+
+        let nextAt = Math.round(lo + Math.random() * (hi - lo));
+        let emitted = 0;
+        while (nextAt < trialMs && emitted < 100) {
+          const endAt = Number.isFinite(probeDurationMs)
+            ? Math.min(trialMs, nextAt + probeDurationMs)
+            : null;
+
+          expanded.push({
+            ...w,
+            schedule: {
+              has_schedule: true,
+              start_at_ms: nextAt,
+              end_at_ms: endAt,
+              _source: 'explicit'
+            }
+          });
+
+          const step = Math.round(lo + Math.random() * (hi - lo));
+          nextAt += Math.max(1, step);
+          emitted += 1;
+        }
+
+        if (emitted === 0) {
+          expanded.push(w);
+        }
+      }
+      windowsSpec = expanded;
+    }
 
     // Auto-sequencing fallback:
     // If the researcher requested multiple tasks (num_tasks > 1) but provided no explicit
     // per-subtask scheduling fields, default to showing exactly one window at a time.
     // This preserves the explicit scheduling/overlap demo behavior when any schedule exists.
     const hasAnySchedule = windowsSpec.some((w) => (w?.schedule?.has_schedule === true));
-    if (!hasAnySchedule && fallbackCount > 1 && Number.isFinite(trialMs) && trialMs > 0 && windowsSpec.length > 1) {
+    if (!hasAnySchedule && Number.isFinite(trialMs) && trialMs > 0 && windowsSpec.length > 1) {
       const n = windowsSpec.length;
       for (let i = 0; i < n; i++) {
         const startAt = Math.floor((trialMs * i) / n);
@@ -3871,7 +3934,7 @@
       const tick = () => {
         if (ended || state.ended || !state.started) return;
 
-        const elapsed = nowMs() - startWall;
+        const elapsed = logicalElapsedMs() - (state.subtask_start_logical_ts ?? 0);
         if (elapsed >= stopAt) {
           const latest = state.entries.length ? state.entries[state.entries.length - 1] : null;
           recordNonResponseIfNeeded(latest, 'subtask_end');
@@ -4432,9 +4495,9 @@
     document.addEventListener('keydown', onKeyDown);
 
     if (Number.isFinite(trialMs) && trialMs > 0) {
-      this.jsPsych.pluginAPI.setTimeout(() => {
+      setLogicalTimeout(trialMs, () => {
         endTrial('timeout');
-      }, trialMs);
+      });
     }
   };
 

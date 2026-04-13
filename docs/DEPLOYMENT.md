@@ -271,6 +271,9 @@ Sensitive decrypt/read access now requires:
 3. TOTP verification (`POST /api/v1/auth/mfa/verify`)
 4. Decrypt request within `MFA_REAUTH_SECONDS` window
 
+Notes:
+- MFA uses standard TOTP (`otpauth://`) provisioning, so any TOTP-compatible authenticator app can be used (for example Duo, Google Authenticator, Authy, 1Password, Microsoft Authenticator).
+
 Environment controls:
 - `MFA_TOTP_ISSUER` (default: `CogFlow Platform`)
 - `MFA_REAUTH_SECONDS` (default: `900`)

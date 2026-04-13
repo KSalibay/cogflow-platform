@@ -903,7 +903,7 @@
         <!-- Step 2: MFA code -->
         <div id="loginStep2" style="display:none;">
           <h2>Two-factor authentication</h2>
-          <p class="mfa-hint">Enter the 6-digit code from your authenticator app.</p>
+          <p class="mfa-hint">Enter the 6-digit code from your TOTP authenticator app.</p>
           <div class="field-group">
             <div>
               <label for="loginMfaCode">Authentication code</label>
@@ -1335,6 +1335,7 @@
 
               <div class="account-section" id="mfaSection">
                 <h3>Two-Factor Authentication (TOTP)</h3>
+                <p class="mfa-hint" style="margin:0 0 10px;">Works with any TOTP-compatible authenticator app (for example Duo, Google Authenticator, Authy, 1Password, Microsoft Authenticator).</p>
                 <div id="mfaAccountMsg" class="inline-note" style="display:none;margin-bottom:12px;"></div>
                 <div id="mfaStatusBlock"></div>
               </div>
@@ -2994,7 +2995,7 @@
 
       } else if (mfaSetupState) {
         block.innerHTML = `
-          <p class="inline-note" style="margin-bottom:12px;">Scan the QR code in your authenticator app, then enter the code to activate.</p>
+          <p class="inline-note" style="margin-bottom:12px;">Scan the QR code in any TOTP-compatible authenticator app, then enter the code to activate.</p>
           <div class="mfa-qr-wrap" id="mfaQrWrap"></div><br/>
           <div style="margin:8px 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
             <span class="auth-secret">${esc(mfaSetupState.secret)}</span>
