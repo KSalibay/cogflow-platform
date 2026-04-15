@@ -508,7 +508,7 @@
       });
     };
 
-    const installInstructionsOverlay = (hostEl, overlayTitle, instructionsHtml, onStart) => {
+    const installInstructionsOverlay = (hostEl, overlayTitle, instructionsHtml, onStart, onDismiss) => {
       const raw = (instructionsHtml ?? '').toString();
       const html = raw.trim();
       if (!html) {
@@ -534,6 +534,7 @@
 
       const startOnce = () => {
         try { overlay.remove(); } catch { /* ignore */ }
+        try { onDismiss?.(overlay); } catch { /* ignore */ }
         try { onStart?.(); } catch { /* ignore */ }
       };
 
@@ -701,13 +702,42 @@
 
     let mwPauseTotalMs = 0;
     let mwPauseStartedAt = null;
+    let instructionPauseTotalMs = 0;
+    let instructionPauseStartedAt = null;
+
+    const beginInstructionPause = () => {
+      if (instructionPauseStartedAt === null) {
+        instructionPauseStartedAt = nowMs();
+      }
+    };
+
+    const settleInstructionPause = () => {
+      const hasVisibleInstructionOverlay = windowInstructionsOverlay.some((ov) => !!ov && !!ov.isConnected);
+      if (hasVisibleInstructionOverlay) {
+        beginInstructionPause();
+        return;
+      }
+      if (instructionPauseStartedAt !== null) {
+        instructionPauseTotalMs += Math.max(0, nowMs() - instructionPauseStartedAt);
+        instructionPauseStartedAt = null;
+      }
+    };
 
     const logicalElapsedMs = () => {
       const now = nowMs();
-      const currentPause = (Number.isFinite(mwPauseStartedAt) && mwPauseStartedAt !== null)
+      const currentMwPause = (Number.isFinite(mwPauseStartedAt) && mwPauseStartedAt !== null)
         ? Math.max(0, now - mwPauseStartedAt)
         : 0;
-      return Math.max(0, Math.round((now - startTs) - mwPauseTotalMs - currentPause));
+      const currentInstructionPause = (Number.isFinite(instructionPauseStartedAt) && instructionPauseStartedAt !== null)
+        ? Math.max(0, now - instructionPauseStartedAt)
+        : 0;
+      return Math.max(0, Math.round((now - startTs) - mwPauseTotalMs - currentMwPause - instructionPauseTotalMs - currentInstructionPause));
+    };
+
+    const isSubtaskExecutionPaused = (idx) => {
+      if (instructionPauseStartedAt !== null) return true;
+      const mwIdx = activeMwProbeIndex();
+      return (mwIdx !== null && mwIdx !== idx);
     };
 
     const activeMwProbeIndex = () => {
@@ -850,9 +880,21 @@
       }
 
       const titleRaw = (windowInstructionsTitle[idx] ?? windowsSpec[idx]?.subtask_title ?? 'Instructions').toString();
-      const overlay = installInstructionsOverlay(hostEl, titleRaw, raw, () => startWindowIfNeeded(idx));
+      const overlay = installInstructionsOverlay(
+        hostEl,
+        titleRaw,
+        raw,
+        () => startWindowIfNeeded(idx),
+        () => {
+          windowInstructionsOverlay[idx] = null;
+          settleInstructionPause();
+        }
+      );
       windowInstructionsOverlay[idx] = overlay;
       windowStartIsGated[idx] = !!overlay;
+      if (overlay) {
+        beginInstructionPause();
+      }
     };
 
     const forceEndWindow = (idx, reason = 'scheduled_end') => {
@@ -1527,6 +1569,10 @@
 
         const scheduleNextTrial = () => {
           if (state.ended || ended) return;
+          if (isSubtaskExecutionPaused(i)) {
+            setSafeTimeout(scheduleNextTrial, 50);
+            return;
+          }
           if (cfg.num_trials > 0 && state.trial_index >= cfg.num_trials) {
             state.ended = true;
             if (statusEl) statusEl.textContent = 'Complete';
@@ -1621,6 +1667,17 @@
           // Timeout -> omission
           setSafeTimeout(() => {
             if (state.ended || ended) return;
+            if (isSubtaskExecutionPaused(i)) {
+              setSafeTimeout(() => {
+                if (state.ended || ended) return;
+                if (isSubtaskExecutionPaused(i)) return;
+                const now = nowMs();
+                if (state.current && !state.current_responded && Number.isFinite(state.current_deadline_at) && now >= state.current_deadline_at) {
+                  closeTrialAsOmissionIfNeeded('deadline');
+                }
+              }, 50);
+              return;
+            }
             // Self-healing: if trial still open after deadline, close as omission.
             const now = nowMs();
             if (state.current && !state.current_responded && Number.isFinite(state.current_deadline_at) && now >= state.current_deadline_at) {
@@ -2103,6 +2160,10 @@
 
         const beginAlert = () => {
           if (state.ended || !state.started) return;
+          if (isSubtaskExecutionPaused(i)) {
+            setSafeTimeout(beginAlert, 50);
+            return;
+          }
 
           const id = `pvt_${i}_${Date.now()}_${state.presented + 1}`;
           state.presented += 1;
@@ -2131,6 +2192,10 @@
 
           const doFlash = () => {
             if (state.ended || !state.started) return;
+            if (isSubtaskExecutionPaused(i)) {
+              setSafeTimeout(doFlash, 50);
+              return;
+            }
             const cur = state.current;
             if (!cur || cur.id !== id) return;
 
@@ -2158,6 +2223,29 @@
               const cur2 = state.current;
               if (!cur2 || cur2.id !== id) return;
               if (cur2.responded) return;
+              if (isSubtaskExecutionPaused(i)) {
+                setSafeTimeout(() => {
+                  const cur3 = state.current;
+                  if (!cur3 || cur3.id !== id) return;
+                  if (cur3.responded) return;
+                  if (isSubtaskExecutionPaused(i)) return;
+                  state.timeouts += 1;
+                  events.push({
+                    t_ms: Math.round(nowMs() - startTs),
+                    t_subtask_ms: tSubtaskMs(),
+                    type: 'pvt_like_timeout',
+                    subtask_index: i,
+                    subtask_title: state.title,
+                    stimulus_id: id
+                  });
+                  addLine('WARN', 'timeout');
+                  renderLines();
+                  setWindowDebug(`PVT P:${state.presented} R:${state.responded} FS:${state.false_starts} TO:${state.timeouts}`);
+                  hideAlert('timeout');
+                  scheduleNextAlert();
+                }, 50);
+                return;
+              }
 
               state.timeouts += 1;
               events.push({
@@ -2185,6 +2273,10 @@
           let remaining = countdown;
           const tickCountdown = () => {
             if (state.ended || !state.started) return;
+            if (isSubtaskExecutionPaused(i)) {
+              setSafeTimeout(tickCountdown, 50);
+              return;
+            }
             const cur = state.current;
             if (!cur || cur.id !== id) return;
 
@@ -2214,6 +2306,10 @@
           const gap = randomInt(cfg.alert_min_interval_ms, cfg.alert_max_interval_ms);
           setSafeTimeout(() => {
             if (state.ended || !state.started) return;
+            if (isSubtaskExecutionPaused(i)) {
+              setSafeTimeout(scheduleNextAlert, 50);
+              return;
+            }
             beginAlert();
           }, gap);
         };
@@ -2232,6 +2328,10 @@
 
         const tickLog = () => {
           if (state.ended || !state.started) return;
+          if (isSubtaskExecutionPaused(i)) {
+            setSafeTimeout(tickLog, 50);
+            return;
+          }
           const { lvl, msg } = randomLogLine();
           addLine(lvl, msg);
           renderLines();
@@ -3148,6 +3248,10 @@
             lastTick = nowMs();
             animIntervalId = setInterval(() => {
               if (ended || state.ended) return;
+              if (isSubtaskExecutionPaused(i)) {
+                lastTick = nowMs();
+                return;
+              }
               const now = nowMs();
               const dt = Math.max(0, Math.min(0.05, (now - lastTick) / 1000));
               lastTick = now;
@@ -3165,6 +3269,7 @@
 
             trialIntervalId = setInterval(() => {
               if (ended || state.ended) return;
+              if (isSubtaskExecutionPaused(i)) return;
               if (insertedTrials >= maxTrialsToInsert) return;
               enqueueTrialCluster();
               insertedTrials += 1;
@@ -3529,7 +3634,7 @@
         const tick = () => {
           if (ended || state.ended || !state.started) return;
 
-          if (activeMwProbeIndex() !== null) {
+          if (isSubtaskExecutionPaused(i)) {
             setSafeTimeout(tick, 50);
             return;
           }
@@ -3933,6 +4038,11 @@
 
       const tick = () => {
         if (ended || state.ended || !state.started) return;
+
+        if (isSubtaskExecutionPaused(i)) {
+          setSafeTimeout(tick, 50);
+          return;
+        }
 
         const elapsed = logicalElapsedMs() - (state.subtask_start_logical_ts ?? 0);
         if (elapsed >= stopAt) {
