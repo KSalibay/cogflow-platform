@@ -1108,6 +1108,75 @@ html[data-cf-theme="dark"] .timeline-item {
     color: var(--cf-text);
 }
 
+html[data-cf-theme="dark"] .timeline-component:hover,
+html[data-cf-theme="dark"] .timeline-item:hover {
+    background-color: #424a69;
+    box-shadow: 0 6px 18px rgba(8, 12, 24, 0.45);
+}
+
+html[data-cf-theme="dark"] .timeline-component.selected,
+html[data-cf-theme="dark"] .timeline-item.selected {
+    border-color: rgba(174, 140, 163, 0.9);
+    box-shadow: 0 0 0 3px rgba(174, 140, 163, 0.24);
+}
+
+html[data-cf-theme="dark"] .timeline-component .component-title,
+html[data-cf-theme="dark"] .timeline-item .component-title {
+    color: rgba(223, 232, 225, 0.96);
+}
+
+html[data-cf-theme="dark"] .timeline-component .component-type-badge,
+html[data-cf-theme="dark"] .timeline-item .component-type-badge {
+    background-color: rgba(186, 199, 190, 0.16);
+    color: rgba(223, 232, 225, 0.9);
+    border: 1px solid rgba(186, 199, 190, 0.28);
+}
+
+html[data-cf-theme="dark"] .timeline-component .component-preview,
+html[data-cf-theme="dark"] .timeline-item .component-preview {
+    background-color: rgba(31, 38, 61, 0.75);
+    color: rgba(223, 232, 225, 0.86);
+    border: 1px solid rgba(186, 199, 190, 0.2);
+}
+
+html[data-cf-theme="dark"] .timeline-component .component-actions .btn,
+html[data-cf-theme="dark"] .timeline-item .component-actions .btn {
+    border-color: rgba(186, 199, 190, 0.36);
+}
+
+html[data-cf-theme="dark"] .timeline-component .component-actions .btn-outline-primary,
+html[data-cf-theme="dark"] .timeline-item .component-actions .btn-outline-primary {
+    color: #9fc6ff;
+    border-color: rgba(159, 198, 255, 0.6);
+    background: rgba(58, 102, 168, 0.18);
+}
+
+html[data-cf-theme="dark"] .timeline-component .component-actions .btn-outline-primary:hover,
+html[data-cf-theme="dark"] .timeline-item .component-actions .btn-outline-primary:hover {
+    color: #cbe0ff;
+    border-color: rgba(203, 224, 255, 0.72);
+    background: rgba(58, 102, 168, 0.32);
+}
+
+html[data-cf-theme="dark"] .timeline-component .component-actions .btn-outline-secondary,
+html[data-cf-theme="dark"] .timeline-item .component-actions .btn-outline-secondary {
+    color: rgba(223, 232, 225, 0.92);
+    border-color: rgba(186, 199, 190, 0.48);
+    background: rgba(186, 199, 190, 0.08);
+}
+
+html[data-cf-theme="dark"] .timeline-component .component-actions .btn-outline-danger,
+html[data-cf-theme="dark"] .timeline-item .component-actions .btn-outline-danger {
+    color: #ffb1b1;
+    border-color: rgba(255, 151, 151, 0.58);
+    background: rgba(145, 40, 40, 0.2);
+}
+
+html[data-cf-theme="dark"] .timeline-container.drag-over {
+    border-color: rgba(174, 140, 163, 0.9);
+    background-color: rgba(174, 140, 163, 0.14);
+}
+
 /* Dynamic settings panels (Trial Configuration / Experiment-wide settings)
    should remain elevated in dark mode, but not glow bright. */
 html[data-cf-theme="dark"] .parameter-group,
