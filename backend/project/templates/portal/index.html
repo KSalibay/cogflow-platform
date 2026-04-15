@@ -732,6 +732,76 @@
 
       .mfa-qr-wrap img { width: 128px; height: 128px; image-rendering: pixelated; }
 
+      /* ── Modal fallback (used when Bootstrap modal assets are unavailable) ─ */
+      .modal {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 2000;
+        overflow: auto;
+        padding: 28px 12px;
+      }
+
+      .modal.show {
+        display: block;
+      }
+
+      .modal-dialog {
+        margin: 0 auto;
+        max-width: 780px;
+      }
+
+      .modal-content {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        box-shadow: var(--shadow);
+        color: var(--ink);
+      }
+
+      .modal-header,
+      .modal-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .modal-footer {
+        border-bottom: none;
+        border-top: 1px solid var(--line);
+        justify-content: flex-end;
+      }
+
+      .modal-body {
+        padding: 14px;
+      }
+
+      .modal-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(17, 24, 39, 0.45);
+        z-index: 1990;
+      }
+
+      .btn-close {
+        width: 28px;
+        height: 28px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+      }
+
+      .btn-close::before {
+        content: "\00d7";
+        font-size: 18px;
+        line-height: 1;
+      }
+
       /* ── Placeholder views ─────────────────────────────────── */
       .placeholder-pane {
         flex: 1; display: flex; align-items: center; justify-content: center;
@@ -1458,7 +1528,50 @@
         </div>
       `;
       document.body.appendChild(host.firstElementChild);
-      return document.getElementById("generateLinksModal");
+      modalEl = document.getElementById("generateLinksModal");
+      modalEl.querySelectorAll('[data-bs-dismiss="modal"]').forEach((btn) => {
+        btn.addEventListener("click", () => hideGeneratedModal(modalEl));
+      });
+      modalEl.addEventListener("click", (e) => {
+        if (e.target === modalEl) hideGeneratedModal(modalEl);
+      });
+      return modalEl;
+    }
+
+    function showGeneratedModal(modalEl) {
+      if (!modalEl) return;
+      if (window.bootstrap && window.bootstrap.Modal) {
+        window.bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        return;
+      }
+
+      let backdrop = document.getElementById("generateLinksModalBackdrop");
+      if (!backdrop) {
+        backdrop = document.createElement("div");
+        backdrop.id = "generateLinksModalBackdrop";
+        backdrop.className = "modal-backdrop";
+        backdrop.addEventListener("click", () => hideGeneratedModal(modalEl));
+        document.body.appendChild(backdrop);
+      }
+      modalEl.classList.add("show");
+      modalEl.setAttribute("aria-modal", "true");
+      modalEl.removeAttribute("aria-hidden");
+      document.body.style.overflow = "hidden";
+    }
+
+    function hideGeneratedModal(modalEl) {
+      if (!modalEl) return;
+      if (window.bootstrap && window.bootstrap.Modal) {
+        window.bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+        return;
+      }
+
+      modalEl.classList.remove("show");
+      modalEl.setAttribute("aria-hidden", "true");
+      modalEl.removeAttribute("aria-modal");
+      const backdrop = document.getElementById("generateLinksModalBackdrop");
+      if (backdrop) backdrop.remove();
+      document.body.style.overflow = "";
     }
 
     function setupDragList(listEl) {
@@ -1491,7 +1604,6 @@
 
     async function openGenerateLinksModal(slug) {
       const modalEl = ensureGenerateLinksModal();
-      const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
       const errEl = document.getElementById("generateLinksError");
       const pidEl = document.getElementById("generateLinksParticipantId");
       const cbEl = document.getElementById("generateLinksCounterbalance");
@@ -1546,7 +1658,7 @@
             counterbalance_enabled: !!cbEl.checked,
             task_order: taskOrder,
           });
-          modal.hide();
+          hideGeneratedModal(modalEl);
         } catch (e) {
           setErr(e?.message || String(e));
         } finally {
@@ -1554,7 +1666,7 @@
         }
       };
 
-      modal.show();
+      showGeneratedModal(modalEl);
     }
 
     async function copyText(text, btn) {
