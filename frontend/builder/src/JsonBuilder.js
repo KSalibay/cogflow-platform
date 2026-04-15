@@ -799,11 +799,32 @@ class JsonBuilder {
         console.log('CogFlow Builder initialized successfully');
     }
 
-    setAccessibilityMode(enabled) {
-        const on = !!enabled;
-        document.documentElement.classList.toggle('cf-a11y', on);
+    setAccessibilityMode(modeOrEnabled) {
+        const normalizeMode = (raw) => {
+            if (raw === true) return 'contrast';
+            if (raw === false || raw == null) return 'standard';
+            const mode = String(raw).trim().toLowerCase();
+            if (mode === 'contrast' || mode === 'large' || mode === 'contrast-large' || mode === 'standard') {
+                return mode;
+            }
+            return 'standard';
+        };
+
+        const mode = normalizeMode(modeOrEnabled);
+        const html = document.documentElement;
+
+        html.classList.remove('cf-a11y', 'cf-a11y-contrast', 'cf-a11y-large');
+
+        if (mode === 'contrast') {
+            html.classList.add('cf-a11y', 'cf-a11y-contrast');
+        } else if (mode === 'large') {
+            html.classList.add('cf-a11y-large');
+        } else if (mode === 'contrast-large') {
+            html.classList.add('cf-a11y', 'cf-a11y-contrast', 'cf-a11y-large');
+        }
+
         try {
-            localStorage.setItem('cogflow_builder_a11y', on ? '1' : '0');
+            localStorage.setItem('cogflow_builder_a11y', (mode === 'standard') ? '0' : '1');
         } catch (e) {
             // Ignore storage errors
         }
@@ -832,7 +853,10 @@ class JsonBuilder {
         const a11yToggle = document.getElementById('accessibilityModeToggle');
         if (a11yToggle && a11yToggle.dataset.bound !== '1') {
             a11yToggle.dataset.bound = '1';
-            a11yToggle.checked = document.documentElement.classList.contains('cf-a11y');
+            a11yToggle.checked = (
+                document.documentElement.classList.contains('cf-a11y') ||
+                document.documentElement.classList.contains('cf-a11y-contrast')
+            );
 
             a11yToggle.addEventListener('change', () => {
                 this.setAccessibilityMode(!!a11yToggle.checked);
