@@ -2488,6 +2488,7 @@
               <button class="btn btn-ghost btn-xs" data-action="share-study"    data-slug="${esc(s.study_slug)}">Share</button>
               <button class="btn btn-ghost btn-xs" data-action="toggle-details" data-slug="${esc(s.study_slug)}">${state.expanded ? "Hide" : "Show Results"}</button>
               <button class="btn btn-ghost btn-xs" data-action="open-preview"   data-slug="${esc(s.study_slug)}">Preview ▶</button>
+              <button class="btn btn-danger btn-xs" data-action="delete-study"  data-slug="${esc(s.study_slug)}">Delete</button>
               ${reassignBtn}
             </div>
           </td>`;
@@ -2520,6 +2521,17 @@
           document.getElementById("previewStudySelect").value = slug;
           populatePreviewTaskSelect(slug, taskType);
           activateView("preview");
+        })
+      );
+      tbody.querySelectorAll("[data-action='delete-study']").forEach(b =>
+        b.addEventListener("click", async () => {
+          const slug = (b.getAttribute("data-slug") || "").toString().trim();
+          if (!slug) return;
+          const confirmed = confirm(
+            `Delete study \"${slug}\" from My Studies?\n\nThis will deactivate it and remove it from active lists.\nAll configs, runs, results, and audit history will be retained.`
+          );
+          if (!confirmed) return;
+          await deleteStudy(slug);
         })
       );
       tbody.querySelectorAll("[data-action='reassign']").forEach(b =>
@@ -2611,6 +2623,10 @@
       } else if (state.runsLoaded && !state.runs.length) {
         resultsCard = `<article class="detail-card"><h3>Results</h3><div class="result-message">No runs recorded yet.</div></article>`;
       } else if (state.runsLoaded) {
+        const completedCount = (state.runs || []).filter((run) => {
+          const s = (run?.status || "").toString().trim().toLowerCase();
+          return s === "completed";
+        }).length;
         const groups = new Map();
         for (const run of state.runs) {
           const k = (run.task_type || 'untyped').toString().trim().toLowerCase() || 'untyped';
@@ -2650,7 +2666,7 @@
         const busy = state.exportBusy;
         resultsCard = `<article class="detail-card">
           <div class="detail-header" style="margin-bottom:10px;">
-            <h3 style="margin:0;">Results <span style="font-size:.78rem;color:var(--muted);font-weight:400;">(${state.runs.length})</span></h3>
+            <h3 style="margin:0;">Results <span style="font-size:.78rem;color:var(--muted);font-weight:400;">(${state.runs.length} total, ${completedCount} completed)</span></h3>
             <div style="display:flex;gap:6px;flex-wrap:wrap;">
               <button class="btn btn-ghost btn-xs" data-action="export-all-json" data-slug="${slug}" ${busy ? "disabled" : ""}>Export All JSON ZIP</button>
               <button class="btn btn-ghost btn-xs" data-action="export-all-csv"  data-slug="${slug}" ${busy ? "disabled" : ""}>Export All CSV ZIP</button>
@@ -2963,6 +2979,28 @@
       } catch (err) {
         sb.className = "status-bar error";
         sb.textContent = `Share failed: ${err?.message || err}`;
+      }
+    }
+
+    async function deleteStudy(slug) {
+      const sb = document.getElementById("studiesStatus");
+      sb.className = "status-bar";
+      sb.textContent = `Deleting ${slug}…`;
+      try {
+        const r = await fetch(`${API}/api/v1/studies/${encodeURIComponent(slug)}/delete`, postOpts({}));
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+
+        // Drop local state so stale rollout/results are not shown if the study reappears later.
+        delete studyState[slug];
+        invalidateLatestConfigCache();
+
+        sb.className = "status-bar ok";
+        sb.textContent = `Deleted ${slug} from active studies. Historical configs/results/audit logs were retained.`;
+        await loadStudies(true);
+      } catch (err) {
+        sb.className = "status-bar error";
+        sb.textContent = `Delete failed: ${err?.message || err}`;
       }
     }
 

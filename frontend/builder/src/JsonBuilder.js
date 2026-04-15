@@ -984,6 +984,13 @@ class JsonBuilder {
             });
         }
 
+        const newStudyBtn = document.getElementById('newStudyBtn');
+        if (newStudyBtn) {
+            newStudyBtn.addEventListener('click', async () => {
+                await this.startNewStudy();
+            });
+        }
+
         document.getElementById('saveTemplateBtn').addEventListener('click', () => {
             this.saveTemplate();
         });
@@ -4883,10 +4890,11 @@ class JsonBuilder {
                     <label class="parameter-label">Randomize Order:</label>
                     <div class="parameter-input">
                         <div class="form-check form-switch">
-                            <input class="form-check-input" type="checkbox" id="randomizeOrder" checked>
-                            <label class="form-check-label" for="randomizeOrder">Enable randomization</label>
+                            <input class="form-check-input" type="checkbox" id="randomizeOrder">
+                            <label class="form-check-label" for="randomizeOrder">Enable global randomization</label>
                         </div>
                     </div>
+                    <div class="parameter-help">Shuffles top-level timeline components (non-randomization-marker mode).</div>
                 </div>
                 <div class="parameter-row">
                     <label class="parameter-label">Rewards Enabled:</label>
@@ -8044,21 +8052,58 @@ class JsonBuilder {
     /**
      * Clear timeline
      */
-    clearTimeline() {
-        if (confirm('Are you sure you want to clear the entire timeline?')) {
-            try {
-                const assetCache = window.CogFlowAssetCache || window.PsychJsonAssetCache;
-                if (assetCache && typeof assetCache.clearAll === 'function') {
-                    assetCache.clearAll();
-                }
-            } catch {
-                // ignore
+    async startNewStudy() {
+        const timelineContainer = document.getElementById('timelineComponents');
+        const hasExistingTimeline = !!timelineContainer?.querySelector('.timeline-component');
+
+        if (hasExistingTimeline) {
+            const proceed = confirm(
+                'You are about to start a new study. This will clear the current timeline and create a new one with only an Instructions component.\n\nContinue?'
+            );
+            if (!proceed) return;
+
+            const publishFirst = confirm(
+                'Would you like to publish the current timeline before creating a new study?\n\nClick OK to publish now.\nClick Cancel to continue without publishing.'
+            );
+            if (publishFirst) {
+                await this.publishToPlatform();
+                const continueAfterPublish = confirm('Proceed with creating a new study now?');
+                if (!continueAfterPublish) return;
             }
-            this.timeline = [];
-            this.componentCounter = 0;
-            this.timelineBuilder.renderTimeline();
+        }
+
+        this.clearTimeline({ confirm: false });
+
+        const defs = this.getComponentDefinitions();
+        const instructionsDef = defs.find((d) => d.id === 'instructions');
+        if (instructionsDef) {
+            this.addComponentToTimeline(instructionsDef);
+        } else {
             this.updateJSON();
         }
+
+        this.showValidationResult('success', 'Started a new study with a fresh timeline (Instructions component added).');
+    }
+
+    clearTimeline(options = {}) {
+        const shouldConfirm = options?.confirm !== false;
+        if (shouldConfirm && !confirm('Are you sure you want to clear the entire timeline?')) {
+            return false;
+        }
+
+        try {
+            const assetCache = window.CogFlowAssetCache || window.PsychJsonAssetCache;
+            if (assetCache && typeof assetCache.clearAll === 'function') {
+                assetCache.clearAll();
+            }
+        } catch {
+            // ignore
+        }
+        this.timeline = [];
+        this.componentCounter = 0;
+        this.timelineBuilder.renderTimeline();
+        this.updateJSON();
+        return true;
     }
 
     /**

@@ -35,6 +35,7 @@ from apps.runs.models import RunSession
 from apps.studies.models import Study, StudyResearcherAccess
 from apps.users.models import UserProfile
 from apps.users.services import get_or_create_profile
+from apps.results.models import ResultEnvelope
 from apps.results.services import (
     get_decrypted_envelope,
     get_decrypted_trial,
@@ -1350,7 +1351,7 @@ class StudiesListView(APIView):
         if not _can_manage_researcher_resources(request, profile):
             return Response({"error": "Insufficient role permissions"}, status=status.HTTP_403_FORBIDDEN)
 
-        studies_qs = Study.objects.all()
+        studies_qs = Study.objects.filter(is_active=True)
         studies_qs = studies_qs.filter(
             Q(owner_user=request.user) | Q(researcher_access__user=request.user)
         ).distinct()
@@ -1942,6 +1943,63 @@ class ShareStudyView(APIView):
                 "shared_with": target_user.username,
                 "already_shared": already_owner or (not created),
                 "owner_usernames": _get_study_owner_usernames(study),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class DeleteStudyView(APIView):
+    """Soft-delete (deactivate) a study while retaining all audit/config/result records."""
+
+    @transaction.atomic
+    def post(self, request, study_slug: str):
+        if not request.user.is_authenticated:
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        profile = get_or_create_profile(request.user)
+        if not _can_manage_researcher_resources(request, profile):
+            return Response({"error": "Insufficient role permissions"}, status=status.HTTP_403_FORBIDDEN)
+
+        study = Study.objects.filter(slug=study_slug, is_active=True).first()
+        if not study:
+            return Response({"error": "Study not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if not _has_study_access(study, request.user, profile):
+            return Response({"error": "Study is not owned by the current researcher"}, status=status.HTTP_403_FORBIDDEN)
+
+        config_count = study.config_versions.count()
+        run_count = study.run_sessions.count()
+        result_count = ResultEnvelope.objects.filter(run_session__study=study).count()
+
+        study.is_active = False
+        study.updated_at = timezone.now()
+        study.save(update_fields=["is_active", "updated_at"])
+
+        record_audit(
+            action="delete_study",
+            resource_type="study",
+            resource_id=study.id,
+            actor=request.user.username,
+            metadata={
+                "study_slug": study.slug,
+                "study_name": study.name,
+                "config_versions_retained": config_count,
+                "run_sessions_retained": run_count,
+                "result_envelopes_retained": result_count,
+            },
+        )
+
+        return Response(
+            {
+                "ok": True,
+                "study_slug": study.slug,
+                "study_name": study.name,
+                "is_active": study.is_active,
+                "retained": {
+                    "config_versions": config_count,
+                    "run_sessions": run_count,
+                    "result_envelopes": result_count,
+                },
             },
             status=status.HTTP_200_OK,
         )

@@ -1871,9 +1871,51 @@
       return chunks;
     };
 
+    const isInstructionLikeItem = (item) => {
+      if (!isObject(item)) return false;
+      const type = String(item.type || '').trim().toLowerCase();
+      if (type === 'instructions') return true;
+      if (type === 'html-keyboard-response') {
+        const pluginType = String(item?.data?.plugin_type || '').trim().toLowerCase();
+        if (pluginType === 'instructions' || pluginType === 'eye-tracking-calibration-instructions') return true;
+      }
+      return false;
+    };
+
+    const isInstructionLikeChunk = (chunk) => {
+      const items = Array.isArray(chunk) ? chunk : [];
+      if (!items.length) return false;
+      return items.some((it) => isInstructionLikeItem(it));
+    };
+
+    const shuffleChunksPreservingInstructionLike = (chunks) => {
+      const src = Array.isArray(chunks) ? chunks : [];
+      const outChunks = [];
+      let run = [];
+
+      const flushRun = () => {
+        if (!run.length) return;
+        outChunks.push(...shuffleInPlace(run.slice()));
+        run = [];
+      };
+
+      for (const chunk of src) {
+        if (isInstructionLikeChunk(chunk)) {
+          flushRun();
+          outChunks.push(chunk);
+        } else {
+          run.push(chunk);
+        }
+      }
+      flushRun();
+      return outChunks;
+    };
+
     const globalRandomizeOrder = (opts && opts.globalRandomizeOrder === true && level === 0);
     const topLevelChunks = chunkItemsForShuffle(inTlNormalized);
-    const orderedTopLevelChunks = globalRandomizeOrder ? shuffleInPlace(topLevelChunks.slice()) : topLevelChunks;
+    const orderedTopLevelChunks = globalRandomizeOrder
+      ? shuffleChunksPreservingInstructionLike(topLevelChunks)
+      : topLevelChunks;
 
     const isPoolableSiblingRandomizeGroup = (node) => {
       if (!isObject(node)) return false;

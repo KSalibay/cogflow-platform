@@ -23,6 +23,7 @@ from project.api_views import (
     FeedbackSubmitView,
     BuilderAppView,
     CreateParticipantLinkView,
+    DeleteStudyView,
     DecryptResultView,
     HealthView,
     InterpreterAppView,
@@ -102,6 +103,11 @@ urlpatterns = [
         "api/v1/studies/<slug:study_slug>/share",
         ShareStudyView.as_view(),
         name="studies-share",
+    ),
+    path(
+        "api/v1/studies/<slug:study_slug>/delete",
+        DeleteStudyView.as_view(),
+        name="studies-delete",
     ),
     path(
         "api/v1/studies/<slug:study_slug>/runs",
