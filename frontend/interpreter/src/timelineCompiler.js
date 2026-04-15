@@ -427,7 +427,47 @@
       }
       return {};
     })();
-    const values = isObject(block.parameter_values) ? { ...block.parameter_values } : {};
+    const topLevelValues = (() => {
+      if (!isObject(block)) return {};
+
+      const reserved = new Set([
+        'id',
+        'type',
+        'component_type',
+        'block_component_type',
+        'length',
+        'block_length',
+        'sizing_mode',
+        'block_sizing_mode',
+        'duration_seconds',
+        'block_duration_seconds',
+        'parameter_values',
+        'parameter_windows',
+        'children',
+        'child_timeline',
+        'timeline',
+        'group',
+        'group_id',
+        'group_name',
+        'pool_mode',
+        'repeat',
+        'weight',
+        'seed'
+      ]);
+
+      const out = {};
+      for (const [key, value] of Object.entries(block)) {
+        if (reserved.has(key)) continue;
+        if (key.startsWith('_')) continue;
+        out[key] = value;
+      }
+      return out;
+    })();
+
+    const values = {
+      ...topLevelValues,
+      ...(isObject(block.parameter_values) ? { ...block.parameter_values } : {})
+    };
 
     // Image list helper for image-keyboard-response Blocks.
     // Builder can export a comma/newline-separated string under `stimulus_images`.
@@ -667,6 +707,17 @@
       return nums;
     };
 
+    const parseDelimitedStringOptions = (raw) => {
+      if (raw === undefined || raw === null) return [];
+      if (typeof raw !== 'string') return [];
+      if (!/[\n,]/.test(raw)) return [];
+
+      return raw
+        .split(/[\n,]/g)
+        .map(v => v.trim())
+        .filter(Boolean);
+    };
+
     const sampleFromValues = (v) => {
       if (Array.isArray(v)) {
         if (v.length === 0) return null;
@@ -676,6 +727,12 @@
 
       // Back-compat/robustness: allow numeric list shorthand strings (e.g., "1-4", "0,90,180").
       if (typeof v === 'string') {
+        const delimited = parseDelimitedStringOptions(v);
+        if (delimited.length > 0) {
+          const idx = Math.floor(rng() * delimited.length);
+          return delimited[Math.max(0, Math.min(delimited.length - 1, idx))];
+        }
+
         const parsed = parseNumericListWithRanges(v);
         if (parsed.length > 0) {
           const idx = Math.floor(rng() * parsed.length);
@@ -690,6 +747,9 @@
       if (raw === undefined || raw === null) return [];
       if (Array.isArray(raw)) return raw;
       if (typeof raw === 'string') {
+        const delimited = parseDelimitedStringOptions(raw);
+        if (delimited.length > 0) return delimited;
+
         const parsed = parseNumericListWithRanges(raw);
         if (parsed.length > 0) return parsed;
       }
@@ -3833,6 +3893,18 @@
           return shouldRound ? Math.round(s) : s;
         };
 
+        const normalizeLearningOptions = (raw) => {
+          if (raw === undefined || raw === null) return [];
+          return Array.isArray(raw) ? raw : [raw];
+        };
+
+        const sampleLearningOption = (opts) => {
+          const arr = Array.isArray(opts) ? opts : [];
+          if (arr.length === 0) return null;
+          const idx = Math.floor(learningRng() * arr.length);
+          return arr[Math.max(0, Math.min(arr.length - 1, idx))];
+        };
+
         const applyCueLearningPolicies = (trial) => {
           const hasSpatialGate = (
             Object.prototype.hasOwnProperty.call(src, 'spatial_cue_enabled')
@@ -3843,6 +3915,8 @@
             || Object.prototype.hasOwnProperty.call(src, 'value_cue_probability')
           );
 
+          let valuePresentForTrial = true;
+
           if (hasSpatialGate || hasValueGate) {
             const spatialEnabled = Object.prototype.hasOwnProperty.call(src, 'spatial_cue_enabled') ? (src.spatial_cue_enabled === true) : true;
             const valueEnabled = Object.prototype.hasOwnProperty.call(src, 'value_cue_enabled') ? (src.value_cue_enabled === true) : true;
@@ -3852,13 +3926,14 @@
 
             const spatialPresent = spatialEnabled && learningRng() < pSpatial;
             const valuePresent = valueEnabled && learningRng() < pValue;
+            valuePresentForTrial = valuePresent;
 
             if (!spatialPresent) {
               trial.spatial_cue = 'none';
             } else {
-              const opts = normalizeOptions(trial.spatial_cue ?? src.spatial_cue);
+              const opts = normalizeLearningOptions(trial.spatial_cue ?? src.spatial_cue);
               const filtered = opts.filter(x => (x ?? '').toString().trim().toLowerCase() !== 'none');
-              const picked = sampleFromOptions(filtered.length > 0 ? filtered : opts);
+              const picked = sampleLearningOption(filtered.length > 0 ? filtered : opts);
               trial.spatial_cue = picked === null ? (trial.spatial_cue ?? 'none') : picked;
             }
 
@@ -3866,20 +3941,20 @@
               trial.left_value = 'neutral';
               trial.right_value = 'neutral';
             } else {
-              const lvOpts = normalizeOptions(trial.left_value ?? src.left_value);
-              const rvOpts = normalizeOptions(trial.right_value ?? src.right_value);
+              const lvOpts = normalizeLearningOptions(trial.left_value ?? src.left_value);
+              const rvOpts = normalizeLearningOptions(trial.right_value ?? src.right_value);
               const lvFiltered = lvOpts.filter(x => (x ?? '').toString().trim().toLowerCase() !== 'neutral');
               const rvFiltered = rvOpts.filter(x => (x ?? '').toString().trim().toLowerCase() !== 'neutral');
 
-              const leftPicked = sampleFromOptions(lvFiltered.length > 0 ? lvFiltered : lvOpts);
-              const rightPicked = sampleFromOptions(rvFiltered.length > 0 ? rvFiltered : rvOpts);
+              const leftPicked = sampleLearningOption(lvFiltered.length > 0 ? lvFiltered : lvOpts);
+              const rightPicked = sampleLearningOption(rvFiltered.length > 0 ? rvFiltered : rvOpts);
 
               if (leftPicked !== null) trial.left_value = leftPicked;
               if (rightPicked !== null) trial.right_value = rightPicked;
             }
           }
 
-          const targetLocationOpts = normalizeOptions(src.target_location).map(v => (v ?? '').toString().trim().toLowerCase());
+          const targetLocationOpts = normalizeLearningOptions(src.target_location).map(v => (v ?? '').toString().trim().toLowerCase());
           const pTargetLeftRaw = Number(src.target_left_probability);
           if (Number.isFinite(pTargetLeftRaw) && targetLocationOpts.includes('left') && targetLocationOpts.includes('right')) {
             const pLeft = clamp(pTargetLeftRaw, 0, 1);
@@ -3915,7 +3990,8 @@
 
           const valueTarget = (src.value_target_value ?? 'any').toString().trim().toLowerCase();
           const valueNonTarget = (src.value_non_target_value ?? 'any').toString().trim().toLowerCase();
-          if (valueTarget === 'high' || valueTarget === 'low' || valueTarget === 'neutral') {
+          const shouldApplyValueTarget = (!hasValueGate || valuePresentForTrial);
+          if (shouldApplyValueTarget && (valueTarget === 'high' || valueTarget === 'low' || valueTarget === 'neutral')) {
             const lv = (trial.left_value ?? 'neutral').toString().trim().toLowerCase();
             const rv = (trial.right_value ?? 'neutral').toString().trim().toLowerCase();
 
@@ -3972,6 +4048,44 @@
         const maxTrials = Math.max(1, Number.parseInt(src.learning_max_trials ?? 200, 10) || 200);
         const showFeedback = src.show_feedback !== false;
         const feedbackDurationMs = Math.max(0, Number(src.feedback_duration_ms ?? 800) || 0);
+        const useStoredThresholdsForLearning = (
+          src.use_stored_thresholds === true
+          || src.use_stored_thresholds === 'true'
+          || src.use_stored_thresholds === 1
+          || src.use_stored_thresholds === '1'
+        );
+
+        const applyStoredThresholdForLearning = (trial) => {
+          if (!useStoredThresholdsForLearning) return;
+          try {
+            const state = window?.cogflowState?.gabor_thresholds;
+            if (!isObject(state)) return;
+
+            const byParameter = isObject(state.by_parameter) ? state.by_parameter : null;
+            const param = (state.parameter ?? '').toString().trim();
+            const allowed = (param === 'target_tilt_deg' || param === 'contrast' || param === 'spatial_frequency_cyc_per_px');
+            if (!allowed) return;
+
+            const entry = (byParameter && isObject(byParameter[param])) ? byParameter[param] : state;
+            if (!isObject(entry)) return;
+
+            const side = (trial.target_location ?? '').toString().trim().toLowerCase();
+            let raw = null;
+            if (side === 'left' && Number.isFinite(Number(entry.left))) raw = Number(entry.left);
+            else if (side === 'right' && Number.isFinite(Number(entry.right))) raw = Number(entry.right);
+            else if (Number.isFinite(Number(entry.combined))) raw = Number(entry.combined);
+            else if (Number.isFinite(Number(entry.left))) raw = Number(entry.left);
+            else if (Number.isFinite(Number(entry.right))) raw = Number(entry.right);
+            if (!Number.isFinite(raw)) return;
+
+            const value = (param === 'target_tilt_deg')
+              ? ((learningRng() < 0.5 ? -1 : 1) * Math.abs(raw))
+              : raw;
+            trial[param] = value;
+          } catch {
+            // ignore
+          }
+        };
 
         const gLearningState = { trialCount: 0, history: [] };
 
@@ -4008,7 +4122,7 @@
             }
 
             applyCueLearningPolicies(trial);
-            applyStoredGaborThreshold(trial, learningRng);
+            applyStoredThresholdForLearning(trial);
 
             trial.show_feedback = showFeedback;
             trial.feedback_duration_ms = feedbackDurationMs;
