@@ -2715,6 +2715,7 @@
             participant_external_id: pid || null,
             counterbalance_enabled: Object.prototype.hasOwnProperty.call(opts, "counterbalance_enabled") ? !!opts.counterbalance_enabled : true,
             task_order: Array.isArray(opts.task_order) ? opts.task_order : [],
+            task_order_strict: !!opts.task_order_strict,
             expires_in_hours: 72,
             completion_redirect_url: completionRedirect || null,
             abort_redirect_url: abortRedirect || null,
@@ -3331,8 +3332,23 @@
       const btn = document.getElementById("previewLaunchBtn");
       btn.disabled = true; btn.textContent = "Generating…";
       try {
+        const launchPayload = { participant_external_id: "preview", expires_in_hours: 1 };
+        if (taskType) {
+          const latest = await fetchStudyLatestConfig(slug);
+          const cfgs = Array.isArray(latest?.configs) ? latest.configs : [];
+          const selectedIds = cfgs
+            .filter((c) => ((c?.task_type || '').toString().trim().toLowerCase() === taskType))
+            .map((c) => (c?.config_version_id || '').toString().trim())
+            .filter(Boolean);
+          if (!selectedIds.length) {
+            throw new Error(`No published config found for subtask: ${taskType}`);
+          }
+          launchPayload.counterbalance_enabled = false;
+          launchPayload.task_order = selectedIds;
+          launchPayload.task_order_strict = true;
+        }
         const r = await fetch(`${API}/api/v1/studies/${encodeURIComponent(slug)}/participant-links`,
-          postOpts({ participant_external_id: "preview", expires_in_hours: 1 }));
+          postOpts(launchPayload));
         const d = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
         const token = d.launch_options?.single_use?.launch_token || d.launch_token || "";
@@ -3340,7 +3356,6 @@
           document.getElementById("previewFrame").src = "/interpreter/";
         } else {
           const qp = new URLSearchParams({ launch_token: token });
-          if (taskType) qp.set('task_type', taskType);
           document.getElementById("previewFrame").src = `/interpreter/?${qp.toString()}`;
         }
       } catch (err) {

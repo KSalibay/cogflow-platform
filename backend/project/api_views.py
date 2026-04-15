@@ -1558,9 +1558,10 @@ class PublishConfigView(APIView):
             )
         else:
             existing_task_type = _extract_config_task_type(existing_same_label.config_json)
-            same_task_type = (incoming_task_type == existing_task_type)
+            same_task_type = bool(incoming_task_type) and bool(existing_task_type) and (incoming_task_type == existing_task_type)
+            same_content = (existing_same_label.config_json == data["config"])
 
-            if same_task_type:
+            if same_task_type or same_content:
                 existing_same_label.builder_version = data.get("builder_version", "")
                 existing_same_label.config_json = data["config"]
                 existing_same_label.save(update_fields=["builder_version", "config_json"])
@@ -1722,6 +1723,7 @@ class CreateParticipantLinkView(APIView):
         expires_at = timezone.now() + timedelta(hours=data.get("expires_in_hours", 72))
         participant_external_id = (data.get("participant_external_id") or "").strip()
         counterbalance_enabled = bool(data.get("counterbalance_enabled", True))
+        task_order_strict = bool(data.get("task_order_strict", False))
         raw_task_order = data.get("task_order") or []
         task_order = []
         for raw in raw_task_order:
@@ -1739,6 +1741,7 @@ class CreateParticipantLinkView(APIView):
             "participant_external_id": participant_external_id,
             "counterbalance_enabled": counterbalance_enabled,
             "task_order": task_order,
+            "task_order_strict": task_order_strict,
             "expires_at": expires_at.isoformat(),
             "completion_redirect_url": completion_redirect_url,
             "abort_redirect_url": abort_redirect_url,
@@ -1772,6 +1775,7 @@ class CreateParticipantLinkView(APIView):
                 "has_prolific_completion_code": bool(prolific_completion_code),
                 "counterbalance_enabled": counterbalance_enabled,
                 "task_order_count": len(task_order),
+                "task_order_strict": task_order_strict,
                 "single_use_token_digest": _launch_token_digest(single_use_token),
                 "multi_use_token_digest": _launch_token_digest(multi_use_token),
             },
@@ -1786,6 +1790,7 @@ class CreateParticipantLinkView(APIView):
                 "launch_url": launch_url_multi,
                 "counterbalance_enabled": counterbalance_enabled,
                 "task_order": task_order,
+                "task_order_strict": task_order_strict,
                 "completion_redirect_url": completion_redirect_url,
                 "abort_redirect_url": abort_redirect_url,
                 "prolific_completion_mode": prolific_completion_mode,
@@ -1797,6 +1802,7 @@ class CreateParticipantLinkView(APIView):
                         "launch_url": launch_url_multi,
                         "counterbalance_enabled": counterbalance_enabled,
                         "task_order": task_order,
+                        "task_order_strict": task_order_strict,
                         "completion_redirect_url": completion_redirect_url,
                         "abort_redirect_url": abort_redirect_url,
                         "prolific_completion_mode": prolific_completion_mode,
@@ -1808,6 +1814,7 @@ class CreateParticipantLinkView(APIView):
                         "launch_url": launch_url_single,
                         "counterbalance_enabled": counterbalance_enabled,
                         "task_order": task_order,
+                        "task_order_strict": task_order_strict,
                         "completion_redirect_url": completion_redirect_url,
                         "abort_redirect_url": abort_redirect_url,
                         "prolific_completion_mode": prolific_completion_mode,
@@ -1954,6 +1961,7 @@ class StartRunView(APIView):
         launch_token_digest = None
         counterbalance_enabled = True
         requested_task_order = []
+        task_order_strict = False
 
         launch_token = data.get("launch_token")
         if launch_token:
@@ -1979,6 +1987,7 @@ class StartRunView(APIView):
             launch_token_digest = _launch_token_digest(launch_token)
             counterbalance_enabled = bool(token_payload.get("counterbalance_enabled", True))
             requested_task_order = token_payload.get("task_order") if isinstance(token_payload.get("task_order"), list) else []
+            task_order_strict = bool(token_payload.get("task_order_strict", False))
 
             if launch_mode == "single_use":
                 already_used = AuditEvent.objects.filter(
@@ -2007,19 +2016,41 @@ class StartRunView(APIView):
         if not config_versions:
             return Response({"error": "No published config version"}, status=status.HTTP_400_BAD_REQUEST)
 
+        requested_ids = []
+        requested_ids_seen = set()
+        for raw in requested_task_order:
+            sid = str(raw or "").strip()
+            if not sid or sid in requested_ids_seen:
+                continue
+            requested_ids.append(sid)
+            requested_ids_seen.add(sid)
+
+        selected_versions = config_versions
+        if task_order_strict and requested_ids:
+            requested_set = set(requested_ids)
+            selected_versions = [cv for cv in config_versions if str(cv.id) in requested_set]
+            if not selected_versions:
+                return Response(
+                    {"error": "Requested task selection does not match any published config versions"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
         permutations_total = 1
         permutation_index = 0
         counterbalance_mode = "fixed"
 
         if counterbalance_enabled:
             ordered_versions, permutation_index, permutations_total = _counterbalanced_config_order(
-                config_versions,
+                selected_versions,
                 seed=participant_external_id,
             )
-            counterbalance_mode = "permutation_by_participant"
+            counterbalance_mode = "permutation_by_participant_strict" if task_order_strict and requested_ids else "permutation_by_participant"
         else:
-            ordered_versions = _ordered_config_versions_by_ids(config_versions, requested_task_order)
-            counterbalance_mode = "manual_order" if requested_task_order else "fixed"
+            ordered_versions = _ordered_config_versions_by_ids(selected_versions, requested_ids)
+            if task_order_strict and requested_ids:
+                counterbalance_mode = "manual_order_strict"
+            else:
+                counterbalance_mode = "manual_order" if requested_ids else "fixed"
 
         config_version = ordered_versions[0]
 
@@ -2087,6 +2118,8 @@ class StartRunView(APIView):
                 "counterbalance_mode": counterbalance_mode,
                 "counterbalance_permutation_index": permutation_index,
                 "counterbalance_permutations_total": permutations_total,
+                "task_order_strict": task_order_strict,
+                "task_order_count": len(requested_ids),
                 "has_completion_redirect": bool(completion_redirect_url),
                 "has_abort_redirect": bool(abort_redirect_url),
                 "prolific_completion_mode": prolific_completion_mode,
@@ -2105,6 +2138,7 @@ class StartRunView(APIView):
                 "counterbalance": {
                     "mode": counterbalance_mode,
                     "enabled": counterbalance_enabled,
+                    "task_order_strict": task_order_strict,
                     "seed_source": "participant_external_id",
                     "permutation_index": permutation_index,
                     "permutations_total": permutations_total,
