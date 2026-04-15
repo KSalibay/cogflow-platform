@@ -1803,3 +1803,70 @@ html[data-cf-theme="dark"] .cluster-settings {
     background-color: #36405f !important;
     border-color: rgba(186, 199, 190, 0.24) !important;
 }
+
+/* Hard lock dark theme for builder canvas + panel internals.
+   Keep this block last so older light defaults cannot override it. */
+html[data-cf-theme="dark"] body,
+html[data-cf-theme="dark"] .container-fluid,
+html[data-cf-theme="dark"] .main-panels-row {
+    background-color: var(--cf-bg) !important;
+    color: var(--cf-text) !important;
+}
+
+html[data-cf-theme="dark"] .main-panel .card,
+html[data-cf-theme="dark"] .main-panel .card-body,
+html[data-cf-theme="dark"] .main-panel .card-header,
+html[data-cf-theme="dark"] .main-panel .card-header.bg-light {
+    background-color: var(--cf-surface) !important;
+    color: var(--cf-text) !important;
+    border-color: var(--cf-border) !important;
+}
+
+html[data-cf-theme="dark"] .main-panel h5,
+html[data-cf-theme="dark"] .main-panel h6,
+html[data-cf-theme="dark"] .main-panel .fw-bold,
+html[data-cf-theme="dark"] .main-panel .group-title,
+html[data-cf-theme="dark"] .main-panel .parameter-label,
+html[data-cf-theme="dark"] .main-panel .form-check-label,
+html[data-cf-theme="dark"] .main-panel .form-text,
+html[data-cf-theme="dark"] .main-panel .text-muted,
+html[data-cf-theme="dark"] .main-panel small.text-muted,
+html[data-cf-theme="dark"] .main-panel code {
+    color: var(--cf-text) !important;
+}
+
+html[data-cf-theme="dark"] .main-panel .text-muted,
+html[data-cf-theme="dark"] .main-panel small.text-muted,
+html[data-cf-theme="dark"] .main-panel .form-text {
+    color: var(--cf-muted) !important;
+}
+
+html[data-cf-theme="dark"] .timeline-components-container,
+html[data-cf-theme="dark"] #timelineComponents,
+html[data-cf-theme="dark"] #timelineBuilder,
+html[data-cf-theme="dark"] .empty-timeline {
+    background-color: #2b3148 !important;
+    color: var(--cf-text) !important;
+}
+
+html[data-cf-theme="dark"] .timeline-component .card-body,
+html[data-cf-theme="dark"] .timeline-component .card-title,
+html[data-cf-theme="dark"] .timeline-component .cf-component-label,
+html[data-cf-theme="dark"] .timeline-component .component-title,
+html[data-cf-theme="dark"] .timeline-component .text-muted,
+html[data-cf-theme="dark"] .timeline-component small.text-muted,
+html[data-cf-theme="dark"] .timeline-item .card-body,
+html[data-cf-theme="dark"] .timeline-item .card-title,
+html[data-cf-theme="dark"] .timeline-item .cf-component-label,
+html[data-cf-theme="dark"] .timeline-item .component-title,
+html[data-cf-theme="dark"] .timeline-item .text-muted,
+html[data-cf-theme="dark"] .timeline-item small.text-muted {
+    color: var(--cf-text) !important;
+}
+
+html[data-cf-theme="dark"] .timeline-component .text-muted,
+html[data-cf-theme="dark"] .timeline-component small.text-muted,
+html[data-cf-theme="dark"] .timeline-item .text-muted,
+html[data-cf-theme="dark"] .timeline-item small.text-muted {
+    color: var(--cf-muted) !important;
+}
