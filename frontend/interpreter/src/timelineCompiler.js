@@ -1954,7 +1954,9 @@
 
         const childChunks = chunkItemsForShuffle(childItems).map((chunk) => expandTimeline(chunk, opts, level + 1));
         const shouldShuffle = item.randomizable_across_markers !== false;
-        const orderedChildChunks = shouldShuffle ? shuffleInPlace(childChunks.slice()) : childChunks;
+        const orderedChildChunks = shouldShuffle
+          ? shuffleChunksPreservingInstructionLike(childChunks)
+          : childChunks;
         for (const expandedChunk of orderedChildChunks) {
           out.push(...expandedChunk);
         }
@@ -2016,7 +2018,7 @@
         }
       }
 
-      const shuffledPool = shuffleInPlace(pooledExpandedChunks.slice());
+      const shuffledPool = shuffleChunksPreservingInstructionLike(pooledExpandedChunks);
       for (const expandedChunk of shuffledPool) {
         out.push(...expandedChunk);
       }
