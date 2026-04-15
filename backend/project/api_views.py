@@ -1321,7 +1321,32 @@ class InterpreterAppView(APIView):
             "window.COGFLOW_PLATFORM_URL = '';",
             f"window.COGFLOW_PLATFORM_URL = '{platform_url}';",
         )
-        return HttpResponse(html, content_type="text/html; charset=utf-8")
+
+        # Runtime cache buster for local Interpreter scripts so browser cache never pins old JS.
+        try:
+            main_js = interpreter_dir / "src" / "main.js"
+            timeline_compiler_js = interpreter_dir / "src" / "timelineCompiler.js"
+            mtimes = []
+            for p in (main_js, timeline_compiler_js, index_path):
+                if p.exists():
+                    mtimes.append(int(p.stat().st_mtime))
+            cache_bust = str(max(mtimes)) if mtimes else str(int(timezone.now().timestamp()))
+
+            html = re.sub(
+                r'(src="src/[^"]+\.js)(\?v=[^"]*)?(")',
+                rf'\1?v={cache_bust}\3',
+                html,
+                flags=re.IGNORECASE,
+            )
+        except Exception:
+            # If cache-buster generation fails, continue serving Interpreter as usual.
+            pass
+
+        response = HttpResponse(html, content_type="text/html; charset=utf-8")
+        response["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response["Pragma"] = "no-cache"
+        response["Expires"] = "0"
+        return response
 
 
 @method_decorator(ensure_csrf_cookie, name="dispatch")
