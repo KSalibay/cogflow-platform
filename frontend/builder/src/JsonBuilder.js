@@ -1918,8 +1918,9 @@ class JsonBuilder {
         const emptyEl = document.getElementById('loadStudyEmpty');
         const errorEl = document.getElementById('loadStudyError');
         const confirmBtn = document.getElementById('loadStudyConfirmBtn');
+        const taskSelect = document.getElementById('loadStudyTaskSelect');
 
-        if (!modalEl || !listEl || !loadingEl || !emptyEl || !errorEl || !confirmBtn || !window.bootstrap?.Modal) {
+        if (!modalEl || !listEl || !loadingEl || !emptyEl || !errorEl || !confirmBtn || !taskSelect || !window.bootstrap?.Modal) {
             this.showValidationResult('error', 'Load Study UI is unavailable.');
             return;
         }
@@ -1940,6 +1941,46 @@ class JsonBuilder {
         };
 
         modalEl.dataset.selectedStudySlug = '';
+        modalEl.dataset.selectedConfigVersionId = '';
+
+        const resetTaskOptions = () => {
+            taskSelect.innerHTML = '<option value="">Latest / default</option>';
+            taskSelect.disabled = true;
+        };
+
+        const populateTaskOptions = async (studySlug) => {
+            resetTaskOptions();
+            const slug = (studySlug || '').toString().trim();
+            if (!slug) return;
+
+            const payload = await this.fetchLatestStudyConfig(slug);
+            const configs = Array.isArray(payload?.configs) ? payload.configs : [];
+            if (!configs.length) return;
+
+            const seen = new Set();
+            for (const c of configs) {
+                const versionId = (c?.config_version_id || '').toString().trim();
+                if (!versionId || seen.has(versionId)) continue;
+                seen.add(versionId);
+
+                const taskType = (c?.task_type || '').toString().trim();
+                const label = (c?.config_version_label || '').toString().trim();
+                const option = document.createElement('option');
+                option.value = versionId;
+                option.textContent = taskType
+                    ? `${taskType}${label ? ` (${label})` : ''}`
+                    : (label || versionId);
+                taskSelect.appendChild(option);
+            }
+
+            taskSelect.disabled = taskSelect.options.length <= 1;
+            modalEl.dataset.selectedConfigVersionId = '';
+        };
+
+        taskSelect.onchange = () => {
+            modalEl.dataset.selectedConfigVersionId = (taskSelect.value || '').toString().trim();
+        };
+
         const updateConfirmState = () => {
             const selected = (modalEl.dataset.selectedStudySlug || '').toString().trim();
             confirmBtn.disabled = !selected;
@@ -1980,14 +2021,19 @@ class JsonBuilder {
 
             btn.addEventListener('click', () => {
                 modalEl.dataset.selectedStudySlug = slug;
+                modalEl.dataset.selectedConfigVersionId = '';
                 listEl.querySelectorAll('.list-group-item').forEach((el) => el.classList.remove('active'));
                 btn.classList.add('active');
+                populateTaskOptions(slug).catch(() => {
+                    resetTaskOptions();
+                });
                 updateConfirmState();
             });
             return btn;
         };
 
         clearList();
+        resetTaskOptions();
         setError('');
         emptyEl.classList.add('d-none');
         setLoading(true);
@@ -2019,11 +2065,12 @@ class JsonBuilder {
 
         confirmBtn.onclick = async () => {
             const selectedSlug = (modalEl.dataset.selectedStudySlug || '').toString().trim();
+            const selectedConfigVersionId = (modalEl.dataset.selectedConfigVersionId || '').toString().trim() || null;
             if (!selectedSlug) return;
             confirmBtn.disabled = true;
             setError('');
             try {
-                await this.loadStudyIntoBuilder(selectedSlug);
+                await this.loadStudyIntoBuilder(selectedSlug, { configVersionId: selectedConfigVersionId });
                 modal.hide();
             } catch (e) {
                 setError(e?.message || 'Failed to load selected study.');
@@ -2056,11 +2103,29 @@ class JsonBuilder {
         this.showValidationResult('success', `Loaded ${sourceLabel}. Rebuilt ${rebuiltCount} timeline component(s).`);
     }
 
-    async loadStudyIntoBuilder(studySlug) {
+    async loadStudyIntoBuilder(studySlug, options = {}) {
         const payload = await this.fetchLatestStudyConfig(studySlug);
         const studyName = (payload?.study_name || payload?.study_slug || studySlug || 'study').toString();
-        const version = (payload?.config_version_label || 'latest').toString();
-        this.rehydrateBuilderFromConfig(payload.config, `${studyName} (${version})`);
+        const requestedVersionId = (options?.configVersionId || '').toString().trim();
+
+        let selected = null;
+        if (requestedVersionId && Array.isArray(payload?.configs)) {
+            selected = payload.configs.find((c) => (c?.config_version_id || '').toString().trim() === requestedVersionId) || null;
+        }
+
+        const config = (selected && selected.config && typeof selected.config === 'object')
+            ? selected.config
+            : payload.config;
+
+        if (!config || typeof config !== 'object' || Array.isArray(config)) {
+            throw new Error('Selected study config payload is malformed.');
+        }
+
+        const version = (selected?.config_version_label || payload?.config_version_label || 'latest').toString();
+        const taskType = (selected?.task_type || payload?.task_type || '').toString().trim();
+        const label = taskType ? `${studyName} (${taskType} · ${version})` : `${studyName} (${version})`;
+
+        this.rehydrateBuilderFromConfig(config, label);
     }
 
     extractEnabledFlag(raw, fallback = false) {

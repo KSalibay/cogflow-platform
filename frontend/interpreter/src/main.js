@@ -1995,9 +1995,12 @@
     return arr;
   }
 
-  async function startExperimentFromConfigs(configs, code) {
+  async function startExperimentFromConfigs(configs, code, options = {}) {
     const seq = Array.isArray(configs) ? [...configs] : [];
-    shuffleInPlace(seq);
+    const preserveOrder = !!(options && options.preserveOrder === true);
+    if (!preserveOrder) {
+      shuffleInPlace(seq);
+    }
 
     // Apply UI theme from the first config that specifies it (default dark).
     try {
@@ -2481,15 +2484,7 @@
           participantExternalId: participantId,
         });
         const cfg = startData && typeof startData.config === 'object' ? startData.config : null;
-        if (!cfg) {
-          throw new Error('Platform startRun response missing config payload');
-        }
-
-        try {
-          cfg.__source_url = `${window.DjangoRuntimeBackend._baseUrl()}/api/v1/runs/start`;
-        } catch {
-          // ignore
-        }
+        const cfgEntries = (startData && Array.isArray(startData.configs)) ? startData.configs : null;
 
         try {
           if (startData.study_slug) window.COGFLOW_STUDY_SLUG = startData.study_slug;
@@ -2503,6 +2498,46 @@
           if (studySlug && configVersionId) return `${studySlug}@${configVersionId}`;
           return studySlug || configVersionId || 'platform-launch';
         })();
+
+        if (cfgEntries && cfgEntries.length > 0) {
+          const baseSourceUrl = `${window.DjangoRuntimeBackend._baseUrl()}/api/v1/runs/start`;
+          const seq = [];
+          for (const entry of cfgEntries) {
+            if (!entry || typeof entry !== 'object' || !entry.config || typeof entry.config !== 'object') continue;
+            const entryConfig = entry.config;
+            try {
+              if (!entryConfig.__source_url) entryConfig.__source_url = baseSourceUrl;
+            } catch {
+              // ignore
+            }
+            const entryId = (() => {
+              const label = (entry.config_version_label || '').toString().trim();
+              const t = (entry.task_type || '').toString().trim();
+              const id = (entry.config_version_id || '').toString().trim();
+              return label || t || id || null;
+            })();
+            seq.push({ id: entryId, sourceUrl: baseSourceUrl, config: entryConfig });
+          }
+
+          if (seq.length === 0) {
+            throw new Error('Platform startRun response had configs array but no usable config entries');
+          }
+
+          await startExperimentFromConfigs(seq, (startData.study_slug || '').toString().trim() || runtimeConfigId, {
+            preserveOrder: true
+          });
+          return true;
+        }
+
+        if (!cfg) {
+          throw new Error('Platform startRun response missing config payload');
+        }
+
+        try {
+          cfg.__source_url = `${window.DjangoRuntimeBackend._baseUrl()}/api/v1/runs/start`;
+        } catch {
+          // ignore
+        }
 
         await startExperiment(cfg, runtimeConfigId);
         return true;

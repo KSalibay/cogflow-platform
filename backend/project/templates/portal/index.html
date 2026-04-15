@@ -1080,6 +1080,10 @@
                         style="border:1.5px solid var(--line);border-radius:8px;padding:5px 10px;font-size:.82rem;font-family:inherit;cursor:pointer;background:var(--bg);color:var(--ink);">
                   <option value="">— Select study —</option>
                 </select>
+                <select id="previewTaskSelect"
+                        style="border:1.5px solid var(--line);border-radius:8px;padding:5px 10px;font-size:.82rem;font-family:inherit;cursor:pointer;background:var(--bg);color:var(--ink);min-width:180px;">
+                  <option value="">All subtasks</option>
+                </select>
                 <button class="btn btn-primary btn-sm" id="previewLaunchBtn">Launch Preview</button>
               </div>
             </div>
@@ -1381,6 +1385,7 @@
     let mfaSetupState = null;
     let studiesList   = [];
     let integrationsRollout = null;
+    const latestConfigCache = {};
     const studyUiState = {};
 
     function getStudyState(slug) {
@@ -1413,6 +1418,143 @@
       if (!s || s === "-") return s;
       if (/^https?:\/\//i.test(s)) return s;
       try { return new URL(s, location.origin).toString(); } catch { return s; }
+    }
+
+    function ensureGenerateLinksModal() {
+      let modalEl = document.getElementById("generateLinksModal");
+      if (modalEl) return modalEl;
+
+      const host = document.createElement("div");
+      host.innerHTML = `
+        <div class="modal fade" id="generateLinksModal" tabindex="-1" aria-hidden="true">
+          <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title">Generate Participant Links</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+              </div>
+              <div class="modal-body">
+                <div id="generateLinksError" class="alert alert-danger py-2 d-none" role="alert"></div>
+                <div class="account-field" style="margin-bottom:10px;">
+                  <label for="generateLinksParticipantId">Participant ID (optional)</label>
+                  <input type="text" id="generateLinksParticipantId" placeholder="leave blank for anonymous/preview-style launch" />
+                </div>
+                <div class="form-check" style="margin-bottom:12px;">
+                  <input class="form-check-input" type="checkbox" id="generateLinksCounterbalance" checked>
+                  <label class="form-check-label" for="generateLinksCounterbalance">Enable automatic counterbalancing</label>
+                </div>
+                <div id="generateLinksOrderWrap">
+                  <label class="form-label" style="font-weight:600;">Task order (used when counterbalancing is OFF)</label>
+                  <div class="text-muted" style="font-size:.84rem;margin-bottom:8px;">Drag to reorder tasks.</div>
+                  <ul id="generateLinksTaskOrder" class="list-group"></ul>
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="generateLinksConfirmBtn">Generate</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(host.firstElementChild);
+      return document.getElementById("generateLinksModal");
+    }
+
+    function setupDragList(listEl) {
+      if (!listEl) return;
+      let dragEl = null;
+
+      listEl.querySelectorAll("li").forEach((li) => {
+        li.draggable = true;
+        li.addEventListener("dragstart", () => {
+          dragEl = li;
+          li.classList.add("active");
+        });
+        li.addEventListener("dragend", () => {
+          li.classList.remove("active");
+          dragEl = null;
+        });
+        li.addEventListener("dragover", (e) => {
+          e.preventDefault();
+        });
+        li.addEventListener("drop", (e) => {
+          e.preventDefault();
+          if (!dragEl || dragEl === li) return;
+          const rect = li.getBoundingClientRect();
+          const before = (e.clientY - rect.top) < rect.height / 2;
+          if (before) listEl.insertBefore(dragEl, li);
+          else listEl.insertBefore(dragEl, li.nextSibling);
+        });
+      });
+    }
+
+    async function openGenerateLinksModal(slug) {
+      const modalEl = ensureGenerateLinksModal();
+      const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+      const errEl = document.getElementById("generateLinksError");
+      const pidEl = document.getElementById("generateLinksParticipantId");
+      const cbEl = document.getElementById("generateLinksCounterbalance");
+      const wrapEl = document.getElementById("generateLinksOrderWrap");
+      const listEl = document.getElementById("generateLinksTaskOrder");
+      const confirmBtn = document.getElementById("generateLinksConfirmBtn");
+
+      const setErr = (msg) => {
+        const s = (msg || "").toString().trim();
+        errEl.textContent = s;
+        errEl.classList.toggle("d-none", !s);
+      };
+
+      setErr("");
+      pidEl.value = "";
+      cbEl.checked = true;
+      listEl.innerHTML = "";
+      wrapEl.style.opacity = "0.55";
+      wrapEl.style.pointerEvents = "none";
+
+      cbEl.onchange = () => {
+        const on = !!cbEl.checked;
+        wrapEl.style.opacity = on ? "0.55" : "1";
+        wrapEl.style.pointerEvents = on ? "none" : "auto";
+      };
+
+      try {
+        const payload = await fetchStudyLatestConfig(slug);
+        const cfgs = Array.isArray(payload?.configs) ? payload.configs : [];
+        cfgs.forEach((c) => {
+          const li = document.createElement("li");
+          li.className = "list-group-item d-flex justify-content-between align-items-center";
+          li.dataset.configId = (c?.config_version_id || "").toString();
+          const task = (c?.task_type || "task").toString();
+          const ver = (c?.config_version_label || "").toString();
+          li.innerHTML = `<span>${esc(task)}</span><span class="text-muted" style="font-size:.8rem;">${esc(ver)}</span>`;
+          listEl.appendChild(li);
+        });
+        setupDragList(listEl);
+      } catch (e) {
+        setErr(e?.message || String(e));
+      }
+
+      confirmBtn.onclick = async () => {
+        confirmBtn.disabled = true;
+        setErr("");
+        try {
+          const taskOrder = Array.from(listEl.querySelectorAll("li"))
+            .map((li) => (li.dataset.configId || "").toString().trim())
+            .filter(Boolean);
+          await generateLink(slug, pidEl.value || "", null, null, {
+            counterbalance_enabled: !!cbEl.checked,
+            task_order: taskOrder,
+          });
+          modal.hide();
+        } catch (e) {
+          setErr(e?.message || String(e));
+        } finally {
+          confirmBtn.disabled = false;
+        }
+      };
+
+      modal.show();
     }
 
     async function copyText(text, btn) {
@@ -2013,6 +2155,50 @@
         sel.appendChild(o);
       }
       if (prev) sel.value = prev;
+      populatePreviewTaskSelect(sel.value || "");
+    }
+
+    async function fetchStudyLatestConfig(slug) {
+      const key = String(slug || "").trim();
+      if (!key) return null;
+      if (latestConfigCache[key]) return latestConfigCache[key];
+      const r = await fetch(`${API}/api/v1/studies/${encodeURIComponent(key)}/latest-config`, { credentials: "include" });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+      latestConfigCache[key] = d;
+      return d;
+    }
+
+    async function populatePreviewTaskSelect(slug, preferredTaskType = "") {
+      const taskSel = document.getElementById("previewTaskSelect");
+      if (!taskSel) return;
+
+      const pref = String(preferredTaskType || "").trim().toLowerCase();
+      taskSel.innerHTML = '<option value="">All subtasks</option>';
+
+      const key = String(slug || "").trim();
+      if (!key) return;
+
+      try {
+        const payload = await fetchStudyLatestConfig(key);
+        const cfgs = Array.isArray(payload?.configs) ? payload.configs : [];
+        const subtasks = [];
+        for (const c of cfgs) {
+          const t = (c?.task_type || '').toString().trim().toLowerCase();
+          if (t && !subtasks.includes(t)) subtasks.push(t);
+        }
+        for (const t of subtasks) {
+          const o = document.createElement("option");
+          o.value = t;
+          o.textContent = t;
+          taskSel.appendChild(o);
+        }
+        if (pref && subtasks.includes(pref)) {
+          taskSel.value = pref;
+        }
+      } catch {
+        // Keep fallback option only when latest-config can't be loaded.
+      }
     }
 
     function populateIntegrationsStudySelect(studies) {
@@ -2078,10 +2264,7 @@
 
       // Action bindings
       tbody.querySelectorAll("[data-action='gen-link']").forEach(b =>
-        b.addEventListener("click", () => {
-          const pid = window.prompt("Participant external ID (optional):", "") || "";
-          generateLink(b.getAttribute("data-slug"), pid);
-        })
+        b.addEventListener("click", () => openGenerateLinksModal(b.getAttribute("data-slug")))
       );
       tbody.querySelectorAll("[data-action='toggle-details']").forEach(b =>
         b.addEventListener("click", () => toggleDetails(b.getAttribute("data-slug")))
@@ -2094,7 +2277,10 @@
       );
       tbody.querySelectorAll("[data-action='open-preview']").forEach(b =>
         b.addEventListener("click", () => {
-          document.getElementById("previewStudySelect").value = b.getAttribute("data-slug");
+          const slug = b.getAttribute("data-slug");
+          const taskType = (b.getAttribute("data-task-type") || '').toString().trim().toLowerCase();
+          document.getElementById("previewStudySelect").value = slug;
+          populatePreviewTaskSelect(slug, taskType);
           activateView("preview");
         })
       );
@@ -2187,6 +2373,42 @@
       } else if (state.runsLoaded && !state.runs.length) {
         resultsCard = `<article class="detail-card"><h3>Results</h3><div class="result-message">No runs recorded yet.</div></article>`;
       } else if (state.runsLoaded) {
+        const groups = new Map();
+        for (const run of state.runs) {
+          const k = (run.task_type || 'untyped').toString().trim().toLowerCase() || 'untyped';
+          if (!groups.has(k)) groups.set(k, []);
+          groups.get(k).push(run);
+        }
+
+        const groupedHtml = Array.from(groups.entries()).map(([taskType, taskRuns]) => {
+          const taskLabel = taskType === 'untyped' ? 'untyped' : taskType;
+          return `
+            <div class="result-task-group">
+              <div style="font-size:.82rem;color:var(--muted);margin:8px 0 6px;"><strong style="color:var(--ink);">Subtask:</strong> ${esc(taskLabel)} <span style="opacity:.8;">(${taskRuns.length})</span></div>
+              ${taskRuns.map(run => {
+                const ds = state.decryptions[run.run_session_id] || {};
+                return `<section class="result-item">
+                  <div class="result-meta">
+                    ${metaB("Run ID",      run.run_session_id)}
+                    ${metaB("Status",      run.status)}
+                    ${metaB("Started",     fmt(run.started_at))}
+                    ${metaB("Completed",   fmt(run.completed_at))}
+                    ${metaB("Trials",      String(run.trial_count || 0))}
+                    ${metaB("Participant", run.participant_key_preview || "—")}
+                  </div>
+                  <div class="result-actions">
+                    <button class="btn btn-ghost btn-xs" data-action="export-json"  data-slug="${slug}" data-run="${esc(run.run_session_id)}" ${run.has_result ? "" : "disabled"}>Export JSON</button>
+                    <button class="btn btn-ghost btn-xs" data-action="export-csv"   data-slug="${slug}" data-run="${esc(run.run_session_id)}" ${run.has_result ? "" : "disabled"}>Export CSV</button>
+                    <button class="btn btn-ghost btn-xs" data-action="copy-run-id" data-run="${esc(run.run_session_id)}">Copy ID</button>
+                  </div>
+                  ${ds.error   ? `<div class="result-message error">${esc(ds.error)}</div>` : ""}
+                  ${!run.has_result ? `<div class="result-message">No result envelope for this run yet.</div>` : ""}
+                </section>`;
+              }).join("")}
+            </div>
+          `;
+        }).join("");
+
         const busy = state.exportBusy;
         resultsCard = `<article class="detail-card">
           <div class="detail-header" style="margin-bottom:10px;">
@@ -2197,26 +2419,7 @@
             </div>
           </div>
           <div class="result-list">
-            ${state.runs.map(run => {
-              const ds = state.decryptions[run.run_session_id] || {};
-              return `<section class="result-item">
-                <div class="result-meta">
-                  ${metaB("Run ID",      run.run_session_id)}
-                  ${metaB("Status",      run.status)}
-                  ${metaB("Started",     fmt(run.started_at))}
-                  ${metaB("Completed",   fmt(run.completed_at))}
-                  ${metaB("Trials",      String(run.trial_count || 0))}
-                  ${metaB("Participant", run.participant_key_preview || "—")}
-                </div>
-                <div class="result-actions">
-                  <button class="btn btn-ghost btn-xs" data-action="export-json"  data-slug="${slug}" data-run="${esc(run.run_session_id)}" ${run.has_result ? "" : "disabled"}>Export JSON</button>
-                  <button class="btn btn-ghost btn-xs" data-action="export-csv"   data-slug="${slug}" data-run="${esc(run.run_session_id)}" ${run.has_result ? "" : "disabled"}>Export CSV</button>
-                  <button class="btn btn-ghost btn-xs" data-action="copy-run-id" data-run="${esc(run.run_session_id)}">Copy ID</button>
-                </div>
-                ${ds.error   ? `<div class="result-message error">${esc(ds.error)}</div>` : ""}
-                ${!run.has_result ? `<div class="result-message">No result envelope for this run yet.</div>` : ""}
-              </section>`;
-            }).join("")}
+            ${groupedHtml}
           </div>
         </article>`;
       } else {
@@ -2262,15 +2465,18 @@
       }
     }
 
-    async function generateLink(slug, pid, completionRedirect, abortRedirect) {
+    async function generateLink(slug, pid, completionRedirect, abortRedirect, options) {
       const st = getStudyState(slug);
       st.expanded = true;
       const sb = document.getElementById("studiesStatus");
       sb.className = "status-bar"; sb.textContent = `Generating links for ${slug}…`;
       try {
+        const opts = (options && typeof options === "object") ? options : {};
         const r = await fetch(`${API}/api/v1/studies/${encodeURIComponent(slug)}/participant-links`,
           postOpts({
             participant_external_id: pid || null,
+            counterbalance_enabled: Object.prototype.hasOwnProperty.call(opts, "counterbalance_enabled") ? !!opts.counterbalance_enabled : true,
+            task_order: Array.isArray(opts.task_order) ? opts.task_order : [],
             expires_in_hours: 72,
             completion_redirect_url: completionRedirect || null,
             abort_redirect_url: abortRedirect || null,
@@ -2882,6 +3088,7 @@
     // ── Preview launch ─────────────────────────────────────────
     document.getElementById("previewLaunchBtn").addEventListener("click", async () => {
       const slug = document.getElementById("previewStudySelect").value;
+      const taskType = (document.getElementById("previewTaskSelect")?.value || '').toString().trim().toLowerCase();
       if (!slug) return;
       const btn = document.getElementById("previewLaunchBtn");
       btn.disabled = true; btn.textContent = "Generating…";
@@ -2891,13 +3098,23 @@
         const d = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
         const token = d.launch_options?.single_use?.launch_token || d.launch_token || "";
-        document.getElementById("previewFrame").src =
-          token ? `/interpreter/?launch_token=${encodeURIComponent(token)}` : "/interpreter/";
+        if (!token) {
+          document.getElementById("previewFrame").src = "/interpreter/";
+        } else {
+          const qp = new URLSearchParams({ launch_token: token });
+          if (taskType) qp.set('task_type', taskType);
+          document.getElementById("previewFrame").src = `/interpreter/?${qp.toString()}`;
+        }
       } catch (err) {
         alert(`Preview launch failed: ${err?.message || err}`);
       } finally {
         btn.disabled = false; btn.textContent = "Launch Preview";
       }
+    });
+
+    document.getElementById("previewStudySelect").addEventListener("change", (e) => {
+      const slug = (e.target?.value || '').toString().trim();
+      populatePreviewTaskSelect(slug);
     });
 
     document.getElementById("generateSonaLinksBtn")?.addEventListener("click", generateSonaLinksFromIntegrations);

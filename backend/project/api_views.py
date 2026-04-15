@@ -2,6 +2,7 @@ import os
 import json
 import re
 import hashlib
+import math
 from datetime import timedelta
 from uuid import uuid4
 from urllib.parse import quote, urlencode
@@ -215,6 +216,83 @@ def _resolve_redirect_url(
         resolved = resolved.replace("{" + key + "}", encoded_value)
 
     return resolved
+
+
+def _extract_config_task_type(config_json: dict | None) -> str | None:
+    if not isinstance(config_json, dict):
+        return None
+    raw = config_json.get("task_type")
+    if raw is None:
+        raw = config_json.get("taskType")
+    s = str(raw or "").strip().lower()
+    return s or None
+
+
+def _nth_permutation(items: list, index: int) -> list:
+    pool = list(items)
+    n = len(pool)
+    if n <= 1:
+        return pool
+
+    max_index = math.factorial(n)
+    if max_index <= 0:
+        return pool
+
+    idx = int(index) % max_index
+    out = []
+    for i in range(n, 0, -1):
+        f = math.factorial(i - 1)
+        pick = idx // f
+        idx = idx % f
+        out.append(pool.pop(pick))
+    return out
+
+
+def _counterbalanced_config_order(config_versions: list, seed: str | None) -> tuple[list, int, int]:
+    versions = list(config_versions)
+    n = len(versions)
+    if n <= 1:
+        return versions, 0, 1
+
+    permutations_total = math.factorial(n)
+    seed_text = (seed or "").strip()
+    if not seed_text:
+        seed_text = uuid4().hex
+
+    digest = hashlib.sha256(seed_text.encode("utf-8")).hexdigest()
+    permutation_index = int(digest, 16) % permutations_total
+    ordered = _nth_permutation(versions, permutation_index)
+    return ordered, permutation_index, permutations_total
+
+
+def _ordered_config_versions_by_ids(config_versions: list, ordered_ids: list[str] | None) -> list:
+    versions = list(config_versions)
+    if not ordered_ids:
+        return versions
+
+    rank = {}
+    seq = 0
+    for raw in ordered_ids:
+        sid = str(raw or "").strip()
+        if not sid or sid in rank:
+            continue
+        rank[sid] = seq
+        seq += 1
+
+    if not rank:
+        return versions
+
+    present = []
+    rest = []
+    for v in versions:
+        sid = str(v.id)
+        if sid in rank:
+            present.append(v)
+        else:
+            rest.append(v)
+
+    present.sort(key=lambda v: rank.get(str(v.id), 10**9))
+    return present + rest
 
 
 def _issue_email_verification_token(user: User) -> str:
@@ -1320,8 +1398,12 @@ class StudyRunsView(APIView):
             return Response({"error": "Study is not owned by the current researcher"}, status=status.HTTP_403_FORBIDDEN)
 
         runs = []
-        for run in study.run_sessions.select_related("owner_user", "result_envelope").order_by("-started_at")[:20]:
+        for run in study.run_sessions.select_related("owner_user", "result_envelope", "config_version").order_by("-started_at")[:20]:
             envelope = getattr(run, "result_envelope", None)
+            cfg = getattr(run, "config_version", None)
+            cfg_json = cfg.config_json if cfg and isinstance(cfg.config_json, dict) else {}
+            task_type = (cfg_json.get("task_type") or cfg_json.get("taskType") or "")
+            task_type = str(task_type).strip().lower() or None
             runs.append(
                 {
                     "run_session_id": run.id,
@@ -1330,6 +1412,9 @@ class StudyRunsView(APIView):
                     "completed_at": run.completed_at,
                     "owner_username": run.owner_user.username if run.owner_user else _get_study_owner_username(study),
                     "participant_key_preview": f"{run.participant_key[:12]}..." if run.participant_key else None,
+                    "task_type": task_type,
+                    "config_version_id": cfg.id if cfg else None,
+                    "config_version_label": cfg.version_label if cfg else None,
                     "has_result": bool(envelope),
                     "trial_count": envelope.trial_count if envelope else 0,
                     "result_created_at": envelope.created_at if envelope else None,
@@ -1366,9 +1451,30 @@ class StudyLatestConfigView(APIView):
         if not _has_study_access(study, request.user, profile):
             return Response({"error": "Study is not owned by the current researcher"}, status=status.HTTP_403_FORBIDDEN)
 
-        config_version = study.config_versions.first()
+        versions = list(study.config_versions.all())
+        config_version = versions[0] if versions else None
         if not config_version:
             return Response({"error": "No published config version"}, status=status.HTTP_404_NOT_FOUND)
+
+        configs = []
+        available_task_types = []
+        for v in versions:
+            cfg_json = v.config_json if isinstance(v.config_json, dict) else {}
+            task_type = (cfg_json.get("task_type") or cfg_json.get("taskType") or "")
+            task_type = str(task_type).strip().lower() or None
+            if task_type and task_type not in available_task_types:
+                available_task_types.append(task_type)
+            configs.append(
+                {
+                    "config_version_id": v.id,
+                    "config_version_label": v.version_label,
+                    "task_type": task_type,
+                    "config": v.config_json,
+                }
+            )
+
+        latest_task_type = (config_version.config_json.get("task_type") or config_version.config_json.get("taskType") or "") if isinstance(config_version.config_json, dict) else ""
+        latest_task_type = str(latest_task_type).strip().lower() or None
 
         return Response(
             {
@@ -1376,6 +1482,9 @@ class StudyLatestConfigView(APIView):
                 "study_name": study.name,
                 "config_version_id": config_version.id,
                 "config_version_label": config_version.version_label,
+                "task_type": latest_task_type,
+                "available_task_types": available_task_types,
+                "configs": configs,
                 "config": config_version.config_json,
             },
             status=status.HTTP_200_OK,
@@ -1566,8 +1675,19 @@ class CreateParticipantLinkView(APIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
+        config_versions = list(study.config_versions.all())
+        known_ids = {str(cv.id) for cv in config_versions}
+
         expires_at = timezone.now() + timedelta(hours=data.get("expires_in_hours", 72))
         participant_external_id = (data.get("participant_external_id") or "").strip()
+        counterbalance_enabled = bool(data.get("counterbalance_enabled", True))
+        raw_task_order = data.get("task_order") or []
+        task_order = []
+        for raw in raw_task_order:
+            sid = str(raw or "").strip()
+            if not sid or sid not in known_ids or sid in task_order:
+                continue
+            task_order.append(sid)
         completion_redirect_url = (data.get("completion_redirect_url") or "").strip()
         abort_redirect_url = (data.get("abort_redirect_url") or "").strip()
         prolific_completion_mode = (data.get("prolific_completion_mode") or "default").strip() or "default"
@@ -1576,6 +1696,8 @@ class CreateParticipantLinkView(APIView):
             "study_slug": study.slug,
             "researcher_username": request.user.username,
             "participant_external_id": participant_external_id,
+            "counterbalance_enabled": counterbalance_enabled,
+            "task_order": task_order,
             "expires_at": expires_at.isoformat(),
             "completion_redirect_url": completion_redirect_url,
             "abort_redirect_url": abort_redirect_url,
@@ -1607,6 +1729,8 @@ class CreateParticipantLinkView(APIView):
                 "has_abort_redirect": bool(abort_redirect_url),
                 "prolific_completion_mode": prolific_completion_mode,
                 "has_prolific_completion_code": bool(prolific_completion_code),
+                "counterbalance_enabled": counterbalance_enabled,
+                "task_order_count": len(task_order),
                 "single_use_token_digest": _launch_token_digest(single_use_token),
                 "multi_use_token_digest": _launch_token_digest(multi_use_token),
             },
@@ -1619,6 +1743,8 @@ class CreateParticipantLinkView(APIView):
                 "study_slug": study.slug,
                 "launch_token": multi_use_token,
                 "launch_url": launch_url_multi,
+                "counterbalance_enabled": counterbalance_enabled,
+                "task_order": task_order,
                 "completion_redirect_url": completion_redirect_url,
                 "abort_redirect_url": abort_redirect_url,
                 "prolific_completion_mode": prolific_completion_mode,
@@ -1628,6 +1754,8 @@ class CreateParticipantLinkView(APIView):
                         "launch_mode": "multi_use",
                         "launch_token": multi_use_token,
                         "launch_url": launch_url_multi,
+                        "counterbalance_enabled": counterbalance_enabled,
+                        "task_order": task_order,
                         "completion_redirect_url": completion_redirect_url,
                         "abort_redirect_url": abort_redirect_url,
                         "prolific_completion_mode": prolific_completion_mode,
@@ -1637,6 +1765,8 @@ class CreateParticipantLinkView(APIView):
                         "launch_mode": "single_use",
                         "launch_token": single_use_token,
                         "launch_url": launch_url_single,
+                        "counterbalance_enabled": counterbalance_enabled,
+                        "task_order": task_order,
                         "completion_redirect_url": completion_redirect_url,
                         "abort_redirect_url": abort_redirect_url,
                         "prolific_completion_mode": prolific_completion_mode,
@@ -1776,10 +1906,13 @@ class StartRunView(APIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
+        token_payload = {}
         study = None
         owner_username = None
         launch_mode = None
         launch_token_digest = None
+        counterbalance_enabled = True
+        requested_task_order = []
 
         launch_token = data.get("launch_token")
         if launch_token:
@@ -1803,6 +1936,8 @@ class StartRunView(APIView):
             owner_username = (token_payload.get("researcher_username") or "").strip() or None
             launch_mode = (token_payload.get("launch_mode") or "multi_use").strip()
             launch_token_digest = _launch_token_digest(launch_token)
+            counterbalance_enabled = bool(token_payload.get("counterbalance_enabled", True))
+            requested_task_order = token_payload.get("task_order") if isinstance(token_payload.get("task_order"), list) else []
 
             if launch_mode == "single_use":
                 already_used = AuditEvent.objects.filter(
@@ -1820,16 +1955,47 @@ class StartRunView(APIView):
         if not study:
             return Response({"error": "Study not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        config_version = study.config_versions.first()
-        if not config_version:
-            return Response({"error": "No published config version"}, status=status.HTTP_400_BAD_REQUEST)
-
         participant_external_id = (
             data.get("participant_external_id")
             or (token_payload.get("participant_external_id") if launch_token else "")
             or "anonymous"
         )
         participant_key = hash_identifier(participant_external_id)
+
+        config_versions = list(study.config_versions.all())
+        if not config_versions:
+            return Response({"error": "No published config version"}, status=status.HTTP_400_BAD_REQUEST)
+
+        permutations_total = 1
+        permutation_index = 0
+        counterbalance_mode = "fixed"
+
+        if counterbalance_enabled:
+            ordered_versions, permutation_index, permutations_total = _counterbalanced_config_order(
+                config_versions,
+                seed=participant_external_id,
+            )
+            counterbalance_mode = "permutation_by_participant"
+        else:
+            ordered_versions = _ordered_config_versions_by_ids(config_versions, requested_task_order)
+            counterbalance_mode = "manual_order" if requested_task_order else "fixed"
+
+        config_version = ordered_versions[0]
+
+        configs_payload = []
+        available_task_types = []
+        for cv in ordered_versions:
+            task_type = _extract_config_task_type(cv.config_json)
+            if task_type and task_type not in available_task_types:
+                available_task_types.append(task_type)
+            configs_payload.append(
+                {
+                    "config_version_id": cv.id,
+                    "config_version_label": cv.version_label,
+                    "task_type": task_type,
+                    "config": cv.config_json,
+                }
+            )
 
         owner_user = study.owner_user
         if not owner_user and owner_username:
@@ -1875,6 +2041,11 @@ class StartRunView(APIView):
                 "owner_username": owner_name_response,
                 "launch_mode": launch_mode,
                 "launch_token_digest": launch_token_digest,
+                "config_versions_count": len(config_versions),
+                "counterbalance_enabled": counterbalance_enabled,
+                "counterbalance_mode": counterbalance_mode,
+                "counterbalance_permutation_index": permutation_index,
+                "counterbalance_permutations_total": permutations_total,
                 "has_completion_redirect": bool(completion_redirect_url),
                 "has_abort_redirect": bool(abort_redirect_url),
                 "prolific_completion_mode": prolific_completion_mode,
@@ -1888,6 +2059,15 @@ class StartRunView(APIView):
                 "study_slug": study.slug,
                 "config_version_id": config_version.id,
                 "config": config_version.config_json,
+                "configs": configs_payload,
+                "available_task_types": available_task_types,
+                "counterbalance": {
+                    "mode": counterbalance_mode,
+                    "enabled": counterbalance_enabled,
+                    "seed_source": "participant_external_id",
+                    "permutation_index": permutation_index,
+                    "permutations_total": permutations_total,
+                },
                 "participant_key": participant_key,
                 "owner_username": owner_name_response,
                 "completion_redirect_url": completion_redirect_url,

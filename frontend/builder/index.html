@@ -367,10 +367,17 @@
                     </div>
                     <div class="modal-body">
                         <div id="loadStudyError" class="alert alert-danger py-2 d-none" role="alert"></div>
-                        <p class="text-muted mb-3">Select a study to load its latest published config from platform storage.</p>
+                        <p class="text-muted mb-3">Select a study, then optionally choose a subtask/config to load.</p>
                         <div id="loadStudyLoading" class="text-muted mb-2 d-none">Loading studies...</div>
                         <div id="loadStudyEmpty" class="text-muted mb-2 d-none">No published studies available for your account.</div>
                         <div id="loadStudyList" class="list-group" style="max-height: 360px; overflow: auto;"></div>
+                        <div class="mt-3">
+                            <label for="loadStudyTaskSelect" class="form-label">Subtask</label>
+                            <select id="loadStudyTaskSelect" class="form-select" disabled>
+                                <option value="">Latest / default</option>
+                            </select>
+                            <div class="form-text">For multi-task studies under one slug, choose which subtask timeline to load.</div>
+                        </div>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>

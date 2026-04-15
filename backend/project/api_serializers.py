@@ -72,6 +72,13 @@ class TotpVerifyRequestSerializer(serializers.Serializer):
 
 class CreateParticipantLinkRequestSerializer(serializers.Serializer):
     participant_external_id = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    counterbalance_enabled = serializers.BooleanField(required=False, default=True)
+    task_order = serializers.ListField(
+        child=serializers.CharField(max_length=128),
+        required=False,
+        allow_empty=True,
+        default=list,
+    )
     expires_in_hours = serializers.IntegerField(required=False, min_value=1, max_value=24 * 30, default=72)
     completion_redirect_url = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=2000)
     abort_redirect_url = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=2000)
