@@ -802,6 +802,84 @@
         line-height: 1;
       }
 
+      #generateLinksTaskOrder {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        gap: 8px;
+      }
+
+      #generateLinksTaskOrder li {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: color-mix(in oklab, var(--panel) 88%, var(--bg));
+        padding: 10px 12px;
+        cursor: grab;
+        user-select: none;
+      }
+
+      #generateLinksTaskOrder li:hover {
+        border-color: color-mix(in oklab, var(--accent) 38%, var(--line));
+        background: color-mix(in oklab, var(--accent-lt) 36%, var(--panel));
+      }
+
+      #generateLinksTaskOrder li.dragging {
+        opacity: 0.55;
+      }
+
+      #generateLinksTaskOrder .task-order-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      #generateLinksTaskOrder .task-order-grip {
+        color: var(--muted);
+        letter-spacing: 1px;
+        font-size: 0.9rem;
+      }
+
+      #generateLinksTaskOrder {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        gap: 8px;
+      }
+
+      #generateLinksTaskOrder li {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: color-mix(in oklab, var(--panel) 88%, var(--bg));
+        padding: 10px 12px;
+        cursor: grab;
+        user-select: none;
+      }
+
+      #generateLinksTaskOrder li:hover {
+        border-color: color-mix(in oklab, var(--accent) 38%, var(--line));
+        background: color-mix(in oklab, var(--accent-lt) 36%, var(--panel));
+      }
+
+      #generateLinksTaskOrder li.dragging {
+        opacity: 0.55;
+      }
+
+      #generateLinksTaskOrder .task-order-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      #generateLinksTaskOrder .task-order-grip {
+        color: var(--muted);
+        letter-spacing: 1px;
+        font-size: 0.9rem;
+      }
+
       /* ── Placeholder views ─────────────────────────────────── */
       .placeholder-pane {
         flex: 1; display: flex; align-items: center; justify-content: center;
@@ -1457,6 +1535,8 @@
     let integrationsRollout = null;
     const latestConfigCache = {};
     const studyUiState = {};
+    let studiesRefreshTimer = null;
+    let activeView = "studies";
 
     function getStudyState(slug) {
       const k = String(slug || "");
@@ -1582,10 +1662,10 @@
         li.draggable = true;
         li.addEventListener("dragstart", () => {
           dragEl = li;
-          li.classList.add("active");
+          li.classList.add("dragging");
         });
         li.addEventListener("dragend", () => {
-          li.classList.remove("active");
+          li.classList.remove("dragging");
           dragEl = null;
         });
         li.addEventListener("dragover", (e) => {
@@ -1635,11 +1715,16 @@
         const cfgs = Array.isArray(payload?.configs) ? payload.configs : [];
         cfgs.forEach((c) => {
           const li = document.createElement("li");
-          li.className = "list-group-item d-flex justify-content-between align-items-center";
+          li.className = "list-group-item";
           li.dataset.configId = (c?.config_version_id || "").toString();
           const task = (c?.task_type || "task").toString();
           const ver = (c?.config_version_label || "").toString();
-          li.innerHTML = `<span>${esc(task)}</span><span class="text-muted" style="font-size:.8rem;">${esc(ver)}</span>`;
+          li.innerHTML = `
+            <div class="task-order-item">
+              <span><strong>${esc(task)}</strong> <span class="text-muted" style="font-size:.8rem;">${esc(ver)}</span></span>
+              <span class="task-order-grip" aria-hidden="true">⋮⋮</span>
+            </div>
+          `;
           listEl.appendChild(li);
         });
         setupDragList(listEl);
@@ -1866,6 +1951,7 @@
     applyPortalA11y("standard", false);
 
     function activateView(id) {
+      activeView = id;
       VIEWS.forEach(v => {
         document.getElementById(`view${v[0].toUpperCase()}${v.slice(1)}`)?.classList.toggle("active", v === id);
         const navEl = document.getElementById(`nav${v[0].toUpperCase()}${v.slice(1)}`);
@@ -1897,10 +1983,42 @@
     // Listen for postMessage from Builder (study published)
     window.addEventListener("message", e => {
       if (e.origin !== location.origin) return;
-      if (e.data?.type === "cogflow:study-published") loadStudies();
+      if (e.data?.type === "cogflow:study-published") {
+        invalidateLatestConfigCache();
+        loadStudies();
+      }
       if (e.data?.type === "cogflow:builder-ready") {
         notifyBuilderTheme(currentTheme);
         notifyBuilderA11y(currentA11yMode);
+      }
+    });
+
+    function startStudiesAutoRefresh() {
+      if (studiesRefreshTimer) return;
+      studiesRefreshTimer = window.setInterval(() => {
+        if (!currentUser) return;
+        if (document.hidden) return;
+        if (!["studies", "preview", "integrations"].includes(activeView)) return;
+        loadStudies();
+      }, 15000);
+    }
+
+    function stopStudiesAutoRefresh() {
+      if (!studiesRefreshTimer) return;
+      clearInterval(studiesRefreshTimer);
+      studiesRefreshTimer = null;
+    }
+
+    window.addEventListener("focus", () => {
+      if (currentUser && ["studies", "preview", "integrations"].includes(activeView)) {
+        loadStudies();
+      }
+    });
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) return;
+      if (currentUser && ["studies", "preview", "integrations"].includes(activeView)) {
+        loadStudies();
       }
     });
 
@@ -2015,6 +2133,7 @@
       loadPortalA11yPreference();
       renderMfaStatusBlock();
       loadStudies();
+      startStudiesAutoRefresh();
       if (isAdmin) {
         loadAdminUsers();
       } else {
@@ -2222,6 +2341,8 @@
     document.getElementById("signOutBtn").addEventListener("click", async () => {
       await fetch(`${API}/api/v1/auth/logout`, postOpts({}));
       currentUser = null; mfaSetupState = null;
+      stopStudiesAutoRefresh();
+      invalidateLatestConfigCache();
       builderLoaded = false;
       document.getElementById("builderFrame").src = "about:blank";
       document.getElementById("previewFrame").src  = "about:blank";
@@ -2244,6 +2365,7 @@
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const d = await r.json();
         studiesList = d.studies || [];
+        invalidateLatestConfigCache();
         renderStudyRows(studiesList);
         populatePreviewSelect(studiesList);
         populateIntegrationsStudySelect(studiesList);
@@ -2274,11 +2396,15 @@
       const key = String(slug || "").trim();
       if (!key) return null;
       if (latestConfigCache[key]) return latestConfigCache[key];
-      const r = await fetch(`${API}/api/v1/studies/${encodeURIComponent(key)}/latest-config`, { credentials: "include" });
+      const r = await fetch(`${API}/api/v1/studies/${encodeURIComponent(key)}/latest-config?_ts=${Date.now()}`, { credentials: "include" });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
       latestConfigCache[key] = d;
       return d;
+    }
+
+    function invalidateLatestConfigCache() {
+      Object.keys(latestConfigCache).forEach((k) => delete latestConfigCache[k]);
     }
 
     async function populatePreviewTaskSelect(slug, preferredTaskType = "") {

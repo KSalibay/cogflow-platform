@@ -1540,14 +1540,47 @@ class PublishConfigView(APIView):
                         defaults={"granted_by": request.user},
                     )
 
-        config_version, _ = ConfigVersion.objects.update_or_create(
+        requested_version_label = data["config_version_label"]
+        incoming_task_type = _extract_config_task_type(data.get("config"))
+        label_adjusted = False
+
+        existing_same_label = ConfigVersion.objects.filter(
             study=study,
-            version_label=data["config_version_label"],
-            defaults={
-                "builder_version": data.get("builder_version", ""),
-                "config_json": data["config"],
-            },
-        )
+            version_label=requested_version_label,
+        ).first()
+
+        if not existing_same_label:
+            config_version = ConfigVersion.objects.create(
+                study=study,
+                version_label=requested_version_label,
+                builder_version=data.get("builder_version", ""),
+                config_json=data["config"],
+            )
+        else:
+            existing_task_type = _extract_config_task_type(existing_same_label.config_json)
+            same_task_type = (incoming_task_type == existing_task_type)
+
+            if same_task_type:
+                existing_same_label.builder_version = data.get("builder_version", "")
+                existing_same_label.config_json = data["config"]
+                existing_same_label.save(update_fields=["builder_version", "config_json"])
+                config_version = existing_same_label
+            else:
+                suffix = incoming_task_type or "task"
+                safe_suffix = re.sub(r"[^a-z0-9_-]", "-", suffix.lower()).strip("-") or "task"
+                candidate = f"{requested_version_label}__{safe_suffix}"
+                n = 2
+                while ConfigVersion.objects.filter(study=study, version_label=candidate).exists():
+                    candidate = f"{requested_version_label}__{safe_suffix}-{n}"
+                    n += 1
+
+                config_version = ConfigVersion.objects.create(
+                    study=study,
+                    version_label=candidate,
+                    builder_version=data.get("builder_version", ""),
+                    config_json=data["config"],
+                )
+                label_adjusted = True
 
         study.updated_at = timezone.now()
         study.save(update_fields=["updated_at"])
@@ -1557,13 +1590,21 @@ class PublishConfigView(APIView):
             resource_type="study",
             resource_id=study.id,
             actor=actor,
-            metadata={"version_label": config_version.version_label},
+            metadata={
+                "requested_version_label": requested_version_label,
+                "version_label": config_version.version_label,
+                "version_label_adjusted": label_adjusted,
+                "task_type": incoming_task_type,
+            },
         )
 
         return Response(
             {
                 "study_id": study.id,
                 "config_version_id": config_version.id,
+                "config_version_label": config_version.version_label,
+                "requested_config_version_label": requested_version_label,
+                "config_version_label_adjusted": label_adjusted,
                 "study_slug": study.slug,
                 "owner_username": _get_study_owner_username(study),
                 "owner_usernames": _get_study_owner_usernames(study),

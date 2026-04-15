@@ -13423,9 +13423,11 @@ class JsonBuilder {
 
             if (response.ok) {
                 const dashUrl = data.dashboard_url || `${platformUrl}/studies/${data.study_slug || studySlug}/`;
+                const resolvedLabel = (data.config_version_label || versionLabel || '').toString();
+                const labelAdjusted = data.config_version_label_adjusted === true;
                 this.showValidationResult(
                     'success',
-                    `Published! Study: ${data.study_slug || studySlug} · Config ID: ${data.config_version_id || '—'}\nDashboard: ${dashUrl}`
+                    `Published! Study: ${data.study_slug || studySlug} · Config ID: ${data.config_version_id || '—'} · Version: ${resolvedLabel || '—'}${labelAdjusted ? ' (auto-adjusted to avoid overwrite)' : ''}\nDashboard: ${dashUrl}`
                 );
             } else {
                 const errMsg = data.detail || data.error || JSON.stringify(data);
