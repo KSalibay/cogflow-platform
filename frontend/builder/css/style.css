@@ -1807,10 +1807,19 @@ html[data-cf-theme="dark"] .cluster-settings {
 /* Hard lock dark theme for builder canvas + panel internals.
    Keep this block last so older light defaults cannot override it. */
 html[data-cf-theme="dark"] body,
-html[data-cf-theme="dark"] .container-fluid,
-html[data-cf-theme="dark"] .main-panels-row {
+html[data-cf-theme="dark"] body > .container-fluid,
+html[data-cf-theme="dark"] body > .container-fluid > .main-panels-row {
     background-color: var(--cf-bg) !important;
     color: var(--cf-text) !important;
+}
+
+html[data-cf-theme="dark"] .navbar.bg-primary {
+    background-color: var(--cf-space-indigo) !important;
+    border-bottom: 1px solid rgba(186, 199, 190, 0.2);
+}
+
+html[data-cf-theme="dark"] .navbar.bg-primary > .container-fluid {
+    background: transparent !important;
 }
 
 html[data-cf-theme="dark"] .main-panel .card,
