@@ -580,6 +580,21 @@
     }
   }
 
+  function normalizeLaunchConfig(raw) {
+    if (raw && typeof raw === 'object') return raw;
+    if (typeof raw === 'string') {
+      const s = raw.trim();
+      if (!s) return null;
+      try {
+        const parsed = JSON.parse(s);
+        return (parsed && typeof parsed === 'object') ? parsed : null;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+
   function getDebugMode() {
     try {
       const v = (getQueryParam('debug') || '').toString().trim().toLowerCase();
@@ -2483,7 +2498,7 @@
           launchToken,
           participantExternalId: participantId,
         });
-        const cfg = startData && typeof startData.config === 'object' ? startData.config : null;
+        const cfg = startData ? normalizeLaunchConfig(startData.config) : null;
         const cfgEntries = (startData && Array.isArray(startData.configs)) ? startData.configs : null;
 
         try {
@@ -2503,8 +2518,9 @@
           const baseSourceUrl = `${window.DjangoRuntimeBackend._baseUrl()}/api/v1/runs/start`;
           const seq = [];
           for (const entry of cfgEntries) {
-            if (!entry || typeof entry !== 'object' || !entry.config || typeof entry.config !== 'object') continue;
-            const entryConfig = entry.config;
+            if (!entry || typeof entry !== 'object') continue;
+            const entryConfig = normalizeLaunchConfig(entry.config);
+            if (!entryConfig) continue;
             try {
               if (!entryConfig.__source_url) entryConfig.__source_url = baseSourceUrl;
             } catch {
