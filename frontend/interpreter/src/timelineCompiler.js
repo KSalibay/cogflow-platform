@@ -1878,6 +1878,10 @@
       if (type === 'html-keyboard-response') {
         const pluginType = String(item?.data?.plugin_type || '').trim().toLowerCase();
         if (pluginType === 'instructions' || pluginType === 'eye-tracking-calibration-instructions') return true;
+
+        // Builder "Instructions" components are emitted as html-keyboard-response
+        // and may only carry the auto-generated flag (without plugin_type).
+        if (item?.auto_generated === true || item?.data?.auto_generated === true) return true;
       }
       return false;
     };

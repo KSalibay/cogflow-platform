@@ -3370,7 +3370,8 @@
       const btn = document.getElementById("previewLaunchBtn");
       btn.disabled = true; btn.textContent = "Generating…";
       try {
-        const launchPayload = { participant_external_id: "preview", expires_in_hours: 1 };
+        const previewParticipantId = `preview-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const launchPayload = { participant_external_id: previewParticipantId, expires_in_hours: 1 };
         if (taskType) {
           const latest = await fetchStudyLatestConfig(slug);
           const cfgs = Array.isArray(latest?.configs) ? latest.configs : [];
