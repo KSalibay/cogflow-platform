@@ -230,6 +230,7 @@ var jsPsychRdm = (function (jspsych) {
       let mouseMoveEvents = 0;
       let mouseLastPointerX = null;
       let mouseLastPointerY = null;
+      let feedbackEndAt = null;
 
       const getActiveRdmParams = () => {
         const live = (engine && engine.params && typeof engine.params === 'object') ? engine.params : null;
@@ -342,12 +343,13 @@ var jsPsychRdm = (function (jspsych) {
 
       const showFeedback = (isCorrect) => {
         const fb = response && response.feedback && response.feedback.enabled ? response.feedback : null;
-        if (!fb) return;
+        if (!fb) return 0;
 
         const el = display_element.querySelector('#rdm-feedback');
-        if (!el) return;
+        if (!el) return 0;
 
         const duration = Number(rdm.feedback_duration ?? fb.duration_ms ?? 500);
+        const feedbackMs = Number.isFinite(duration) && duration > 0 ? duration : 500;
 
         if (fb.type === 'corner-text') {
           el.innerHTML = `<div style="width: ${canvasW}px; display:flex; justify-content:space-between;">
@@ -361,14 +363,20 @@ var jsPsychRdm = (function (jspsych) {
             engine.arrowDirectionDeg = directionDeg;
             engine.arrowColor = arrowColor;
           }
-          el.innerHTML = `<div style="width: ${canvasW}px; text-align:center; opacity:0.85; font-size:12px;">Arrow: ${Math.round(directionDeg)}°</div>`;
+          el.innerHTML = '';
         } else if (fb.type === 'custom') {
           el.innerHTML = `<div style="width: ${canvasW}px; text-align:center; opacity:0.85;">(custom feedback placeholder)</div>`;
         }
 
         window.setTimeout(() => {
           el.innerHTML = '';
-        }, Number.isFinite(duration) ? duration : 500);
+          if (engine) {
+            engine.arrowDirectionDeg = null;
+            engine.arrowColor = null;
+          }
+        }, feedbackMs);
+
+        return feedbackMs;
       };
 
       const showTransition = (ms, type, rdmParams) => {
@@ -416,16 +424,26 @@ var jsPsychRdm = (function (jspsych) {
         rt = startTs ? Math.round(responseTs - startTs) : null;
 
         const isCorrect = responseSide !== null ? responseSide === getCurrentCorrectSide() : null;
-        if (isCorrect !== null) showFeedback(isCorrect);
+        const feedbackMs = (isCorrect !== null) ? showFeedback(isCorrect) : 0;
 
         if (experimentType === 'trial-based') {
-          endTrial('response');
+          if (feedbackMs > 0) {
+            feedbackEndAt = nowMs() + feedbackMs;
+            this.jsPsych.pluginAPI.setTimeout(() => endTrial('response'), feedbackMs);
+          } else {
+            endTrial('response');
+          }
           return;
         }
 
         // continuous
         if (endOnResponse) {
-          endTrial('response_end_condition');
+          if (feedbackMs > 0) {
+            feedbackEndAt = nowMs() + feedbackMs;
+            this.jsPsych.pluginAPI.setTimeout(() => endTrial('response_end_condition'), feedbackMs);
+          } else {
+            endTrial('response_end_condition');
+          }
         }
       };
 
@@ -677,6 +695,19 @@ var jsPsychRdm = (function (jspsych) {
         if (Number.isFinite(responseDeadline) && responseDeadline > 0) {
           this.jsPsych.pluginAPI.setTimeout(() => {
             if (ended) return;
+
+            if (feedbackEndAt && nowMs() < feedbackEndAt) {
+              const remaining = Math.max(1, Math.round(feedbackEndAt - nowMs()));
+              this.jsPsych.pluginAPI.setTimeout(() => {
+                if (ended) return;
+                if (requireResponse && !responded) {
+                  endTrial('timeout');
+                  return;
+                }
+                endTrial('deadline');
+              }, remaining);
+              return;
+            }
 
             // trial-based usually ends earlier on response; if not, treat as deadline/timeout
             if (requireResponse && !responded) {
