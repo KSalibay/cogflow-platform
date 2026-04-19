@@ -3547,6 +3547,19 @@ class TimelineBuilder {
                         <button type="button" class="btn btn-outline-secondary btn-sm" id="cip_upload_assets_btn">Upload assets directory</button>
                         <button type="button" class="btn btn-outline-success btn-sm" id="cip_generate_half_frames_btn">Generate half-frames for transitions</button>
                     </div>
+                    <div class="d-flex flex-wrap gap-2 mb-2 align-items-center">
+                        <input
+                            type="text"
+                            class="form-control form-control-sm"
+                            id="cip_filename_suggest_input"
+                            list="cip_filename_suggest_list"
+                            placeholder="Type filename to reference uploaded assets (autocomplete)..."
+                            style="min-width: 280px; max-width: 520px;"
+                        />
+                        <datalist id="cip_filename_suggest_list"></datalist>
+                        <button type="button" class="btn btn-outline-dark btn-sm" id="cip_add_filename_btn">Add filename</button>
+                    </div>
+                    <div class="form-text mb-1" id="cip_filename_suggest_hint"></div>
                     <div class="form-text" id="cip_assets_status"></div>
                 `;
                 anchorRow.insertAdjacentElement('afterend', panel);
@@ -3555,10 +3568,71 @@ class TimelineBuilder {
             const loadBtn = panel ? panel.querySelector('#cip_load_assets_btn') : null;
             const uploadBtn = panel ? panel.querySelector('#cip_upload_assets_btn') : null;
             const genBtn = panel ? panel.querySelector('#cip_generate_half_frames_btn') : null;
+            const suggestInputEl = panel ? panel.querySelector('#cip_filename_suggest_input') : null;
+            const suggestListEl = panel ? panel.querySelector('#cip_filename_suggest_list') : null;
+            const addFilenameBtn = panel ? panel.querySelector('#cip_add_filename_btn') : null;
+            const suggestHintEl = panel ? panel.querySelector('#cip_filename_suggest_hint') : null;
             const statusEl = panel ? panel.querySelector('#cip_assets_status') : null;
 
             let lastAssetsMap = null;
             let lastAssetsTaskType = null;
+
+            const getKnownCipImageFilenames = () => {
+                const mapNames = (lastAssetsMap && typeof lastAssetsMap === 'object')
+                    ? Object.keys(lastAssetsMap)
+                        .filter((n) => isImageFilename(n) && !isCipTransitionSpriteFilename(n))
+                    : [];
+                const typedNames = filenamesEl
+                    ? parseLines(filenamesEl.value).filter((n) => isImageFilename(n) && !isCipTransitionSpriteFilename(n))
+                    : [];
+                return Array.from(new Set([...mapNames, ...typedNames]))
+                    .sort((a, b) => a.localeCompare(b));
+            };
+
+            const escapeHtmlAttr = (s) => String(s ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/"/g, '&quot;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+
+            const refreshFilenameSuggestions = () => {
+                if (!suggestListEl) return;
+                const known = getKnownCipImageFilenames();
+                suggestListEl.innerHTML = known
+                    .slice(0, 500)
+                    .map((name) => `<option value="${escapeHtmlAttr(name)}"></option>`)
+                    .join('');
+
+                if (suggestHintEl) {
+                    if (!known.length) {
+                        suggestHintEl.textContent = 'Load assets to enable filename suggestions.';
+                    } else {
+                        const first = known[0] || '';
+                        suggestHintEl.textContent = `Autocomplete ready (${known.length} filenames). Try typing from: ${first}`;
+                    }
+                }
+            };
+
+            const appendFilenameFromSuggestInput = () => {
+                if (!suggestInputEl || !filenamesEl) return;
+                const raw = suggestInputEl.value.toString().trim();
+                if (!raw) return;
+                if (!isImageFilename(raw) || isCipTransitionSpriteFilename(raw)) {
+                    if (statusEl) statusEl.textContent = `Not a valid source image filename: ${raw}`;
+                    return;
+                }
+
+                const existing = parseLines(filenamesEl.value);
+                if (!existing.includes(raw)) {
+                    existing.push(raw);
+                    filenamesEl.value = existing.join('\n');
+                    recomputeListsFromFilenames();
+                    refreshFilenameSuggestions();
+                }
+
+                if (statusEl) statusEl.textContent = `Added filename: ${raw}`;
+                suggestInputEl.value = '';
+            };
 
             const recomputeListsFromFilenames = () => {
                 if (!filenamesEl || !urlsEl) return;
@@ -3568,16 +3642,28 @@ class TimelineBuilder {
                 const urls = [];
                 const m2i = [];
                 const i2m = [];
+                const getMapEntry = (filename) => {
+                    if (!map || !filename) return null;
+                    if (map[filename]) return map[filename];
+                    const base = this.basenamePath(filename);
+                    if (!base) return null;
+                    if (map[base]) return map[base];
+                    const byBaseKey = Object.keys(map).find((k) => this.basenamePath(k) === base);
+                    return byBaseKey ? map[byBaseKey] : null;
+                };
 
                 for (const name of names) {
-                    const u = map && map[name] && map[name].url ? String(map[name].url) : '';
+                    const srcEntry = getMapEntry(name);
+                    const u = srcEntry && srcEntry.url ? String(srcEntry.url) : '';
                     urls.push(u);
 
                     const base = stripExt(name);
                     const m2iName = `${base}__cip_${maskKey}_m2i.png`;
                     const i2mName = `${base}__cip_${maskKey}_i2m.png`;
-                    const m2iUrl = map && map[m2iName] && map[m2iName].url ? String(map[m2iName].url) : '';
-                    const i2mUrl = map && map[i2mName] && map[i2mName].url ? String(map[i2mName].url) : '';
+                    const m2iEntry = getMapEntry(m2iName);
+                    const i2mEntry = getMapEntry(i2mName);
+                    const m2iUrl = m2iEntry && m2iEntry.url ? String(m2iEntry.url) : '';
+                    const i2mUrl = i2mEntry && i2mEntry.url ? String(i2mEntry.url) : '';
                     m2i.push(m2iUrl);
                     i2m.push(i2mUrl);
                 }
@@ -3589,20 +3675,36 @@ class TimelineBuilder {
 
             const loadAssetsFromIndex = async () => {
                 const code = (codeEl ? codeEl.value : '').toString().trim();
-                if (!code) {
-                    if (statusEl) statusEl.textContent = 'Enter an export code first.';
-                    lastAssetsMap = null;
-                    return;
-                }
-
+                const isPlatform = !!(this.jsonBuilder && typeof this.jsonBuilder.isPlatformMode === 'function' && this.jsonBuilder.isPlatformMode());
                 const taskType = this.jsonBuilder.normalizeTokenStoreTaskType(document.getElementById('taskType')?.value || 'task');
                 lastAssetsTaskType = taskType;
 
-                const filesMap = this.jsonBuilder.getTokenStoreAssetMapForCodeAndTask(code, taskType);
+                let filesMap = null;
+                let scopeLabel = '';
+
+                if (isPlatform) {
+                    const studySlug = (window.COGFLOW_STUDY_SLUG || '').toString().trim();
+                    const scopeKey = studySlug || 'unscoped';
+                    filesMap = this.jsonBuilder.getPlatformAssetMap(scopeKey);
+                    scopeLabel = scopeKey;
+                } else {
+                    if (!code) {
+                        if (statusEl) statusEl.textContent = 'Enter an export code first.';
+                        lastAssetsMap = null;
+                        return;
+                    }
+                    filesMap = this.jsonBuilder.getTokenStoreAssetMapForCodeAndTask(code, taskType);
+                    scopeLabel = `${code} (${String(taskType).toUpperCase()})`;
+                }
+
                 lastAssetsMap = filesMap;
 
                 if (!filesMap) {
-                    if (statusEl) statusEl.textContent = `No Token Store assets index found for code ${code} (${String(taskType).toUpperCase()}).`;
+                    if (statusEl) {
+                        statusEl.textContent = isPlatform
+                            ? `No uploaded assets index found for study scope ${scopeLabel}.`
+                            : `No Token Store assets index found for code ${scopeLabel}.`;
+                    }
                     return;
                 }
 
@@ -3615,6 +3717,7 @@ class TimelineBuilder {
                 }
 
                 recomputeListsFromFilenames();
+                refreshFilenameSuggestions();
 
                 const haveTransitions = (() => {
                     const m2i = parseLines(m2iUrlsEl ? m2iUrlsEl.value : '');
@@ -3623,22 +3726,33 @@ class TimelineBuilder {
                 })();
 
                 if (statusEl) {
-                    statusEl.textContent = `Loaded ${filenames.length} image(s) from Token Store assets index for code ${code} (${String(taskType).toUpperCase()}).${haveTransitions ? ' (Some transitions found.)' : ''}`;
+                    statusEl.textContent = isPlatform
+                        ? `Loaded ${filenames.length} image(s) from platform assets scope ${scopeLabel}.${haveTransitions ? ' (Some transitions found.)' : ''}`
+                        : `Loaded ${filenames.length} image(s) from Token Store assets index for code ${scopeLabel}.${haveTransitions ? ' (Some transitions found.)' : ''}`;
                 }
             };
 
             const generateTransitions = async () => {
                 const code = (codeEl ? codeEl.value : '').toString().trim();
-                if (!code) {
+                const isPlatform = !!(this.jsonBuilder && typeof this.jsonBuilder.isPlatformMode === 'function' && this.jsonBuilder.isPlatformMode());
+                if (!isPlatform && !code) {
                     if (statusEl) statusEl.textContent = 'Enter an export code first.';
                     return;
                 }
 
                 const taskType = lastAssetsTaskType || this.jsonBuilder.normalizeTokenStoreTaskType(document.getElementById('taskType')?.value || 'task');
+                const studySlug = (window.COGFLOW_STUDY_SLUG || '').toString().trim();
+                const scopeKey = studySlug || 'unscoped';
 
-                const filesMap = this.jsonBuilder.getTokenStoreAssetMapForCodeAndTask(code, taskType);
+                const filesMap = isPlatform
+                    ? this.jsonBuilder.getPlatformAssetMap(scopeKey)
+                    : this.jsonBuilder.getTokenStoreAssetMapForCodeAndTask(code, taskType);
                 if (!filesMap) {
-                    if (statusEl) statusEl.textContent = `No Token Store assets index found for code ${code} (${String(taskType).toUpperCase()}). Upload assets first.`;
+                    if (statusEl) {
+                        statusEl.textContent = isPlatform
+                            ? `No uploaded assets index found for study scope ${scopeKey}. Upload assets first.`
+                            : `No Token Store assets index found for code ${code} (${String(taskType).toUpperCase()}). Upload assets first.`;
+                    }
                     return;
                 }
 
@@ -3648,18 +3762,65 @@ class TimelineBuilder {
                     return;
                 }
 
-                // Ensure Token Store connection + record
-                let baseUrl = this.jsonBuilder.peekTokenStoreBaseUrl?.();
-                if (!baseUrl) {
-                    baseUrl = this.jsonBuilder.getTokenStoreBaseUrl?.();
-                }
-                if (!baseUrl) return;
+                let uploadSprite = null;
+                if (isPlatform) {
+                    const platformUrl = this.jsonBuilder.getPlatformBaseUrl?.();
+                    if (!platformUrl) {
+                        if (statusEl) statusEl.textContent = 'Platform URL is not configured for asset upload.';
+                        return;
+                    }
+                    uploadSprite = async (file, outName) => this.jsonBuilder.uploadAssetToPlatform(platformUrl, file, outName, studySlug);
+                } else {
+                    // Ensure Token Store connection + record
+                    let baseUrl = this.jsonBuilder.peekTokenStoreBaseUrl?.();
+                    if (!baseUrl) {
+                        baseUrl = this.jsonBuilder.getTokenStoreBaseUrl?.();
+                    }
+                    if (!baseUrl) return;
 
-                let record = this.jsonBuilder.getTokenStoreRecordForCodeAndTask(code, taskType);
-                if (!record) {
-                    if (statusEl) statusEl.textContent = `No token found for code ${code} (${String(taskType).toUpperCase()}). Creating a new token...`;
-                    record = await this.jsonBuilder.createTokenStoreConfig(baseUrl);
-                    this.jsonBuilder.setTokenStoreRecordForCodeAndTask(code, taskType, record, { filename: null });
+                    let record = this.jsonBuilder.getTokenStoreRecordForCodeAndTask(code, taskType);
+                    if (!record) {
+                        if (statusEl) statusEl.textContent = `No token found for code ${code} (${String(taskType).toUpperCase()}). Creating a new token...`;
+                        record = await this.jsonBuilder.createTokenStoreConfig(baseUrl);
+                        this.jsonBuilder.setTokenStoreRecordForCodeAndTask(code, taskType, record, { filename: null });
+                    }
+
+                    // Token Store quota guard: the Token Store enforces a per-config total assets cap (e.g., 100MB).
+                    // When generating many CIP transition sheets, we can hit that cap. In that case, roll over to a
+                    // fresh Token Store config for the same code+task and continue uploading.
+                    let didRolloverRecordForQuota = false;
+                    const isQuotaExceededError = (e) => {
+                        const msg = (e && e.message) ? String(e.message) : String(e || '');
+                        return /\b413\b/.test(msg) && /(quota|exceed)/i.test(msg);
+                    };
+                    const maybeRolloverRecord = async () => {
+                        if (didRolloverRecordForQuota) return false;
+                        didRolloverRecordForQuota = true;
+                        const ok = confirm(
+                            'Token Store asset quota exceeded for this config (HTTP 413).\n\n' +
+                            'Create a NEW Token Store config bucket for this same export code and task, and continue uploading the generated CIP transition sprites?\n\n' +
+                            'This does not delete any existing assets; it simply starts a fresh bucket to avoid the size cap.'
+                        );
+                        if (!ok) return false;
+                        if (statusEl) statusEl.textContent = 'Token Store quota exceeded. Creating a new token bucket and retrying uploads...';
+                        record = await this.jsonBuilder.createTokenStoreConfig(baseUrl);
+                        this.jsonBuilder.setTokenStoreRecordForCodeAndTask(code, taskType, record, { filename: null });
+                        return true;
+                    };
+
+                    uploadSprite = async (file, outName) => {
+                        try {
+                            return await this.jsonBuilder.uploadAssetToTokenStore(baseUrl, record, file, outName);
+                        } catch (e) {
+                            if (isQuotaExceededError(e)) {
+                                const rolled = await maybeRolloverRecord();
+                                if (rolled) {
+                                    return await this.jsonBuilder.uploadAssetToTokenStore(baseUrl, record, file, outName);
+                                }
+                            }
+                            throw e;
+                        }
+                    };
                 }
 
                 const frames = Math.max(2, Number.parseInt((framesEl ? framesEl.value : '8').toString(), 10) || 8);
@@ -3667,42 +3828,6 @@ class TimelineBuilder {
                 const noiseAmp = Math.max(0, Math.min(128, Number.parseInt((noiseAmpEl ? noiseAmpEl.value : '24').toString(), 10) || 0));
                 const blockSizePx = Math.max(1, Number.parseInt((blockSizeEl ? blockSizeEl.value : '12').toString(), 10) || 12);
                 const nextMap = { ...filesMap };
-
-                // Token Store quota guard: the Token Store enforces a per-config total assets cap (e.g., 100MB).
-                // When generating many CIP transition sheets, we can hit that cap. In that case, roll over to a
-                // fresh Token Store config for the same code+task and continue uploading.
-                let didRolloverRecordForQuota = false;
-                const isQuotaExceededError = (e) => {
-                    const msg = (e && e.message) ? String(e.message) : String(e || '');
-                    return /\b413\b/.test(msg) && /(quota|exceed)/i.test(msg);
-                };
-                const maybeRolloverRecord = async () => {
-                    if (didRolloverRecordForQuota) return false;
-                    didRolloverRecordForQuota = true;
-                    const ok = confirm(
-                        'Token Store asset quota exceeded for this config (HTTP 413).\n\n' +
-                        'Create a NEW Token Store config bucket for this same export code and task, and continue uploading the generated CIP transition sprites?\n\n' +
-                        'This does not delete any existing assets; it simply starts a fresh bucket to avoid the size cap.'
-                    );
-                    if (!ok) return false;
-                    if (statusEl) statusEl.textContent = 'Token Store quota exceeded. Creating a new token bucket and retrying uploads...';
-                    record = await this.jsonBuilder.createTokenStoreConfig(baseUrl);
-                    this.jsonBuilder.setTokenStoreRecordForCodeAndTask(code, taskType, record, { filename: null });
-                    return true;
-                };
-                const uploadWithQuotaRollover = async (file, outName) => {
-                    try {
-                        return await this.jsonBuilder.uploadAssetToTokenStore(baseUrl, record, file, outName);
-                    } catch (e) {
-                        if (isQuotaExceededError(e)) {
-                            const rolled = await maybeRolloverRecord();
-                            if (rolled) {
-                                return await this.jsonBuilder.uploadAssetToTokenStore(baseUrl, record, file, outName);
-                            }
-                        }
-                        throw e;
-                    }
-                };
 
                 // Cache-bust regenerated sprite sheets so browsers/JATOS don't keep showing old PNGs.
                 const cacheBust = Date.now().toString(36);
@@ -3727,9 +3852,20 @@ class TimelineBuilder {
                 try {
                     if (statusEl) statusEl.textContent = `Computing shared average mask for ${filenames.length} image(s)...`;
 
+                    const lookupFileEntry = (name) => {
+                        if (!filesMap || !name) return null;
+                        if (filesMap[name]) return filesMap[name];
+                        const base = this.basenamePath(name);
+                        if (!base) return null;
+                        if (filesMap[base]) return filesMap[base];
+                        const byBaseKey = Object.keys(filesMap).find((k) => this.basenamePath(k) === base);
+                        return byBaseKey ? filesMap[byBaseKey] : null;
+                    };
+
                     const urlsForMask = filenames
                         .map((fn) => {
-                            const u = filesMap[fn] && filesMap[fn].url ? String(filesMap[fn].url) : '';
+                            const entry = lookupFileEntry(fn);
+                            const u = entry && entry.url ? String(entry.url) : '';
                             return u || '';
                         })
                         .filter(Boolean);
@@ -3779,7 +3915,8 @@ class TimelineBuilder {
 
                     let done = 0;
                     for (const filename of filenames) {
-                        const url = filesMap[filename] && filesMap[filename].url ? String(filesMap[filename].url) : '';
+                        const srcEntry = lookupFileEntry(filename);
+                        const url = srcEntry && srcEntry.url ? String(srcEntry.url) : '';
                         if (!url) {
                             done += 1;
                             continue;
@@ -3824,8 +3961,8 @@ class TimelineBuilder {
                         let m2iUp;
                         let i2mUp;
                         try {
-                            m2iUp = await uploadWithQuotaRollover(m2iFile, m2iName);
-                            i2mUp = await uploadWithQuotaRollover(i2mFile, i2mName);
+                            m2iUp = await uploadSprite(m2iFile, m2iName);
+                            i2mUp = await uploadSprite(i2mFile, i2mName);
                         } catch (e) {
                             const msg = (e && e.message) ? e.message : String(e || '');
                             if (statusEl) {
@@ -3843,13 +3980,21 @@ class TimelineBuilder {
                         }
                     }
 
-                    this.jsonBuilder.setTokenStoreAssetMapForCodeAndTask(code, taskType, nextMap);
+                    if (isPlatform) {
+                        this.jsonBuilder.setPlatformAssetMap(scopeKey, nextMap);
+                    } else {
+                        this.jsonBuilder.setTokenStoreAssetMapForCodeAndTask(code, taskType, nextMap);
+                    }
                     lastAssetsMap = nextMap;
 
                     // Refresh URL lists (will pick up newly-created sprite URLs)
                     recomputeListsFromFilenames();
 
-                    if (statusEl) statusEl.textContent = `Generated and uploaded transition sprites for code ${code} (${String(taskType).toUpperCase()}).`;
+                    if (statusEl) {
+                        statusEl.textContent = isPlatform
+                            ? `Generated and uploaded transition sprites for platform scope ${scopeKey}.`
+                            : `Generated and uploaded transition sprites for code ${code} (${String(taskType).toUpperCase()}).`;
+                    }
                 } finally {
                     if (genBtn) genBtn.disabled = false;
                     if (loadBtn) loadBtn.disabled = false;
@@ -3871,12 +4016,24 @@ class TimelineBuilder {
                 });
             }
             if (genBtn) genBtn.addEventListener('click', () => generateTransitions());
+            if (addFilenameBtn) addFilenameBtn.addEventListener('click', () => appendFilenameFromSuggestInput());
+            if (suggestInputEl) {
+                suggestInputEl.addEventListener('keydown', (ev) => {
+                    if (ev.key === 'Enter') {
+                        ev.preventDefault();
+                        appendFilenameFromSuggestInput();
+                    }
+                });
+            }
 
             if (codeEl) {
                 codeEl.addEventListener('change', () => loadAssetsFromIndex());
             }
             if (filenamesEl) {
-                filenamesEl.addEventListener('change', () => recomputeListsFromFilenames());
+                filenamesEl.addEventListener('change', () => {
+                    recomputeListsFromFilenames();
+                    refreshFilenameSuggestions();
+                });
             }
             if (maskTypeEl) {
                 maskTypeEl.addEventListener('change', () => recomputeListsFromFilenames());
@@ -3887,6 +4044,7 @@ class TimelineBuilder {
             }
 
             updatePanelVisibility();
+            refreshFilenameSuggestions();
             // Best-effort auto-load (only if a code is already present)
             if (isCipBlock() && codeEl && codeEl.value && (!urlsEl || !urlsEl.value)) {
                 loadAssetsFromIndex();
@@ -3996,6 +4154,9 @@ class TimelineBuilder {
                 } else {
                     src = '';
                 }
+            } else if (raw && !/^(https?:|data:|blob:)/i.test(raw)) {
+                const resolved = this.resolveUploadedAssetByFilename(raw, 'audio');
+                if (resolved && resolved.url) src = resolved.url;
             }
 
             if (previewEl) {
@@ -4015,6 +4176,21 @@ class TimelineBuilder {
         fileInputs.forEach((fileEl) => {
             const paramName = fileEl.getAttribute('data-psy-audio-param') || '';
             if (!paramName) return;
+
+            const urlInput = formContainer.querySelector(`#${CSS.escape(`param_${paramName}`)}`);
+            if (urlInput && !urlInput.dataset.psyAudioPreviewBound) {
+                const handler = () => updatePreview(paramName);
+                urlInput.addEventListener('input', handler);
+                urlInput.addEventListener('change', handler);
+                urlInput.addEventListener('blur', handler);
+                urlInput.dataset.psyAudioPreviewBound = '1';
+            }
+
+            this.attachUploadedAssetSuggestionControl({
+                formContainer,
+                paramName,
+                mode: 'audio',
+            });
 
             fileEl.addEventListener('change', () => {
                 try {
@@ -4097,6 +4273,230 @@ class TimelineBuilder {
         return { componentId: m[1], field: m[2] };
     }
 
+    basenamePath(pathLike) {
+        const s = (pathLike || '').toString().trim();
+        if (!s) return '';
+        const norm = s.replace(/\\+/g, '/');
+        const parts = norm.split('/').filter(Boolean);
+        return parts.length ? parts[parts.length - 1] : norm;
+    }
+
+    resolveUploadedAssetByFilename(inputValue, mode) {
+        const raw = (inputValue || '').toString().trim();
+        if (!raw) return null;
+
+        const ctx = this.getUploadedAssetSuggestionContext(mode);
+        const items = Array.isArray(ctx.items) ? ctx.items : [];
+        if (!items.length) return null;
+
+        const exact = items.find((x) => String(x.filename || '').trim() === raw);
+        if (exact) return exact;
+
+        const rawBase = this.basenamePath(raw);
+        if (!rawBase) return null;
+        const byBase = items.find((x) => this.basenamePath(x.filename) === rawBase);
+        if (byBase) return byBase;
+
+        return null;
+    }
+
+    getUploadedAssetSuggestionContext(mode) {
+        const normalizedMode = (mode || '').toString().trim().toLowerCase();
+        const isPlatform = !!(this.jsonBuilder && typeof this.jsonBuilder.isPlatformMode === 'function' && this.jsonBuilder.isPlatformMode());
+        const code = (localStorage.getItem('cogflow_last_export_code') || localStorage.getItem('psychjson_last_export_code') || '').toString().trim();
+        const taskTypeRaw = (document.getElementById('taskType')?.value || 'task').toString();
+        const taskType = this.jsonBuilder.normalizeTokenStoreTaskType(taskTypeRaw);
+
+        const isImageExt = (name) => /\.(png|jpg|jpeg|gif|webp|bmp|svg)$/i.test((name || '').toString());
+        const isAudioExt = (name) => /\.(mp3|wav|ogg|m4a|aac|flac|opus)$/i.test((name || '').toString());
+        const pass = (name) => normalizedMode === 'audio' ? isAudioExt(name) : isImageExt(name);
+
+        if (isPlatform) {
+            const studySlug = (window.COGFLOW_STUDY_SLUG || '').toString().trim();
+            const scopeKey = studySlug || 'unscoped';
+            const merged = new Map();
+
+            const ingest = (map, sourceScope) => {
+                if (!map || typeof map !== 'object') return;
+                Object.entries(map).forEach(([filename, meta]) => {
+                    const f = String(filename || '').trim();
+                    const url = String(meta && meta.url ? meta.url : '').trim();
+                    if (!f || !url || !pass(f)) return;
+                    if (!merged.has(f)) merged.set(f, { filename: f, url, sourceScope });
+                });
+            };
+
+            ingest(this.jsonBuilder.getPlatformAssetMap(scopeKey), scopeKey);
+            if (scopeKey !== 'unscoped') {
+                ingest(this.jsonBuilder.getPlatformAssetMap('unscoped'), 'unscoped');
+            }
+
+            const items = Array.from(merged.values())
+                .sort((a, b) => a.filename.localeCompare(b.filename));
+
+            return {
+                code,
+                taskType,
+                items,
+                sourceScope: items.length ? scopeKey : null,
+                platformScope: scopeKey,
+            };
+        }
+
+        if (!code) {
+            return { code, taskType, items: [], sourceScope: null };
+        }
+
+        const mapFromCurrentTask = this.jsonBuilder.getTokenStoreAssetMapForCodeAndTask(code, taskType) || null;
+        const allAssetIndex = this.jsonBuilder.getTokenStoreAssetIndex?.() || {};
+        const byCode = (allAssetIndex && typeof allAssetIndex === 'object') ? allAssetIndex[code] : null;
+        const byTask = (byCode && typeof byCode === 'object' && byCode.by_task && typeof byCode.by_task === 'object')
+            ? byCode.by_task
+            : {};
+
+        const merged = new Map();
+        const ingest = (map, sourceTask) => {
+            if (!map || typeof map !== 'object') return;
+            Object.entries(map).forEach(([filename, meta]) => {
+                const f = String(filename || '').trim();
+                const url = String(meta && meta.url ? meta.url : '').trim();
+                if (!f || !url || !pass(f)) return;
+                if (!merged.has(f)) merged.set(f, { filename: f, url, sourceTask });
+            });
+        };
+
+        // Prefer current task scope first, then fill gaps from other task scopes under same code.
+        ingest(mapFromCurrentTask, taskType);
+        Object.entries(byTask).forEach(([t, rec]) => {
+            if (t === taskType) return;
+            const files = rec && typeof rec === 'object' && rec.files && typeof rec.files === 'object' ? rec.files : null;
+            ingest(files, t);
+        });
+
+        const items = Array.from(merged.values())
+            .sort((a, b) => a.filename.localeCompare(b.filename));
+
+        let sourceScope = null;
+        if (mapFromCurrentTask && typeof mapFromCurrentTask === 'object' && Object.keys(mapFromCurrentTask).length > 0) {
+            sourceScope = 'current_task';
+        } else if (items.length > 0) {
+            sourceScope = 'cross_task_fallback';
+        }
+
+        return { code, taskType, items, sourceScope };
+    }
+
+    attachUploadedAssetSuggestionControl({ formContainer, paramName, mode }) {
+        if (!formContainer || !paramName) return;
+
+        const groupEl = formContainer.querySelector(`[data-param-name="${CSS.escape(paramName)}"]`);
+        const urlInput = formContainer.querySelector(`#${CSS.escape(`param_${paramName}`)}`);
+        if (!groupEl || !urlInput) return;
+
+        if (groupEl.querySelector('[data-psy-upload-suggest="1"]')) return;
+
+        const uid = `${paramName}_${Math.random().toString(36).slice(2, 8)}`;
+        const datalistId = `upload_suggest_${uid}`;
+        const suggestInputId = `upload_suggest_input_${uid}`;
+        const applyFilenameId = `upload_suggest_apply_filename_${uid}`;
+        const applyUrlId = `upload_suggest_apply_url_${uid}`;
+        const hintId = `upload_suggest_hint_${uid}`;
+
+        const panel = document.createElement('div');
+        panel.className = 'd-flex flex-column gap-2 mt-2';
+        panel.setAttribute('data-psy-upload-suggest', '1');
+        panel.innerHTML = `
+            <div class="d-flex gap-2 flex-wrap align-items-center">
+                <input
+                    type="text"
+                    class="form-control form-control-sm"
+                    id="${this.escapeHtmlAttr(suggestInputId)}"
+                    list="${this.escapeHtmlAttr(datalistId)}"
+                    data-psy-helper="1"
+                    placeholder="Autocomplete uploaded ${this.escapeHtmlAttr(mode)} filenames..."
+                    style="min-width:260px; max-width:520px;"
+                />
+                <datalist id="${this.escapeHtmlAttr(datalistId)}"></datalist>
+                <button type="button" class="btn btn-outline-dark btn-sm" id="${this.escapeHtmlAttr(applyFilenameId)}" data-psy-helper="1">Use filename</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="${this.escapeHtmlAttr(applyUrlId)}" data-psy-helper="1">Use URL</button>
+            </div>
+            <div class="form-text" id="${this.escapeHtmlAttr(hintId)}"></div>
+        `;
+
+        const previewWrap = groupEl.querySelector('.border.rounded.p-2')?.parentElement;
+        if (previewWrap) {
+            previewWrap.insertAdjacentElement('beforebegin', panel);
+        } else {
+            groupEl.appendChild(panel);
+        }
+
+        const suggestInput = panel.querySelector(`#${CSS.escape(suggestInputId)}`);
+        const datalistEl = panel.querySelector(`#${CSS.escape(datalistId)}`);
+        const applyFilenameBtn = panel.querySelector(`#${CSS.escape(applyFilenameId)}`);
+        const applyUrlBtn = panel.querySelector(`#${CSS.escape(applyUrlId)}`);
+        const hintEl = panel.querySelector(`#${CSS.escape(hintId)}`);
+
+        const refreshSuggestions = () => {
+            const ctx = this.getUploadedAssetSuggestionContext(mode);
+            const items = Array.isArray(ctx.items) ? ctx.items : [];
+            const isPlatform = !!(this.jsonBuilder && typeof this.jsonBuilder.isPlatformMode === 'function' && this.jsonBuilder.isPlatformMode());
+            if (datalistEl) {
+                datalistEl.innerHTML = items
+                    .slice(0, 500)
+                    .map((x) => `<option value="${this.escapeHtmlAttr(x.filename)}"></option>`)
+                    .join('');
+            }
+            if (hintEl) {
+                if (isPlatform && !items.length) {
+                    hintEl.textContent = `No uploaded ${mode} assets found for study scope ${ctx.platformScope || 'unscoped'}.`;
+                } else if (isPlatform) {
+                    hintEl.textContent = `Found ${items.length} uploaded ${mode} assets in study scope ${ctx.platformScope || 'unscoped'}. Example: ${items[0].filename}`;
+                } else if (!ctx.code) {
+                    hintEl.textContent = 'No export code selected yet. Upload assets first to seed suggestions.';
+                } else if (!items.length) {
+                    hintEl.textContent = `No uploaded ${mode} assets found for code ${ctx.code} (${String(ctx.taskType).toUpperCase()}).`;
+                } else if (ctx.sourceScope === 'cross_task_fallback') {
+                    hintEl.textContent = `Found ${items.length} uploaded ${mode} assets for code ${ctx.code} (from other task scopes). Example: ${items[0].filename}`;
+                } else {
+                    hintEl.textContent = `Found ${items.length} uploaded ${mode} assets for code ${ctx.code}. Example: ${items[0].filename}`;
+                }
+            }
+        };
+
+        const resolveTypedItem = () => {
+            const typed = (suggestInput?.value || '').toString().trim();
+            if (!typed) return null;
+            return this.resolveUploadedAssetByFilename(typed, mode);
+        };
+
+        const applyValue = (useUrl) => {
+            const item = resolveTypedItem();
+            const typed = (suggestInput?.value || '').toString().trim();
+            if (item) {
+                urlInput.value = useUrl ? item.url : item.filename;
+            } else if (!useUrl && typed) {
+                // Fallback for advanced users entering a filename manually.
+                urlInput.value = typed;
+            }
+            urlInput.dispatchEvent(new Event('change', { bubbles: true }));
+            urlInput.dispatchEvent(new Event('input', { bubbles: true }));
+        };
+
+        if (suggestInput) {
+            suggestInput.addEventListener('focus', refreshSuggestions);
+            suggestInput.addEventListener('keydown', (ev) => {
+                if (ev.key === 'Enter') {
+                    ev.preventDefault();
+                    applyValue(false);
+                }
+            });
+        }
+        if (applyFilenameBtn) applyFilenameBtn.addEventListener('click', () => applyValue(false));
+        if (applyUrlBtn) applyUrlBtn.addEventListener('click', () => applyValue(true));
+
+        refreshSuggestions();
+    }
+
     setupImageParameterInputs(formContainer) {
         if (!formContainer) return;
 
@@ -4120,6 +4520,9 @@ class TimelineBuilder {
                 } else {
                     src = '';
                 }
+            } else if (raw && !/^(https?:|data:|blob:)/i.test(raw)) {
+                const resolved = this.resolveUploadedAssetByFilename(raw, 'image');
+                if (resolved && resolved.url) src = resolved.url;
             }
 
             if (previewEl) {
@@ -4140,6 +4543,21 @@ class TimelineBuilder {
         fileInputs.forEach((fileEl) => {
             const paramName = fileEl.getAttribute('data-psy-image-param') || '';
             if (!paramName) return;
+
+            const urlInput = formContainer.querySelector(`#${CSS.escape(`param_${paramName}`)}`);
+            if (urlInput && !urlInput.dataset.psyImagePreviewBound) {
+                const handler = () => updatePreview(paramName);
+                urlInput.addEventListener('input', handler);
+                urlInput.addEventListener('change', handler);
+                urlInput.addEventListener('blur', handler);
+                urlInput.dataset.psyImagePreviewBound = '1';
+            }
+
+            this.attachUploadedAssetSuggestionControl({
+                formContainer,
+                paramName,
+                mode: 'image',
+            });
 
             // On file pick: store in cache and write asset:// ref into the URL input
             fileEl.addEventListener('change', () => {
@@ -4297,6 +4715,15 @@ class TimelineBuilder {
             // Don't persist hidden/disabled modality-specific fields
             if (input.disabled) {
                 return;
+            }
+
+            // Skip UI helper controls injected by the builder (autocomplete, helper buttons, etc.)
+            try {
+                if (input.matches && input.matches('[data-psy-helper="1"]')) {
+                    return;
+                }
+            } catch {
+                // ignore
             }
 
             // Skip helper inputs for IMAGE parameters (file picker, etc.)

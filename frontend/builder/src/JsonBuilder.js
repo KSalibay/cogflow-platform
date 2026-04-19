@@ -1265,6 +1265,17 @@ class JsonBuilder {
         const direct = assetsByFilename && assetsByFilename[s];
         if (direct && direct.url) return direct.url;
 
+        // Also accept folder-prefixed references when index keys are bare filenames,
+        // e.g. "test_graphix/b1.png" -> key "b1.png".
+        const byBasename = (() => {
+            const parts = s.replace(/\\+/g, '/').split('/').filter(Boolean);
+            const base = parts.length ? parts[parts.length - 1] : '';
+            if (!base) return null;
+            const hit = assetsByFilename && assetsByFilename[base];
+            return (hit && hit.url) ? hit : null;
+        })();
+        if (byBasename && byBasename.url) return byBasename.url;
+
         // Replace occurrences inside HTML/templates safely.
         // Only replace when the filename appears as its own token (e.g., src="img1.png", url('img1.png')).
         let out = s;
@@ -1277,6 +1288,10 @@ class JsonBuilder {
             const escaped = this.escapeRegex(filename);
             const re = new RegExp(`(^|[\\s"'=:(),])(${escaped})(?=$|[\\s"'<>),;])`, 'g');
             out = out.replace(re, `$1${url}`);
+
+            // Path-prefixed token form, e.g. src="images/${filename}".
+            const rePath = new RegExp(`(^|[\\s"'=:(),])((?:[A-Za-z0-9._-]+\\/)+${escaped})(?=$|[\\s"'<>),;])`, 'g');
+            out = out.replace(rePath, `$1${url}`);
         }
         return out;
     }
