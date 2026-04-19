@@ -3,6 +3,7 @@ import json
 import re
 import hashlib
 import math
+import mimetypes
 from datetime import timedelta
 from uuid import uuid4
 from urllib.parse import quote, urlencode
@@ -18,7 +19,7 @@ from django.core.files.storage import default_storage
 from django.core.mail import EmailMultiAlternatives
 from django.db import transaction
 from django.db.models import Count, Max, Q
-from django.http import HttpResponseRedirect
+from django.http import FileResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django.utils.decorators import method_decorator
 from django.utils import timezone
@@ -1989,15 +1990,15 @@ class UploadBuilderAssetView(APIView):
             safe_name = "asset"
 
         rel_path = default_storage.save(
-            f"builder-assets/{scope_slug}/{uuid4().hex[:12]}-{safe_name}",
+            f"builder-assets/u{request.user.id}/{scope_slug}/{uuid4().hex[:12]}-{safe_name}",
             uploaded,
         )
         rel_path = rel_path.replace("\\", "/")
 
         try:
-            public_url = request.build_absolute_uri(default_storage.url(rel_path))
+            public_url = request.build_absolute_uri(f"/api/v1/assets/file/{quote(rel_path, safe='/')}")
         except Exception:
-            public_url = request.build_absolute_uri(f"/media/{rel_path}")
+            public_url = request.build_absolute_uri(f"/api/v1/assets/file/{quote(rel_path, safe='/')}")
 
         return Response(
             {
@@ -2006,9 +2007,41 @@ class UploadBuilderAssetView(APIView):
                 "path": rel_path,
                 "study_slug": study.slug if study else None,
                 "filename": original_name,
+                "uploader_user_id": request.user.id,
             },
             status=status.HTTP_201_CREATED,
         )
+
+
+class DownloadBuilderAssetView(APIView):
+    def get(self, request, asset_path: str):
+        if not request.user.is_authenticated:
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        profile = get_or_create_profile(request.user)
+        if not _can_manage_researcher_resources(request, profile):
+            return Response({"error": "Insufficient role permissions"}, status=status.HTTP_403_FORBIDDEN)
+
+        normalized = (asset_path or "").replace("\\", "/").strip("/")
+        if not normalized.startswith("builder-assets/"):
+            return Response({"error": "Invalid builder asset path"}, status=status.HTTP_400_BAD_REQUEST)
+
+        m = re.match(r"^builder-assets/u(?P<uid>\d+)/(?P<scope>[^/]+)/.+$", normalized)
+        if not m:
+            return Response({"error": "Forbidden asset scope"}, status=status.HTTP_403_FORBIDDEN)
+
+        owner_user_id = int(m.group("uid"))
+        if owner_user_id != request.user.id:
+            return Response({"error": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+        if not default_storage.exists(normalized):
+            return Response({"error": "Asset not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        fh = default_storage.open(normalized, mode="rb")
+        guessed_type, _ = mimetypes.guess_type(normalized)
+        response = FileResponse(fh, content_type=guessed_type or "application/octet-stream")
+        response["Cache-Control"] = "private, max-age=0, no-cache"
+        return response
 
 
 class CreateParticipantLinkView(APIView):

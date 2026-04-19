@@ -29,6 +29,7 @@ from project.api_views import (
     DuplicateStudyView,
     HealthView,
     InterpreterAppView,
+    DownloadBuilderAssetView,
     UploadBuilderAssetView,
     PortalDashboardView,
     PublishConfigView,
@@ -135,8 +136,10 @@ urlpatterns = [
     ),
     path("api/v1/configs/publish", PublishConfigView.as_view(), name="configs-publish"),
     path("api/v1/assets/upload", UploadBuilderAssetView.as_view(), name="assets-upload"),
+    path("api/v1/assets/file/<path:asset_path>", DownloadBuilderAssetView.as_view(), name="assets-file"),
     path("api/v1/runs/start", StartRunView.as_view(), name="runs-start"),
     path("api/v1/results/submit", SubmitResultView.as_view(), name="results-submit"),
     path("api/v1/results/decrypt", DecryptResultView.as_view(), name="results-decrypt"),
+    re_path(r"^media/(?P<asset_path>builder-assets/.+)$", DownloadBuilderAssetView.as_view()),
     re_path(r"^media/(?P<path>.+)$", static_serve, {"document_root": str(settings.MEDIA_ROOT)}),
 ]
