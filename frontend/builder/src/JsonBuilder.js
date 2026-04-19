@@ -7602,6 +7602,9 @@ class JsonBuilder {
                         dot_color: { type: 'COLOR', default: '#FFFFFF' },
                         aperture_diameter: { type: 'number', default: 350, min: 50, max: 800 },
                         stimulus_duration: { type: 'number', default: 1500, min: 100, max: 10000 },
+                        response_deadline: { type: 'number', default: 1500, min: 100, max: 10000 },
+                        feedback_mode: { type: 'select', default: 'inherit', options: ['inherit', 'off', 'arrow', 'corner-text', 'custom'] },
+                        feedback_duration_ms: { type: 'number', default: 1000, min: 0, max: 5000 },
                         trial_duration: { type: 'number', default: 3000, min: 500, max: 30000 },
                         transition_duration: { type: 'number', default: 500, min: 0, max: 2000 }
                     }
@@ -7615,10 +7618,15 @@ class JsonBuilder {
                     parameters: {
                         coherence: { type: 'number', default: 0.8, min: 0, max: 1, step: 0.01 },
                         direction: { type: 'number', default: 0, min: 0, max: 360 },
+                        speed: { type: 'number', default: 6, min: 1, max: 20 },
+                        total_dots: { type: 'number', default: 150, min: 10, max: 1000 },
+                        dot_size: { type: 'number', default: 4, min: 1, max: 20 },
                         dot_color: { type: 'COLOR', default: '#FFFFFF' },
-                        feedback_duration: { type: 'number', default: 1000, min: 500, max: 3000 },
-                        show_feedback: { type: 'boolean', default: true },
-                        practice_instructions: { type: 'string', default: 'Practice trial - feedback provided' },
+                        aperture_diameter: { type: 'number', default: 350, min: 50, max: 800 },
+                        stimulus_duration: { type: 'number', default: 1500, min: 100, max: 10000 },
+                        response_deadline: { type: 'number', default: 1500, min: 100, max: 10000 },
+                        feedback_mode: { type: 'select', default: 'arrow', options: ['inherit', 'off', 'arrow', 'corner-text', 'custom'] },
+                        feedback_duration_ms: { type: 'number', default: 1000, min: 0, max: 5000 },
                         trial_duration: { type: 'number', default: 3000, min: 500, max: 30000 },
                         transition_duration: { type: 'number', default: 500, min: 0, max: 2000 }
                     }
@@ -13203,8 +13211,8 @@ class JsonBuilder {
      * Publish the current config to the CogFlow Platform backend.
      *
      * Activated when window.COGFLOW_PLATFORM_URL is set (e.g. "http://localhost:8000").
-     * Study metadata is read from window.COGFLOW_STUDY_SLUG / COGFLOW_STUDY_NAME /
-     * COGFLOW_CONFIG_VERSION, or prompted via the UI when absent.
+    * Study metadata is read from window.COGFLOW_STUDY_SLUG / COGFLOW_STUDY_NAME /
+    * COGFLOW_CONFIG_VERSION (used as task/config label), or prompted via the UI.
      *
      * Called by the "Platform Publish" button in the platform version of index.html.
      */
@@ -13237,7 +13245,7 @@ class JsonBuilder {
             }
         };
 
-        const requestPublishMetadata = ({ initialName = '', initialSlug = '', initialVersion = '' }) => {
+        const requestPublishMetadata = ({ initialName = '', initialSlug = '', initialTaskLabel = '' }) => {
             const modalEl = document.getElementById('publishMetadataModal');
             const bootstrapApi = window.bootstrap;
             if (!modalEl || !bootstrapApi?.Modal) {
@@ -13299,7 +13307,7 @@ class JsonBuilder {
                 const onConfirm = () => {
                     const studyName = String(nameInput.value || '').trim();
                     const studySlug = toSlug(slugInput.value);
-                    const configVersion = String(versionInput.value || '').trim();
+                    const taskLabel = String(versionInput.value || '').trim();
 
                     if (!studyName) {
                         showError('Study name is required.');
@@ -13311,8 +13319,8 @@ class JsonBuilder {
                         slugInput.focus();
                         return;
                     }
-                    if (!configVersion) {
-                        showError('Config version is required.');
+                    if (!taskLabel) {
+                        showError('Task name is required.');
                         versionInput.focus();
                         return;
                     }
@@ -13320,7 +13328,7 @@ class JsonBuilder {
                     finish({
                         study_name: studyName,
                         study_slug: studySlug,
-                        config_version: configVersion,
+                        task_label: taskLabel,
                     });
                     modal.hide();
                 };
@@ -13328,7 +13336,7 @@ class JsonBuilder {
                 clearError();
                 nameInput.value = initialName;
                 slugInput.value = initialSlug;
-                versionInput.value = initialVersion;
+                versionInput.value = initialTaskLabel;
                 slugTouched = Boolean(initialSlug);
 
                 modalEl.addEventListener('hidden.bs.modal', onHidden);
@@ -13380,7 +13388,17 @@ class JsonBuilder {
             savedMeta = {};
         }
 
-        const defaultVersionLabel = `v${new Date().toISOString().slice(0, 10)}`;
+        const stamp = (() => {
+            const d = new Date();
+            const pad = (n) => String(n).padStart(2, '0');
+            return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
+        })();
+        const defaultTaskLabel = (() => {
+            const explicitTaskName = String(config?.task_name || '').trim();
+            if (explicitTaskName) return explicitTaskName;
+            const taskType = String(config?.task_type || 'task').trim().toUpperCase();
+            return `${taskType} ${stamp}`;
+        })();
 
         let studyName = (
             (typeof window.COGFLOW_STUDY_NAME === 'string' && window.COGFLOW_STUDY_NAME.trim()) ||
@@ -13393,10 +13411,10 @@ class JsonBuilder {
             ''
         );
 
-        let versionLabel = (
+        let taskLabel = (
             (typeof window.COGFLOW_CONFIG_VERSION === 'string' && window.COGFLOW_CONFIG_VERSION.trim()) ||
             (typeof savedMeta.config_version === 'string' && savedMeta.config_version.trim()) ||
-            defaultVersionLabel
+            defaultTaskLabel
         );
 
         const defaultName = (config?.task_name || config?.task_type || 'Untitled Study').toString().trim();
@@ -13405,56 +13423,59 @@ class JsonBuilder {
             studySlug = toSlug(studyName) || (config && config.task_type ? `${config.task_type}-study` : 'untitled-study');
         }
 
-        const metadataNeeded = !window.COGFLOW_STUDY_NAME || !window.COGFLOW_STUDY_SLUG;
-        if (metadataNeeded) {
-            const modalMeta = await requestPublishMetadata({
-                initialName: studyName,
-                initialSlug: studySlug,
-                initialVersion: versionLabel,
-            });
+        // Always ask on publish so researchers explicitly choose destination + labels.
+        const modalMeta = await requestPublishMetadata({
+            initialName: studyName,
+            initialSlug: studySlug,
+            initialTaskLabel: taskLabel,
+        });
 
-            if (modalMeta) {
-                studyName = modalMeta.study_name;
-                studySlug = modalMeta.study_slug;
-                versionLabel = modalMeta.config_version;
-            } else {
-                const enteredName = safePrompt('Enter study name for Platform Publish:', studyName || defaultName);
-                if (enteredName === null) {
-                    this.showValidationResult('warning', 'Publish canceled.');
-                    return;
-                }
-                studyName = String(enteredName || '').trim();
-                if (!studyName) {
-                    this.showValidationResult('error', 'Study name is required for publish.');
-                    return;
-                }
-
-                const enteredSlug = safePrompt('Enter study slug (URL-safe id):', studySlug || toSlug(studyName));
-                if (enteredSlug === null) {
-                    this.showValidationResult('warning', 'Publish canceled.');
-                    return;
-                }
-                studySlug = toSlug(enteredSlug);
-                if (!studySlug) {
-                    this.showValidationResult('error', 'Study slug is required for publish.');
-                    return;
-                }
-
-                const enteredVersion = safePrompt('Enter config version label:', versionLabel || defaultVersionLabel);
-                if (enteredVersion === null) {
-                    this.showValidationResult('warning', 'Publish canceled.');
-                    return;
-                }
-                versionLabel = String(enteredVersion || '').trim() || defaultVersionLabel;
+        if (modalMeta) {
+            studyName = modalMeta.study_name;
+            studySlug = modalMeta.study_slug;
+            taskLabel = modalMeta.task_label;
+        } else {
+            const enteredName = safePrompt('Enter study name for Platform Publish:', studyName || defaultName);
+            if (enteredName === null) {
+                this.showValidationResult('warning', 'Publish canceled.');
+                return;
             }
+            studyName = String(enteredName || '').trim();
+            if (!studyName) {
+                this.showValidationResult('error', 'Study name is required for publish.');
+                return;
+            }
+
+            const enteredSlug = safePrompt('Enter study slug (URL-safe id):', studySlug || toSlug(studyName));
+            if (enteredSlug === null) {
+                this.showValidationResult('warning', 'Publish canceled.');
+                return;
+            }
+            studySlug = toSlug(enteredSlug);
+            if (!studySlug) {
+                this.showValidationResult('error', 'Study slug is required for publish.');
+                return;
+            }
+
+            const enteredTaskLabel = safePrompt('Enter task name (saved config label):', taskLabel || defaultTaskLabel);
+            if (enteredTaskLabel === null) {
+                this.showValidationResult('warning', 'Publish canceled.');
+                return;
+            }
+            taskLabel = String(enteredTaskLabel || '').trim() || defaultTaskLabel;
+        }
+
+        // Keep a clear task identifier in the JSON itself for downstream selection/UI.
+        if (!String(config.task_name || '').trim()) {
+            config.task_name = taskLabel;
         }
 
         try {
-            const meta = { study_name: studyName, study_slug: studySlug, config_version: versionLabel };
+            const meta = { study_name: studyName, study_slug: studySlug, config_version: taskLabel };
             localStorage.setItem(publishMetaKey, JSON.stringify(meta));
             window.COGFLOW_STUDY_NAME = studyName;
             window.COGFLOW_STUDY_SLUG = studySlug;
-            window.COGFLOW_CONFIG_VERSION = versionLabel;
+            window.COGFLOW_CONFIG_VERSION = taskLabel;
         } catch {
             // ignore storage errors
         }
@@ -13468,7 +13489,7 @@ class JsonBuilder {
         const payload = {
             study_slug: studySlug,
             study_name: studyName,
-            config_version_label: versionLabel,
+            config_version_label: taskLabel,
             builder_version: builderVersion,
             runtime_mode: 'django',
             config,
@@ -13492,11 +13513,11 @@ class JsonBuilder {
 
             if (response.ok) {
                 const dashUrl = data.dashboard_url || `${platformUrl}/studies/${data.study_slug || studySlug}/`;
-                const resolvedLabel = (data.config_version_label || versionLabel || '').toString();
+                const resolvedLabel = (data.config_version_label || taskLabel || '').toString();
                 const labelAdjusted = data.config_version_label_adjusted === true;
                 this.showValidationResult(
                     'success',
-                    `Published! Study: ${data.study_slug || studySlug} · Config ID: ${data.config_version_id || '—'} · Version: ${resolvedLabel || '—'}${labelAdjusted ? ' (auto-adjusted to avoid overwrite)' : ''}\nDashboard: ${dashUrl}`
+                    `Published! Study: ${data.study_slug || studySlug} · Config ID: ${data.config_version_id || '—'} · Task: ${resolvedLabel || '—'}${labelAdjusted ? ' (auto-adjusted to avoid overwrite)' : ''}\nDashboard: ${dashUrl}`
                 );
             } else {
                 const errMsg = data.detail || data.error || JSON.stringify(data);

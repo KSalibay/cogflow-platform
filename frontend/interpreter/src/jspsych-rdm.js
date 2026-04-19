@@ -231,6 +231,15 @@ var jsPsychRdm = (function (jspsych) {
       let mouseLastPointerX = null;
       let mouseLastPointerY = null;
       let feedbackEndAt = null;
+      let stimulusStopped = false;
+
+      const stopStimulusPhase = () => {
+        if (stimulusStopped) return;
+        stimulusStopped = true;
+        if (engine) engine.stop();
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      };
 
       const getActiveRdmParams = () => {
         const live = (engine && engine.params && typeof engine.params === 'object') ? engine.params : null;
@@ -684,10 +693,22 @@ var jsPsychRdm = (function (jspsych) {
         // stimulus phase
         if (Number.isFinite(stimulusDuration) && stimulusDuration > 0) {
           this.jsPsych.pluginAPI.setTimeout(() => {
+            if (ended || stimulusStopped) return;
+
+            // Keep the stimulus visible while feedback is active so arrow feedback
+            // can remain on-screen for the full configured duration.
+            if (feedbackEndAt && nowMs() < feedbackEndAt) {
+              const remaining = Math.max(1, Math.round(feedbackEndAt - nowMs()));
+              this.jsPsych.pluginAPI.setTimeout(() => {
+                if (ended || stimulusStopped) return;
+                if (feedbackEndAt && nowMs() < feedbackEndAt) return;
+                stopStimulusPhase();
+              }, remaining);
+              return;
+            }
+
             // Stop stimulus, keep response window (blank bg)
-            if (engine) engine.stop();
-            ctx.fillStyle = bg;
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            stopStimulusPhase();
           }, stimulusDuration);
         }
 

@@ -97,6 +97,16 @@ class AssignStudyOwnerRequestSerializer(serializers.Serializer):
 
 class ShareStudyRequestSerializer(serializers.Serializer):
     username = serializers.CharField(max_length=150)
+    can_remove_users = serializers.BooleanField(required=False, default=False)
+
+
+class RevokeStudyAccessRequestSerializer(serializers.Serializer):
+    username = serializers.CharField(max_length=150)
+
+
+class DuplicateStudyRequestSerializer(serializers.Serializer):
+    study_name = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    study_slug = serializers.SlugField(required=False, allow_blank=True)
 
 
 class AdminCreateUserRequestSerializer(serializers.Serializer):
@@ -137,3 +147,15 @@ class FeedbackSubmitRequestSerializer(serializers.Serializer):
     subject = serializers.CharField(max_length=180, required=False, allow_blank=True)
     message = serializers.CharField(max_length=5000)
     contact_email = serializers.EmailField(required=False, allow_blank=True)
+
+
+class CreditsEntrySerializer(serializers.Serializer):
+    task_type = serializers.CharField(max_length=80)
+    component_type = serializers.CharField(max_length=80)
+    credit_role = serializers.CharField(max_length=80)
+    contributor_username = serializers.CharField(max_length=150)
+    notes = serializers.CharField(required=False, allow_blank=True)
+
+
+class CreditsBulkUpdateRequestSerializer(serializers.Serializer):
+    entries = CreditsEntrySerializer(many=True, required=False, default=list)

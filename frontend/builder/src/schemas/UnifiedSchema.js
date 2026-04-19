@@ -86,6 +86,26 @@ class UnifiedSchema {
                 max: 10000,
                 description: 'Stimulus duration in milliseconds'
             },
+            response_deadline: {
+                type: this.parameterTypes.NUMBER,
+                default: 1500,
+                min: 100,
+                max: 10000,
+                description: 'Maximum response window in milliseconds'
+            },
+            feedback_mode: {
+                type: this.parameterTypes.SELECT,
+                default: 'inherit',
+                options: ['inherit', 'off', 'arrow', 'corner-text', 'custom'],
+                description: 'Feedback style override for this component'
+            },
+            feedback_duration_ms: {
+                type: this.parameterTypes.NUMBER,
+                default: 1000,
+                min: 0,
+                max: 5000,
+                description: 'Feedback display duration in milliseconds'
+            },
 
             // Instructions Parameters
             stimulus: {
@@ -317,13 +337,15 @@ class UnifiedSchema {
             case 'rdm-trial':
                 return this.filterParameters(allParams, [
                     'name', 'coherence', 'direction', 'speed', 'dot_color', 
-                    'total_dots', 'dot_size', 'aperture_diameter', 'stimulus_duration'
+                    'total_dots', 'dot_size', 'aperture_diameter', 'stimulus_duration',
+                    'response_deadline', 'feedback_mode', 'feedback_duration_ms'
                 ]);
                 
             case 'rdm-practice':
                 return this.filterParameters(allParams, [
                     'name', 'coherence', 'direction', 'speed', 'dot_color', 
-                    'total_dots', 'dot_size', 'aperture_diameter', 'stimulus_duration'
+                    'total_dots', 'dot_size', 'aperture_diameter', 'stimulus_duration',
+                    'response_deadline', 'feedback_mode', 'feedback_duration_ms'
                 ]);
                 
             case 'rdm-dot-groups':

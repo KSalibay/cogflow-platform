@@ -37,6 +37,7 @@ class StudyResearcherAccess(models.Model):
         blank=True,
         related_name="granted_study_access",
     )
+    can_remove_users = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

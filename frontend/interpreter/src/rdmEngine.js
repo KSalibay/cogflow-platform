@@ -866,11 +866,11 @@
       const ux = Math.cos(theta);
       const uy = Math.sin(theta);
 
-      // Outer point (outside aperture) and inner point (inside aperture)
-      const x1 = this.centerX - ux * (apertureR + outerOffset);
-      const y1 = this.centerY - uy * (apertureR + outerOffset);
-      const x2 = this.centerX - ux * (apertureR - innerInset);
-      const y2 = this.centerY - uy * (apertureR - innerInset);
+      // Start near aperture edge and point outward on the true motion side.
+      const x1 = this.centerX + ux * (apertureR - innerInset);
+      const y1 = this.centerY + uy * (apertureR - innerInset);
+      const x2 = this.centerX + ux * (apertureR + outerOffset);
+      const y2 = this.centerY + uy * (apertureR + outerOffset);
 
       // Draw arrow line
       ctx.beginPath();
@@ -896,9 +896,8 @@
 
       ctx.restore();
 
-      // Clear arrow after rendering (one-shot)
-      this.arrowDirectionDeg = null;
-      this.arrowColor = null;
+      // Keep arrow state until jspsych-rdm feedback timeout clears it.
+      // This allows configured feedback_duration to control visibility.
     }
 
     static computeCorrectSide(rdmParams) {

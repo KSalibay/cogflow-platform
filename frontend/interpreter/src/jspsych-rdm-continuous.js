@@ -292,7 +292,7 @@
             engine.arrowDirectionDeg = directionDeg;
             engine.arrowColor = color;
           }
-          feedbackEl.innerHTML = `<div style="width:${canvasW}px; text-align:center; opacity:0.85; font-size:12px;">Arrow: ${Math.round(directionDeg)}°</div>`;
+            feedbackEl.innerHTML = '';
         } else {
           feedbackEl.innerHTML = `<div style="width:${canvasW}px; text-align:center; opacity:0.85;">(custom feedback placeholder)</div>`;
         }

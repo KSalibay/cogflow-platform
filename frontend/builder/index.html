@@ -327,7 +327,7 @@
                 <div class="modal-content">
                     <div class="modal-header">
                         <h5 class="modal-title" id="publishMetadataTitle">
-                            <i class="fas fa-upload"></i> Publish Study Metadata
+                            <i class="fas fa-upload"></i> Publish Study and Task Target
                         </h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
@@ -346,8 +346,9 @@
                         </div>
 
                         <div class="mb-1">
-                            <label for="publishConfigVersion" class="form-label">Config Version</label>
-                            <input type="text" class="form-control" id="publishConfigVersion" placeholder="e.g. v2026-03-24" />
+                            <label for="publishConfigVersion" class="form-label">Task Name (Saved Config Label)</label>
+                            <input type="text" class="form-control" id="publishConfigVersion" placeholder="e.g. Block 1 - RDM High Coherence" />
+                            <div class="form-text">Use the same Study Name/Slug to keep variants under one study, and change this field to save a separate task/config entry.</div>
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -578,6 +579,19 @@
                 }
                 if (e.data && e.data.type === 'cogflow:set-a11y' && window.jsonBuilderInstance && typeof window.jsonBuilderInstance.setAccessibilityMode === 'function') {
                     window.jsonBuilderInstance.setAccessibilityMode(e.data.mode || 'standard');
+                }
+                if (e.data && e.data.type === 'cogflow:load-study' && window.jsonBuilderInstance && typeof window.jsonBuilderInstance.loadStudyIntoBuilder === 'function') {
+                    const slug = (e.data.studySlug || '').toString().trim();
+                    const configVersionId = (e.data.configVersionId || '').toString().trim();
+                    if (!slug) return;
+                    window.jsonBuilderInstance
+                        .loadStudyIntoBuilder(slug, { configVersionId: configVersionId || null })
+                        .catch((err) => {
+                            const msg = err && err.message ? err.message : String(err || 'Unknown error');
+                            if (typeof window.jsonBuilderInstance.showValidationResult === 'function') {
+                                window.jsonBuilderInstance.showValidationResult('error', `Failed to load duplicated study: ${msg}`);
+                            }
+                        });
                 }
             });
 

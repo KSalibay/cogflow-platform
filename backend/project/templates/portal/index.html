@@ -683,6 +683,112 @@
         align-self: start;
       }
 
+      /* ── Credits view ─────────────────────────────────────── */
+      .credits-panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 18px 20px;
+        margin-bottom: 14px;
+        box-shadow: var(--shadow);
+      }
+
+      .credits-inline-link {
+        color: var(--accent);
+        text-decoration: none;
+        font-weight: 600;
+      }
+
+      .credits-inline-link:hover {
+        text-decoration: underline;
+      }
+
+      .credits-table-wrap {
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+      }
+
+      .credits-table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 920px;
+      }
+
+      .credits-table th,
+      .credits-table td {
+        border-bottom: 1px solid var(--line);
+        padding: 10px;
+        vertical-align: top;
+        text-align: left;
+        font-size: 0.82rem;
+      }
+
+      .credits-table th {
+        background: #f8fbff;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--muted);
+      }
+
+      .credit-role-chip {
+        display: inline-block;
+        margin: 2px 4px 2px 0;
+        padding: 3px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: #f3f8ff;
+        color: var(--ink);
+        font-size: 0.74rem;
+        white-space: nowrap;
+      }
+
+      .credit-chip-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 6px;
+      }
+
+      .credit-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: #f3f8ff;
+        color: var(--ink);
+        font-size: 0.74rem;
+        line-height: 1.3;
+      }
+
+      .credit-chip-remove {
+        border: 0;
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+        font-size: 0.78rem;
+        padding: 0;
+      }
+
+      .credit-chip-controls {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+
+      .credit-chip-controls select {
+        flex: 1 1 auto;
+        min-width: 120px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 6px 8px;
+        background: var(--bg);
+        color: var(--ink);
+      }
+
       /* ── Account view ──────────────────────────────────────── */
       .account-section {
         background: var(--panel); border: 1px solid var(--line);
@@ -926,11 +1032,28 @@
       html[data-cf-theme="dark"] .ethics-copy-block,
       html[data-cf-theme="dark"] .rollout-field-row input,
       html[data-cf-theme="dark"] .account-field input,
+      html[data-cf-theme="dark"] .credits-panel,
       html[data-cf-theme="dark"] .auth-secret,
       html[data-cf-theme="dark"] .mfa-qr-wrap {
         background: rgba(48, 57, 84, 0.86) !important;
         border-color: rgba(186, 199, 190, 0.24) !important;
         color: rgba(223, 232, 225, 0.94) !important;
+      }
+
+      html[data-cf-theme="dark"] .credits-table th {
+        background: rgba(66, 76, 108, 0.42) !important;
+      }
+
+      html[data-cf-theme="dark"] .credit-role-chip {
+        background: rgba(73, 84, 121, 0.22);
+        border-color: rgba(186, 199, 190, 0.24);
+        color: rgba(223, 232, 225, 0.94);
+      }
+
+      html[data-cf-theme="dark"] .credit-chip {
+        background: rgba(73, 84, 121, 0.22);
+        border-color: rgba(186, 199, 190, 0.24);
+        color: rgba(223, 232, 225, 0.94);
       }
 
       html[data-cf-theme="dark"] .ethics-section p,
@@ -1137,6 +1260,11 @@
             <button class="nav-item" data-view="ethics" id="navEthics">
               <span class="nav-icon">🛡</span>
               <span class="nav-label">Ethics &amp; Compliance</span>
+            </button>
+
+            <button class="nav-item" data-view="credits" id="navCredits">
+              <span class="nav-icon">📚</span>
+              <span class="nav-label">Credits</span>
             </button>
 
             <button class="nav-item" data-view="feedback" id="navFeedback">
@@ -1354,6 +1482,77 @@
                 <h3>Access Controls and Audit Logging</h3>
                 <p>Use the following paragraph when describing access controls:</p>
                 <div class="ethics-copy-block" id="eb5"><span class="ethics-copy-text">Access to participant data is restricted to the owning researcher account and platform administrators. All sensitive actions (data decryption, participant link generation, researcher assignment changes, data export, and deletion requests) are recorded in a tamper-evident audit log that captures the acting user, action type, target resource, timestamp, and outcome. Audit records cannot be modified or deleted by any user role.</span><button class="btn btn-ghost btn-xs copy-block-btn" onclick="copyEthicsBlock('eb5',this)">Copy</button></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- VIEW: Credits -->
+          <div class="view" id="viewCredits">
+            <div class="view-scroll">
+              <h1 class="view-title" style="margin:0 0 4px;">Credits</h1>
+              <p class="view-subtitle" style="margin:0 0 20px;">Task authorship and contribution mapping using CRediT role categories.</p>
+
+              <div class="credits-panel">
+                <p style="margin:0 0 8px;font-size:.86rem;line-height:1.6;color:var(--ink);">
+                  This view follows the same principle as the Builder authorship tracker:
+                  each <strong>task_type</strong> lists its key components/features and associated contributors.
+                </p>
+                <p style="margin:0 0 8px;font-size:.84rem;line-height:1.6;color:var(--muted);">
+                  Source tracker: <span class="mono">docs/task_feature_catalog.md</span> from the original Builder repo.
+                </p>
+                <p style="margin:0;font-size:.84rem;line-height:1.6;color:var(--muted);">
+                  CRediT reference: <a class="credits-inline-link" href="https://zenodo.org/records/18421449" target="_blank" rel="noopener noreferrer">Zenodo Record 18421449</a>
+                </p>
+              </div>
+
+              <div class="credits-panel">
+                <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+                  <h3 style="margin:0;">Task Scope Reference</h3>
+                </div>
+                <div class="credits-table-wrap" style="margin-bottom:14px;">
+                  <table class="credits-table">
+                    <thead>
+                      <tr>
+                        <th>Task Type</th>
+                        <th>Schema-backed Components In Scope</th>
+                      </tr>
+                    </thead>
+                    <tbody id="creditsScopeRows">
+                      <tr><td colspan="2" style="color:var(--muted);">Loading task scopes…</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+                  <h3 style="margin:0;">Task Contribution Assignments</h3>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button class="btn btn-ghost btn-xs" id="creditsRefreshBtn">Refresh</button>
+                    <span id="creditsAdminActions" style="display:none;">
+                      <button class="btn btn-ghost btn-xs" id="creditsEditBtn">Edit Credits</button>
+                      <button class="btn btn-ghost btn-xs" id="creditsAddRowBtn" style="display:none;">+ Add Row</button>
+                      <button class="btn btn-primary btn-xs" id="creditsSaveBtn" style="display:none;">Save</button>
+                      <button class="btn btn-ghost btn-xs" id="creditsCancelBtn" style="display:none;">Cancel</button>
+                    </span>
+                  </div>
+                </div>
+                <div id="creditsMsg" class="status-bar" style="margin-bottom:10px;">Loading credits…</div>
+                <div class="credits-table-wrap">
+                  <table class="credits-table">
+                    <thead>
+                      <tr>
+                        <th>Task Type</th>
+                        <th>Component (Task Scope)</th>
+                        <th>CRediT Role</th>
+                        <th>Contributor</th>
+                        <th>Notes</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody id="creditsTaskRows">
+                      <tr><td colspan="6" style="color:var(--muted);">Loading credits…</td></tr>
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           </div>
@@ -1836,10 +2035,17 @@
     }
 
     // ── Navigation ─────────────────────────────────────────────
-    const VIEWS = ["studies","builder","preview","integrations","ethics","feedback","admin","account"];
+    const VIEWS = ["studies","builder","preview","integrations","ethics","credits","feedback","admin","account"];
     let builderLoaded = false;
     let adminUsersLoaded = false;
     let adminUsers = [];
+    let creditsEntries = [];
+    let creditsTaskScopes = [];
+    let creditsRoles = [];
+    let creditsUsernames = [];
+    let creditsDraftRows = [];
+    let creditsLoaded = false;
+    let creditsEditMode = false;
 
     function normalizeTheme(theme) {
       return theme === "dark" ? "dark" : "light";
@@ -1973,10 +2179,263 @@
       if (id === "admin" && currentUser?.role === "platform_admin" && !adminUsersLoaded) {
         loadAdminUsers();
       }
+      if (id === "credits") {
+        if (!creditsLoaded) {
+          loadCredits();
+        } else {
+          renderCreditsView();
+        }
+      }
 
       // Keep study-dependent views fresh without requiring full-page reload.
       if (id === "studies" || id === "preview" || id === "integrations") {
         loadStudies();
+      }
+    }
+
+    function getCreditsTaskScopeMap() {
+      const map = new Map();
+      (Array.isArray(creditsTaskScopes) ? creditsTaskScopes : []).forEach((s) => {
+        const task = String(s?.task_type || "").trim();
+        if (!task) return;
+        const components = Array.isArray(s?.components) ? s.components.map((x) => String(x || "").trim()).filter(Boolean) : [];
+        map.set(task, components);
+      });
+      return map;
+    }
+
+    function uniqList(items) {
+      return Array.from(new Set((items || []).map((x) => String(x || "").trim()).filter(Boolean)));
+    }
+
+    function groupCreditsEntriesForUi(entries) {
+      const grouped = new Map();
+      (Array.isArray(entries) ? entries : []).forEach((e) => {
+        const taskType = String(e?.task_type || "").trim();
+        const componentType = String(e?.component_type || "").trim();
+        const notes = String(e?.notes || "").trim();
+        const role = String(e?.credit_role || "").trim();
+        const username = String(e?.contributor_username || "").trim();
+        const key = `${taskType}||${componentType}||${notes}`;
+        if (!grouped.has(key)) {
+          grouped.set(key, {
+            id: null,
+            task_type: taskType,
+            component_type: componentType,
+            notes,
+            credit_roles: [],
+            contributor_usernames: [],
+          });
+        }
+        const row = grouped.get(key);
+        if (role) row.credit_roles.push(role);
+        if (username) row.contributor_usernames.push(username);
+      });
+
+      return Array.from(grouped.values()).map((x) => ({
+        ...x,
+        credit_roles: uniqList(x.credit_roles),
+        contributor_usernames: uniqList(x.contributor_usernames),
+      }));
+    }
+
+    function makeCreditsRowDraft() {
+      const scopeMap = getCreditsTaskScopeMap();
+      const firstTask = creditsTaskScopes?.[0]?.task_type || "";
+      const components = scopeMap.get(firstTask) || [];
+      return {
+        id: null,
+        task_type: firstTask,
+        component_type: components[0] || "",
+        credit_roles: creditsRoles?.length ? [creditsRoles[0]] : [],
+        contributor_usernames: creditsUsernames?.length ? [creditsUsernames[0]] : [],
+        notes: "",
+      };
+    }
+
+    async function loadCredits(force = false) {
+      const msg = document.getElementById("creditsMsg");
+      if (msg) {
+        msg.className = "status-bar";
+        msg.textContent = "Loading credits…";
+      }
+      try {
+        if (!force && creditsLoaded) {
+          renderCreditsView();
+          if (msg) {
+            msg.className = "status-bar ok";
+            msg.textContent = `Loaded ${creditsEntries.length} schema components.`;
+          }
+          return;
+        }
+
+        const r = await fetch(`${API}/api/v1/credits`, { credentials: "include" });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+        creditsEntries = Array.isArray(d.entries) ? d.entries : [];
+        creditsTaskScopes = Array.isArray(d.task_scopes) ? d.task_scopes : [];
+        creditsRoles = Array.isArray(d.credit_roles) ? d.credit_roles : [];
+        creditsUsernames = Array.isArray(d.usernames) ? d.usernames : [];
+        creditsDraftRows = [];
+        creditsLoaded = true;
+        renderCreditsView();
+        if (msg) {
+          msg.className = "status-bar ok";
+          msg.textContent = `Loaded ${creditsEntries.length} credits rows across ${creditsTaskScopes.length} task scopes.`;
+        }
+      } catch (err) {
+        creditsLoaded = false;
+        const body = document.getElementById("creditsTaskRows");
+        if (body) {
+          body.innerHTML = `<tr><td colspan="6" style="color:var(--warn);">Failed to load credits: ${esc(err?.message || String(err))}</td></tr>`;
+        }
+        if (msg) {
+          msg.className = "status-bar error";
+          msg.textContent = `Failed to load credits: ${err?.message || err}`;
+        }
+      }
+    }
+
+    async function saveCreditsFromUi() {
+      const rows = Array.isArray(creditsDraftRows) ? creditsDraftRows : [];
+      const entries = [];
+      rows.forEach((row) => {
+        const taskType = String(row?.task_type || "").trim();
+        const componentType = String(row?.component_type || "").trim();
+        const notes = String(row?.notes || "").trim();
+        const roles = uniqList(row?.credit_roles || []);
+        const users = uniqList(row?.contributor_usernames || []);
+        roles.forEach((role) => {
+          users.forEach((username) => {
+            entries.push({
+              task_type: taskType,
+              component_type: componentType,
+              credit_role: role,
+              contributor_username: username,
+              notes,
+            });
+          });
+        });
+      });
+
+      const msg = document.getElementById("creditsMsg");
+      if (msg) {
+        msg.className = "status-bar";
+        msg.textContent = "Saving credits…";
+      }
+
+      const r = await fetch(`${API}/api/v1/credits`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": getCsrf() },
+        body: JSON.stringify({ entries }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+    }
+
+    function renderCreditsView() {
+      const body = document.getElementById("creditsTaskRows");
+      const scopesBody = document.getElementById("creditsScopeRows");
+      if (!body || !scopesBody) return;
+      const isAdmin = currentUser?.role === "platform_admin";
+      const scopeMap = getCreditsTaskScopeMap();
+      const adminActions = document.getElementById("creditsAdminActions");
+      const editBtn = document.getElementById("creditsEditBtn");
+      const addRowBtn = document.getElementById("creditsAddRowBtn");
+      const saveBtn = document.getElementById("creditsSaveBtn");
+      const cancelBtn = document.getElementById("creditsCancelBtn");
+      if (adminActions) adminActions.style.display = isAdmin ? "" : "none";
+      if (editBtn) editBtn.style.display = isAdmin && !creditsEditMode ? "" : "none";
+      if (addRowBtn) addRowBtn.style.display = isAdmin && creditsEditMode ? "" : "none";
+      if (saveBtn) saveBtn.style.display = isAdmin && creditsEditMode ? "" : "none";
+      if (cancelBtn) cancelBtn.style.display = isAdmin && creditsEditMode ? "" : "none";
+
+      scopesBody.innerHTML = (Array.isArray(creditsTaskScopes) ? creditsTaskScopes : []).map((scope) => {
+        const taskType = String(scope?.task_type || "");
+        const comps = Array.isArray(scope?.components) ? scope.components : [];
+        const chips = comps.length
+          ? comps.map((x) => `<span class="credit-role-chip">${esc(String(x || ""))}</span>`).join(" ")
+          : "—";
+        return `<tr>
+          <td><span class="mono">${esc(taskType || "—")}</span></td>
+          <td>${chips}</td>
+        </tr>`;
+      }).join("");
+
+      if (!scopesBody.innerHTML.trim()) {
+        scopesBody.innerHTML = '<tr><td colspan="2" style="color:var(--muted);">No task scopes found.</td></tr>';
+      }
+
+      const rowsForUi = creditsEditMode
+        ? (Array.isArray(creditsDraftRows) ? creditsDraftRows : [])
+        : groupCreditsEntriesForUi(creditsEntries);
+
+      const optionHtml = (items, selected) => (items || [])
+        .map((x) => `<option value="${esc(String(x || ""))}" ${String(x || "") === String(selected || "") ? "selected" : ""}>${esc(String(x || ""))}</option>`)
+        .join("");
+
+      const chipListHtml = (items, chipKind, rowIndex, editable) => {
+        const list = uniqList(items || []);
+        if (!list.length) return '<span style="color:var(--muted);">—</span>';
+        return `<div class="credit-chip-list">${list.map((x) => {
+          const remove = editable
+            ? `<button class="credit-chip-remove" data-action="remove-chip" data-chip-kind="${esc(chipKind)}" data-chip-value="${esc(x)}" data-row-index="${rowIndex}" aria-label="Remove">×</button>`
+            : "";
+          return `<span class="credit-chip">${esc(x)}${remove}</span>`;
+        }).join("")}</div>`;
+      };
+
+      body.innerHTML = rowsForUi.map((row, rowIndex) => {
+        const taskType = String(row.task_type || "");
+        const componentType = String(row.component_type || "");
+        const creditRoles = uniqList(row.credit_roles || []);
+        const contributors = uniqList(row.contributor_usernames || []);
+        const validComponents = scopeMap.get(taskType) || [];
+        const componentOptions = validComponents.length ? validComponents : [componentType].filter(Boolean);
+
+        if (isAdmin && creditsEditMode) {
+          return `<tr data-credit-row="1" data-row-index="${rowIndex}">
+            <td>
+              <select data-field="task_type" data-row-index="${rowIndex}" style="width:100%;border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:var(--bg);color:var(--ink);">
+                ${optionHtml((creditsTaskScopes || []).map((x) => x.task_type), taskType)}
+              </select>
+            </td>
+            <td>
+              <select data-field="component_type" data-row-index="${rowIndex}" style="width:100%;border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:var(--bg);color:var(--ink);">
+                ${optionHtml(componentOptions, componentType)}
+              </select>
+            </td>
+            <td>
+              ${chipListHtml(creditRoles, "role", rowIndex, true)}
+              <div class="credit-chip-controls">
+                <select data-field="role_picker" data-row-index="${rowIndex}">${optionHtml(creditsRoles, creditsRoles[0] || "")}</select>
+                <button class="btn btn-ghost btn-xs" data-action="add-chip" data-chip-kind="role" data-row-index="${rowIndex}">Add</button>
+              </div>
+            </td>
+            <td>
+              ${chipListHtml(contributors, "user", rowIndex, true)}
+              <div class="credit-chip-controls">
+                <select data-field="user_picker" data-row-index="${rowIndex}">${optionHtml(creditsUsernames, creditsUsernames[0] || "")}</select>
+                <button class="btn btn-ghost btn-xs" data-action="add-chip" data-chip-kind="user" data-row-index="${rowIndex}">Add</button>
+              </div>
+            </td>
+            <td><textarea data-field="notes" data-row-index="${rowIndex}" rows="2" style="width:100%;border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:var(--bg);color:var(--ink);">${esc(row.notes || "")}</textarea></td>
+            <td><button class="btn btn-danger btn-xs" data-action="remove-credit-row">Remove</button></td>
+          </tr>`;
+        }
+        return `<tr>
+          <td><span class="mono">${esc(taskType || "—")}</span></td>
+          <td><span class="mono">${esc(componentType || "—")}</span></td>
+          <td>${chipListHtml(creditRoles, "role", rowIndex, false)}</td>
+          <td>${chipListHtml(contributors, "user", rowIndex, false)}</td>
+          <td>${esc(row.notes || "")}</td>
+          <td>—</td>
+        </tr>`;
+      }).join("");
+
+      if (!body.innerHTML.trim()) {
+        body.innerHTML = '<tr><td colspan="6" style="color:var(--muted);">No credits assignments found.</td></tr>';
       }
     }
 
@@ -2043,6 +2502,145 @@
 
     document.getElementById("portalA11ySelect")?.addEventListener("change", (e) => {
       applyPortalA11y(e.target?.value || "standard", true);
+    });
+
+    document.getElementById("creditsRefreshBtn")?.addEventListener("click", async () => {
+      creditsEditMode = false;
+      await loadCredits(true);
+    });
+
+    document.getElementById("creditsEditBtn")?.addEventListener("click", () => {
+      if (currentUser?.role !== "platform_admin") return;
+      creditsEditMode = true;
+      creditsDraftRows = groupCreditsEntriesForUi(creditsEntries);
+      if (!creditsDraftRows.length) {
+        creditsDraftRows = [makeCreditsRowDraft()];
+      }
+      renderCreditsView();
+      const msg = document.getElementById("creditsMsg");
+      if (msg) {
+        msg.className = "status-bar";
+        msg.textContent = "Editing mode enabled. Use dropdowns to assign task/component, CRediT role, and contributor.";
+      }
+    });
+
+    document.getElementById("creditsAddRowBtn")?.addEventListener("click", () => {
+      if (currentUser?.role !== "platform_admin" || !creditsEditMode) return;
+      creditsDraftRows = Array.isArray(creditsDraftRows) ? creditsDraftRows : [];
+      creditsDraftRows.push(makeCreditsRowDraft());
+      renderCreditsView();
+      const msg = document.getElementById("creditsMsg");
+      if (msg) {
+        msg.className = "status-bar";
+        msg.textContent = `Added row. Total editable rows: ${creditsDraftRows.length}.`;
+      }
+    });
+
+    document.getElementById("creditsTaskRows")?.addEventListener("click", (e) => {
+      const scopeMap = getCreditsTaskScopeMap();
+      const btn = e.target?.closest?.("[data-action='remove-credit-row']");
+      if (btn && currentUser?.role === "platform_admin" && creditsEditMode) {
+        const tr = btn.closest("tr[data-credit-row]");
+        if (!tr) return;
+        const idx = Number(tr.getAttribute("data-row-index") || -1);
+        if (idx < 0) return;
+        creditsDraftRows.splice(idx, 1);
+        if (!creditsDraftRows.length) creditsDraftRows.push(makeCreditsRowDraft());
+        renderCreditsView();
+        return;
+      }
+
+      const addChipBtn = e.target?.closest?.("[data-action='add-chip']");
+      if (addChipBtn && currentUser?.role === "platform_admin" && creditsEditMode) {
+        const idx = Number(addChipBtn.getAttribute("data-row-index") || -1);
+        const kind = String(addChipBtn.getAttribute("data-chip-kind") || "");
+        const row = creditsDraftRows[idx];
+        if (!row) return;
+        if (kind === "role") {
+          const picker = document.querySelector(`select[data-field='role_picker'][data-row-index='${idx}']`);
+          const value = String(picker?.value || "").trim();
+          row.credit_roles = uniqList([...(row.credit_roles || []), value]);
+        } else if (kind === "user") {
+          const picker = document.querySelector(`select[data-field='user_picker'][data-row-index='${idx}']`);
+          const value = String(picker?.value || "").trim();
+          row.contributor_usernames = uniqList([...(row.contributor_usernames || []), value]);
+        }
+        renderCreditsView();
+        return;
+      }
+
+      const removeChipBtn = e.target?.closest?.("[data-action='remove-chip']");
+      if (removeChipBtn && currentUser?.role === "platform_admin" && creditsEditMode) {
+        const idx = Number(removeChipBtn.getAttribute("data-row-index") || -1);
+        const kind = String(removeChipBtn.getAttribute("data-chip-kind") || "");
+        const value = String(removeChipBtn.getAttribute("data-chip-value") || "").trim();
+        const row = creditsDraftRows[idx];
+        if (!row) return;
+        if (kind === "role") {
+          row.credit_roles = (row.credit_roles || []).filter((x) => String(x || "").trim() !== value);
+        } else if (kind === "user") {
+          row.contributor_usernames = (row.contributor_usernames || []).filter((x) => String(x || "").trim() !== value);
+        }
+        renderCreditsView();
+      }
+    });
+
+    document.getElementById("creditsTaskRows")?.addEventListener("change", (e) => {
+      if (currentUser?.role !== "platform_admin" || !creditsEditMode) return;
+      const scopeMap = getCreditsTaskScopeMap();
+      const target = e.target;
+      const field = String(target?.getAttribute?.("data-field") || "").trim();
+      const idx = Number(target?.getAttribute?.("data-row-index") || -1);
+      const row = creditsDraftRows[idx];
+      if (!row) return;
+
+      if (field === "task_type") {
+        row.task_type = String(target.value || "").trim();
+        const validComponents = scopeMap.get(row.task_type) || [];
+        row.component_type = validComponents.includes(row.component_type) ? row.component_type : (validComponents[0] || "");
+        renderCreditsView();
+        return;
+      }
+
+      if (field === "component_type") {
+        row.component_type = String(target.value || "").trim();
+        return;
+      }
+
+      if (field === "notes") {
+        row.notes = String(target.value || "");
+      }
+    });
+
+    document.getElementById("creditsCancelBtn")?.addEventListener("click", () => {
+      creditsEditMode = false;
+      creditsDraftRows = [];
+      renderCreditsView();
+      const msg = document.getElementById("creditsMsg");
+      if (msg) {
+        msg.className = "status-bar";
+        msg.textContent = "Edit canceled.";
+      }
+    });
+
+    document.getElementById("creditsSaveBtn")?.addEventListener("click", async () => {
+      try {
+        await saveCreditsFromUi();
+        creditsEditMode = false;
+        creditsDraftRows = [];
+        await loadCredits(true);
+        const msg = document.getElementById("creditsMsg");
+        if (msg) {
+          msg.className = "status-bar ok";
+          msg.textContent = "Credits updated successfully.";
+        }
+      } catch (err) {
+        const msg = document.getElementById("creditsMsg");
+        if (msg) {
+          msg.className = "status-bar error";
+          msg.textContent = `Failed to save credits: ${err?.message || err}`;
+        }
+      }
     });
 
     // ── Session check ──────────────────────────────────────────
@@ -2131,6 +2729,14 @@
       const feedbackContact = document.getElementById("feedbackContact");
       if (feedbackContact) feedbackContact.value = (u.email || "").toString().trim();
       loadPortalA11yPreference();
+      creditsEntries = [];
+      creditsTaskScopes = [];
+      creditsRoles = [];
+      creditsUsernames = [];
+      creditsDraftRows = [];
+      creditsLoaded = false;
+      creditsEditMode = false;
+      loadCredits(true);
       renderMfaStatusBlock();
       loadStudies();
       startStudiesAutoRefresh();
@@ -2341,6 +2947,13 @@
     document.getElementById("signOutBtn").addEventListener("click", async () => {
       await fetch(`${API}/api/v1/auth/logout`, postOpts({}));
       currentUser = null; mfaSetupState = null;
+      creditsEntries = [];
+      creditsTaskScopes = [];
+      creditsRoles = [];
+      creditsUsernames = [];
+      creditsDraftRows = [];
+      creditsLoaded = false;
+      creditsEditMode = false;
       stopStudiesAutoRefresh();
       invalidateLatestConfigCache();
       builderLoaded = false;
@@ -2486,6 +3099,8 @@
             <div style="display:flex;gap:5px;flex-wrap:wrap;">
               <button class="btn btn-ghost btn-xs" data-action="gen-link"       data-slug="${esc(s.study_slug)}">Generate Links</button>
               <button class="btn btn-ghost btn-xs" data-action="share-study"    data-slug="${esc(s.study_slug)}">Share</button>
+              <button class="btn btn-ghost btn-xs" data-action="duplicate-study" data-slug="${esc(s.study_slug)}" data-study-name="${esc(s.study_name || s.study_slug)}">Duplicate</button>
+              <button class="btn btn-ghost btn-xs" data-action="remove-study-user" data-slug="${esc(s.study_slug)}">Remove User</button>
               <button class="btn btn-ghost btn-xs" data-action="toggle-details" data-slug="${esc(s.study_slug)}">${state.expanded ? "Hide" : "Show Results"}</button>
               <button class="btn btn-ghost btn-xs" data-action="open-preview"   data-slug="${esc(s.study_slug)}">Preview ▶</button>
               <button class="btn btn-danger btn-xs" data-action="delete-study"  data-slug="${esc(s.study_slug)}">Delete</button>
@@ -2511,7 +3126,36 @@
       tbody.querySelectorAll("[data-action='share-study']").forEach(b =>
         b.addEventListener("click", () => {
           const username = window.prompt("Share with username:", "") || "";
-          if (username.trim()) shareStudy(b.getAttribute("data-slug"), username.trim());
+          if (!username.trim()) return;
+          const canRemoveUsers = window.confirm(
+            `Allow ${username.trim()} to remove other users from this study?\n\nChoose OK to grant \"Can remove users\".`
+          );
+          shareStudy(b.getAttribute("data-slug"), username.trim(), canRemoveUsers);
+        })
+      );
+      tbody.querySelectorAll("[data-action='remove-study-user']").forEach(b =>
+        b.addEventListener("click", () => {
+          const username = window.prompt("Remove access for username:", "") || "";
+          if (!username.trim()) return;
+          const slug = b.getAttribute("data-slug");
+          const confirmed = window.confirm(
+            `Remove ${username.trim()} from study ${slug}?\n\nThey will lose collaborator access immediately.`
+          );
+          if (!confirmed) return;
+          removeStudyUser(slug, username.trim());
+        })
+      );
+      tbody.querySelectorAll("[data-action='duplicate-study']").forEach(b =>
+        b.addEventListener("click", async () => {
+          const sourceSlug = (b.getAttribute("data-slug") || "").toString().trim();
+          const sourceName = (b.getAttribute("data-study-name") || sourceSlug).toString().trim();
+          const now = new Date();
+          const pad = (n) => String(n).padStart(2, "0");
+          const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
+          const suggestedName = `${sourceName} - copy ${stamp}`;
+          const duplicateName = window.prompt("Name for duplicated study:", suggestedName) || "";
+          if (!duplicateName.trim()) return;
+          await duplicateStudy(sourceSlug, duplicateName.trim());
         })
       );
       tbody.querySelectorAll("[data-action='open-preview']").forEach(b =>
@@ -2961,24 +3605,81 @@
       }
     }
 
-    async function shareStudy(slug, username) {
+    async function shareStudy(slug, username, canRemoveUsers) {
       const sb = document.getElementById("studiesStatus");
       sb.className = "status-bar"; sb.textContent = `Sharing ${slug} with ${username}…`;
       try {
-        const r = await fetch(`${API}/api/v1/studies/${encodeURIComponent(slug)}/share`, postOpts({ username }));
+        const r = await fetch(
+          `${API}/api/v1/studies/${encodeURIComponent(slug)}/share`,
+          postOpts({ username, can_remove_users: !!canRemoveUsers })
+        );
         const d = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
         const owners = Array.isArray(d.owner_usernames) && d.owner_usernames.length
           ? d.owner_usernames.join(", ")
           : username;
         sb.className = "status-bar ok";
-        sb.textContent = d.already_shared
-          ? `${username} already has access. Owners: ${owners}`
-          : `Study shared with ${username}. Owners: ${owners}`;
+        if (d.already_shared) {
+          if (d.permission_updated) {
+            sb.textContent = `Updated ${username}'s permissions (${d.can_remove_users ? "can remove users" : "cannot remove users"}). Owners: ${owners}`;
+          } else {
+            sb.textContent = `${username} already has access. Owners: ${owners}`;
+          }
+        } else {
+          sb.textContent = `Study shared with ${username}${d.can_remove_users ? " (can remove users)" : ""}. Owners: ${owners}`;
+        }
         loadStudies();
       } catch (err) {
         sb.className = "status-bar error";
         sb.textContent = `Share failed: ${err?.message || err}`;
+      }
+    }
+
+    async function removeStudyUser(slug, username) {
+      const sb = document.getElementById("studiesStatus");
+      sb.className = "status-bar";
+      sb.textContent = `Removing ${username} from ${slug}…`;
+      try {
+        const r = await fetch(
+          `${API}/api/v1/studies/${encodeURIComponent(slug)}/share/remove`,
+          postOpts({ username })
+        );
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+
+        const owners = Array.isArray(d.owner_usernames) && d.owner_usernames.length
+          ? d.owner_usernames.join(", ")
+          : "—";
+        sb.className = "status-bar ok";
+        sb.textContent = `Removed ${username} from ${slug}. Owners: ${owners}`;
+        loadStudies();
+      } catch (err) {
+        sb.className = "status-bar error";
+        sb.textContent = `Remove access failed: ${err?.message || err}`;
+      }
+    }
+
+    async function duplicateStudy(sourceSlug, duplicateName) {
+      const sb = document.getElementById("studiesStatus");
+      sb.className = "status-bar";
+      sb.textContent = `Duplicating ${sourceSlug}…`;
+      try {
+        const r = await fetch(
+          `${API}/api/v1/studies/${encodeURIComponent(sourceSlug)}/duplicate`,
+          postOpts({ study_name: duplicateName })
+        );
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+
+        const newSlug = (d.study_slug || "").toString().trim();
+        sb.className = "status-bar ok";
+        sb.textContent = `Duplicated ${sourceSlug} → ${newSlug}. Open Builder when ready to edit the copy.`;
+
+        invalidateLatestConfigCache();
+        await loadStudies();
+      } catch (err) {
+        sb.className = "status-bar error";
+        sb.textContent = `Duplicate failed: ${err?.message || err}`;
       }
     }
 

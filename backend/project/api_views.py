@@ -22,6 +22,7 @@ from django.http import HttpResponseRedirect
 from django.shortcuts import render
 from django.utils.decorators import method_decorator
 from django.utils import timezone
+from django.utils.text import slugify
 from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework import status
 from rest_framework.response import Response
@@ -30,7 +31,7 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from apps.audit.models import AuditEvent
-from apps.configs.models import ConfigVersion
+from apps.configs.models import ConfigVersion, TaskCreditRow
 from apps.runs.models import RunSession
 from apps.studies.models import Study, StudyResearcherAccess
 from apps.users.models import UserProfile
@@ -48,6 +49,9 @@ from project.api_serializers import (
     AdminUpdateUserActivationRequestSerializer,
     AdminUpdateUserRoleRequestSerializer,
     AssignStudyOwnerRequestSerializer,
+    CreditsBulkUpdateRequestSerializer,
+    DuplicateStudyRequestSerializer,
+    RevokeStudyAccessRequestSerializer,
     ShareStudyRequestSerializer,
     AuthLoginRequestSerializer,
     PasswordResetConfirmRequestSerializer,
@@ -183,6 +187,20 @@ def _has_study_access(study: Study, user, profile) -> bool:
     return StudyResearcherAccess.objects.filter(study=study, user=user).exists()
 
 
+def _can_remove_study_users(study: Study, user, profile) -> bool:
+    if not user or not getattr(user, "is_authenticated", False):
+        return False
+    if profile.role == profile.ROLE_ADMIN:
+        return True
+    if study.owner_user_id == user.id:
+        return True
+    return StudyResearcherAccess.objects.filter(
+        study=study,
+        user=user,
+        can_remove_users=True,
+    ).exists()
+
+
 def _issue_launch_token(payload: dict) -> str:
     return signing.dumps(payload, salt="participant-launch-v1", compress=True)
 
@@ -227,6 +245,280 @@ def _extract_config_task_type(config_json: dict | None) -> str | None:
         raw = config_json.get("taskType")
     s = str(raw or "").strip().lower()
     return s or None
+
+
+SCHEMA_COMPONENT_TYPES = [
+    "block",
+    "flanker-trial",
+    "gabor-trial",
+    "html-button-response",
+    "html-keyboard-response",
+    "image-keyboard-response",
+    "instructions",
+    "mot-trial",
+    "nback-block",
+    "nback-trial-sequence",
+    "preload",
+    "pvt-trial",
+    "reward-settings",
+    "sart-trial",
+    "simon-trial",
+    "soc-dashboard",
+    "soc-dashboard-icon",
+    "soc-subtask-flanker-like",
+    "soc-subtask-nback-like",
+    "soc-subtask-pvt-like",
+    "soc-subtask-sart-like",
+    "soc-subtask-wcst-like",
+    "stroop-trial",
+    "survey-response",
+    "task-switching-trial",
+    "visual-angle-calibration",
+]
+
+CREDIT_ROLES = [
+    "Conceptualization",
+    "Data curation",
+    "Formal Analysis",
+    "Funding acquisition",
+    "Investigation",
+    "Methodology",
+    "Project administration",
+    "Resources",
+    "Software",
+    "Supervision",
+    "Validation",
+    "Visualization",
+    "Writing - original draft",
+    "Writing - review & editing",
+]
+
+TASK_SCOPE_DEFINITIONS = [
+    {"task_type": "rdm", "components": ["block"]},
+    {"task_type": "flanker", "components": ["flanker-trial", "block"]},
+    {"task_type": "sart", "components": ["sart-trial", "block"]},
+    {"task_type": "stroop", "components": ["stroop-trial", "block"]},
+    {"task_type": "simon", "components": ["simon-trial", "block"]},
+    {"task_type": "pvt", "components": ["pvt-trial", "block"]},
+    {"task_type": "task-switching", "components": ["task-switching-trial", "block"]},
+    {"task_type": "gabor", "components": ["gabor-trial", "block"]},
+    {"task_type": "nback", "components": ["nback-trial-sequence", "nback-block", "block"]},
+    {"task_type": "mot", "components": ["mot-trial", "block"]},
+    {
+        "task_type": "soc-dashboard",
+        "components": [
+            "soc-dashboard",
+            "soc-dashboard-icon",
+            "soc-subtask-flanker-like",
+            "soc-subtask-nback-like",
+            "soc-subtask-pvt-like",
+            "soc-subtask-sart-like",
+            "soc-subtask-wcst-like",
+        ],
+    },
+    {
+        "task_type": "custom",
+        "components": [
+            "instructions",
+            "html-button-response",
+            "html-keyboard-response",
+            "image-keyboard-response",
+            "survey-response",
+            "preload",
+            "reward-settings",
+            "visual-angle-calibration",
+            "block",
+        ],
+    },
+]
+
+
+class CreditsView(APIView):
+    """Fetch/update CRediT assignments grouped by task scopes."""
+
+    def get(self, request):
+        if not request.user.is_authenticated:
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        profile = get_or_create_profile(request.user)
+        if not _can_manage_researcher_resources(request, profile):
+            return Response({"error": "Insufficient role permissions"}, status=status.HTTP_403_FORBIDDEN)
+
+        schema_set = set(SCHEMA_COMPONENT_TYPES)
+        task_scopes = []
+        task_scope_map = {}
+        for row in TASK_SCOPE_DEFINITIONS:
+            task_type = str(row["task_type"])
+            components = [c for c in row["components"] if c in schema_set]
+            task_scopes.append({"task_type": task_type, "components": components})
+            task_scope_map[task_type] = set(components)
+
+        rows = []
+        for x in TaskCreditRow.objects.select_related("updated_by").all():
+            rows.append(
+                {
+                    "id": x.id,
+                    "task_type": x.task_type,
+                    "component_type": x.component_type,
+                    "credit_role": x.credit_role,
+                    "contributor_username": x.contributor_username,
+                    "notes": x.notes,
+                    "updated_by": (x.updated_by.username if x.updated_by else None),
+                    "updated_at": x.updated_at,
+                }
+            )
+
+        usernames = list(
+            User.objects.filter(is_active=True)
+            .order_by("username")
+            .values_list("username", flat=True)
+        )
+
+        return Response(
+            {
+                "ok": True,
+                "schema_source": "docs/reference/plugins/plugin_schema_reference.md",
+                "component_count": len(SCHEMA_COMPONENT_TYPES),
+                "schema_components": SCHEMA_COMPONENT_TYPES,
+                "task_scopes": task_scopes,
+                "credit_roles": CREDIT_ROLES,
+                "usernames": usernames,
+                "entries": rows,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    @transaction.atomic
+    def put(self, request):
+        _, error = _require_platform_admin(request)
+        if error:
+            return error
+
+        serializer = CreditsBulkUpdateRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entries = serializer.validated_data["entries"]
+
+        schema_set = set(SCHEMA_COMPONENT_TYPES)
+        valid_task_scopes = {
+            str(x["task_type"]): set(c for c in x["components"] if c in schema_set)
+            for x in TASK_SCOPE_DEFINITIONS
+        }
+        credit_roles_set = set(CREDIT_ROLES)
+        active_users = set(
+            User.objects.filter(is_active=True).values_list("username", flat=True)
+        )
+
+        unknown_task_types = sorted(
+            {
+                str(e.get("task_type", "")).strip()
+                for e in entries
+                if str(e.get("task_type", "")).strip() not in valid_task_scopes
+            }
+        )
+        if unknown_task_types:
+            return Response(
+                {
+                    "error": "Unknown task_type values",
+                    "unknown": unknown_task_types,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        unknown = sorted(
+            {
+                str(e.get("component_type", "")).strip()
+                for e in entries
+                if str(e.get("component_type", "")).strip() not in schema_set
+            }
+        )
+        if unknown:
+            return Response(
+                {
+                    "error": "Unknown component_type values",
+                    "unknown": unknown,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        invalid_task_scope_pairs = []
+        unknown_roles = sorted(
+            {
+                str(e.get("credit_role", "")).strip()
+                for e in entries
+                if str(e.get("credit_role", "")).strip() not in credit_roles_set
+            }
+        )
+        if unknown_roles:
+            return Response(
+                {
+                    "error": "Unknown credit_role values",
+                    "unknown": unknown_roles,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        unknown_users = sorted(
+            {
+                str(e.get("contributor_username", "")).strip()
+                for e in entries
+                if str(e.get("contributor_username", "")).strip() not in active_users
+            }
+        )
+        if unknown_users:
+            return Response(
+                {
+                    "error": "Unknown contributor_username values",
+                    "unknown": unknown_users,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        prepared = []
+        for entry in entries:
+            task_type = str(entry.get("task_type", "") or "").strip()
+            component_type = str(entry.get("component_type", "")).strip()
+            if component_type not in valid_task_scopes.get(task_type, set()):
+                invalid_task_scope_pairs.append(
+                    {
+                        "task_type": task_type,
+                        "component_type": component_type,
+                    }
+                )
+                continue
+            prepared.append(
+                TaskCreditRow(
+                    task_type=task_type,
+                    component_type=component_type,
+                    credit_role=str(entry.get("credit_role", "") or "").strip(),
+                    contributor_username=str(entry.get("contributor_username", "") or "").strip(),
+                    notes=str(entry.get("notes", "") or "").strip(),
+                    updated_by=request.user,
+                )
+            )
+
+        if invalid_task_scope_pairs:
+            return Response(
+                {
+                    "error": "component_type is not valid for the selected task_type",
+                    "invalid_pairs": invalid_task_scope_pairs,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        TaskCreditRow.objects.all().delete()
+        if prepared:
+            TaskCreditRow.objects.bulk_create(prepared)
+        updated = len(prepared)
+
+        record_audit(
+            action="credits_updated",
+            resource_type="credits",
+            resource_id="task-credit-rows",
+            actor=request.user.username,
+            metadata={"updated_count": updated},
+        )
+
+        return Response({"ok": True, "updated_count": updated}, status=status.HTTP_200_OK)
 
 
 def _nth_permutation(items: list, index: int) -> list:
@@ -1925,6 +2217,7 @@ class ShareStudyView(APIView):
         serializer = ShareStudyRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         target_username = serializer.validated_data["username"].strip()
+        can_remove_users = serializer.validated_data.get("can_remove_users", False)
 
         target_user = User.objects.filter(username=target_username).first()
         if not target_user:
@@ -1941,12 +2234,20 @@ class ShareStudyView(APIView):
 
         already_owner = study.owner_user_id == target_user.id
         created = False
+        permission_updated = False
         if not already_owner:
-            _, created = StudyResearcherAccess.objects.get_or_create(
+            access, created = StudyResearcherAccess.objects.get_or_create(
                 study=study,
                 user=target_user,
-                defaults={"granted_by": request.user},
+                defaults={
+                    "granted_by": request.user,
+                    "can_remove_users": can_remove_users,
+                },
             )
+            if not created and access.can_remove_users != can_remove_users:
+                access.can_remove_users = can_remove_users
+                access.save(update_fields=["can_remove_users"])
+                permission_updated = True
 
         record_audit(
             action="share_study",
@@ -1958,6 +2259,8 @@ class ShareStudyView(APIView):
                 "shared_with": target_user.username,
                 "already_owner": already_owner,
                 "created": created,
+                "can_remove_users": bool(can_remove_users),
+                "permission_updated": permission_updated,
             },
         )
 
@@ -1967,9 +2270,156 @@ class ShareStudyView(APIView):
                 "study_slug": study.slug,
                 "shared_with": target_user.username,
                 "already_shared": already_owner or (not created),
+                "can_remove_users": (False if already_owner else bool(can_remove_users)),
+                "permission_updated": permission_updated,
                 "owner_usernames": _get_study_owner_usernames(study),
             },
             status=status.HTTP_200_OK,
+        )
+
+
+class RevokeStudyAccessView(APIView):
+    """Remove researcher collaboration access from a study."""
+
+    @transaction.atomic
+    def post(self, request, study_slug: str):
+        if not request.user.is_authenticated:
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        profile = get_or_create_profile(request.user)
+        if not _can_manage_researcher_resources(request, profile):
+            return Response({"error": "Insufficient role permissions"}, status=status.HTTP_403_FORBIDDEN)
+
+        study = Study.objects.filter(slug=study_slug, is_active=True).first()
+        if not study:
+            return Response({"error": "Study not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if not _has_study_access(study, request.user, profile):
+            return Response({"error": "Study is not owned by the current researcher"}, status=status.HTTP_403_FORBIDDEN)
+
+        if not _can_remove_study_users(study, request.user, profile):
+            return Response({"error": "You do not have permission to remove users for this study"}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = RevokeStudyAccessRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        target_username = serializer.validated_data["username"].strip()
+
+        target_user = User.objects.filter(username=target_username).first()
+        if not target_user:
+            return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if study.owner_user_id == target_user.id:
+            return Response({"error": "Cannot remove the study owner"}, status=status.HTTP_400_BAD_REQUEST)
+
+        access = StudyResearcherAccess.objects.filter(study=study, user=target_user).first()
+        if not access:
+            return Response({"error": "User does not currently have collaborator access"}, status=status.HTTP_400_BAD_REQUEST)
+
+        access.delete()
+
+        record_audit(
+            action="revoke_study_access",
+            resource_type="study",
+            resource_id=study.id,
+            actor=request.user.username,
+            metadata={
+                "study_slug": study.slug,
+                "revoked_username": target_user.username,
+            },
+        )
+
+        return Response(
+            {
+                "ok": True,
+                "study_slug": study.slug,
+                "revoked_username": target_user.username,
+                "owner_usernames": _get_study_owner_usernames(study),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class DuplicateStudyView(APIView):
+    """Duplicate a study and clone its latest published config for further editing."""
+
+    @transaction.atomic
+    def post(self, request, study_slug: str):
+        if not request.user.is_authenticated:
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        profile = get_or_create_profile(request.user)
+        if not _can_manage_researcher_resources(request, profile):
+            return Response({"error": "Insufficient role permissions"}, status=status.HTTP_403_FORBIDDEN)
+
+        source_study = Study.objects.filter(slug=study_slug, is_active=True).first()
+        if not source_study:
+            return Response({"error": "Study not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if not _has_study_access(source_study, request.user, profile):
+            return Response({"error": "Study is not owned by the current researcher"}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = DuplicateStudyRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        requested_name = (serializer.validated_data.get("study_name") or "").strip()
+        requested_slug = (serializer.validated_data.get("study_slug") or "").strip()
+
+        new_study_name = requested_name or f"{source_study.name} (Copy)"
+        base_slug = slugify(requested_slug or new_study_name) or slugify(f"{source_study.slug}-copy") or "study-copy"
+        if base_slug == source_study.slug:
+            base_slug = f"{base_slug}-copy"
+
+        candidate_slug = base_slug
+        n = 2
+        while Study.objects.filter(slug=candidate_slug).exists():
+            candidate_slug = f"{base_slug}-{n}"
+            n += 1
+
+        source_config = source_study.config_versions.first()
+        if not source_config:
+            return Response({"error": "No published config version found to duplicate"}, status=status.HTTP_400_BAD_REQUEST)
+
+        duplicated_study = Study.objects.create(
+            slug=candidate_slug,
+            name=new_study_name,
+            runtime_mode=source_study.runtime_mode,
+            owner_user=request.user,
+            is_active=True,
+        )
+
+        duplicated_config = ConfigVersion.objects.create(
+            study=duplicated_study,
+            version_label=source_config.version_label,
+            builder_version=source_config.builder_version,
+            config_json=source_config.config_json,
+        )
+
+        record_audit(
+            action="duplicate_study",
+            resource_type="study",
+            resource_id=duplicated_study.id,
+            actor=request.user.username,
+            metadata={
+                "source_study_slug": source_study.slug,
+                "duplicated_study_slug": duplicated_study.slug,
+                "source_config_version_id": source_config.id,
+                "duplicated_config_version_id": duplicated_config.id,
+            },
+        )
+
+        return Response(
+            {
+                "ok": True,
+                "source_study_slug": source_study.slug,
+                "study_slug": duplicated_study.slug,
+                "study_name": duplicated_study.name,
+                "runtime_mode": duplicated_study.runtime_mode,
+                "owner_username": _get_study_owner_username(duplicated_study),
+                "owner_usernames": _get_study_owner_usernames(duplicated_study),
+                "config_version_id": duplicated_config.id,
+                "config_version_label": duplicated_config.version_label,
+            },
+            status=status.HTTP_201_CREATED,
         )
 
 

@@ -117,6 +117,11 @@
     return Math.max(lo, Math.min(hi, x));
   }
 
+  function toFiniteNumberOrNull(v) {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+
   function getVisualAnglePxPerDeg() {
     try {
       const v = window.__psy_visual_angle;
@@ -173,6 +178,11 @@
     if (value === 'high') return highColor;
     if (value === 'low') return lowColor;
     return neutralColor;
+  }
+
+  function toSolidRgb(color, fallback = '#666666') {
+    const rgb = parseHexColor(color) || parseRgbLikeColor(color) || parseHexColor(fallback) || { r: 102, g: 102, b: 102 };
+    return `rgb(${Math.round(rgb.r)},${Math.round(rgb.g)},${Math.round(rgb.b)})`;
   }
 
   function drawRoundedRectStroke(ctx, x, y, width, height, radius, strokeStyle, lineWidth) {
@@ -281,6 +291,56 @@
     return Math.cos(phaseRad);
   }
 
+  function resolveSpatialFrequencyCycPerPx(freqSpec, sizePx) {
+    const size = Math.max(8, Number(sizePx) || 0);
+    const parseUnit = (u) => (u ?? '').toString().trim().toLowerCase();
+    const fromUnit = (value, unit) => {
+      const n = toFiniteNumberOrNull(value);
+      if (!(n > 0)) return null;
+      const u = parseUnit(unit);
+      if (u === 'cyc_per_deg' || u === 'cycles_per_degree' || u === 'cpd') {
+        const pxPerDeg = getVisualAnglePxPerDeg();
+        return (pxPerDeg && pxPerDeg > 0) ? (n / pxPerDeg) : null;
+      }
+      if (u === 'cyc_per_patch' || u === 'cycles_per_patch' || u === 'cpp') {
+        return n / size;
+      }
+      return n;
+    };
+
+    if (freqSpec && typeof freqSpec === 'object') {
+      const cycPerPx = toFiniteNumberOrNull(freqSpec.cycPerPx ?? freqSpec.spatial_frequency_cyc_per_px);
+      if (cycPerPx > 0) return cycPerPx;
+
+      const cycPerDeg = toFiniteNumberOrNull(freqSpec.cycPerDeg ?? freqSpec.spatial_frequency_cyc_per_deg);
+      if (cycPerDeg > 0) {
+        const pxPerDeg = getVisualAnglePxPerDeg();
+        if (pxPerDeg && pxPerDeg > 0) return cycPerDeg / pxPerDeg;
+      }
+
+      const cycPerPatch = toFiniteNumberOrNull(freqSpec.cycPerPatch ?? freqSpec.spatial_frequency_cyc_per_patch);
+      if (cycPerPatch > 0) return cycPerPatch / size;
+
+      const aliased = toFiniteNumberOrNull(freqSpec.raw ?? freqSpec.value ?? freqSpec.spatial_frequency ?? freqSpec.gabor_spatial_frequency);
+      if (aliased > 0) {
+        const byUnit = fromUnit(aliased, freqSpec.unit ?? freqSpec.spatial_frequency_unit);
+        if (byUnit > 0) return byUnit;
+        // Legacy heuristic: values above Nyquist are often supplied as cycles per patch.
+        if (aliased > 0.5) return aliased / size;
+        return aliased;
+      }
+      return 0.06;
+    }
+
+    const direct = toFiniteNumberOrNull(freqSpec);
+    if (direct > 0) {
+      // Backward-compatible heuristic for legacy configs that used cycles-per-patch.
+      if (direct > 0.5) return direct / size;
+      return direct;
+    }
+    return 0.06;
+  }
+
   function makeGaborImageData(ctx, sizePx, orientationDeg, {
     freq = 0.06,
     waveform = 'sinusoidal',
@@ -294,8 +354,9 @@
     const r = Math.floor(w / 2);
     const theta = (Number.isFinite(orientationDeg) ? orientationDeg : 0) * Math.PI / 180;
 
-    // Nyquist-ish clamp: cycles/px must be <= 0.5 to avoid strong aliasing.
-    const safeFreq = Math.max(0, Math.min(0.5, Number(freq) || 0));
+    // Normalize unit variants and clamp to Nyquist-ish bound (<= 0.5 cyc/px).
+    const freqCycPerPx = resolveSpatialFrequencyCycPerPx(freq, w);
+    const safeFreq = Math.max(0, Math.min(0.5, Number(freqCycPerPx) || 0));
 
     const sigma = w / sigmaFrac;
     const img = ctx.createImageData(w, h);
@@ -482,18 +543,21 @@
     const rightCx = Math.floor(w * 0.70);
 
     // Circular value outlines directly around each patch (no padded square frame).
+    // Draw as filled annulus rings to guarantee fully solid cue color at onset.
     const outlineRadius = Math.floor(patchSize / 2) - 1;
-    ctx.save();
-    ctx.lineWidth = 7;
-    ctx.strokeStyle = leftFrameColor;
-    ctx.beginPath();
-    ctx.arc(leftCx, cy, outlineRadius, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.strokeStyle = rightFrameColor;
-    ctx.beginPath();
-    ctx.arc(rightCx, cy, outlineRadius, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.restore();
+    const ringWidth = Math.max(5, Math.round(patchSize * 0.055));
+    const drawValueRing = (cx, color) => {
+      const outerR = Math.max(1, outlineRadius + ringWidth / 2);
+      const innerR = Math.max(0, outlineRadius - ringWidth / 2);
+      ctx.save();
+      ctx.fillStyle = toSolidRgb(color, '#666666');
+      ctx.beginPath();
+      ctx.arc(cx, cy, outerR, 0, Math.PI * 2);
+      ctx.arc(cx, cy, innerR, 0, Math.PI * 2, true);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    };
 
     // Cue
     if (showCue) {
@@ -508,6 +572,10 @@
       drawNoiseMask(ctx, leftCx, cy, patchSize, { patchBorder });
       drawNoiseMask(ctx, rightCx, cy, patchSize, { patchBorder });
     }
+
+    // Keep value rings on top so they remain saturated and clearly visible.
+    drawValueRing(leftCx, leftFrameColor);
+    drawValueRing(rightCx, rightFrameColor);
 
     // Optional subtle label for debugging stages (off by default; can be enabled by CSS later)
     if (phase) {
@@ -556,9 +624,13 @@
       const leftValue = (trial.left_value ?? 'neutral').toString();
       const rightValue = (trial.right_value ?? 'neutral').toString();
 
-      const spatialFrequency = Number.isFinite(Number(trial.spatial_frequency_cyc_per_px))
-        ? Number(trial.spatial_frequency_cyc_per_px)
-        : 0.06;
+      const spatialFrequency = {
+        cycPerPx: toFiniteNumberOrNull(trial.spatial_frequency_cyc_per_px),
+        cycPerDeg: toFiniteNumberOrNull(trial.spatial_frequency_cyc_per_deg),
+        cycPerPatch: toFiniteNumberOrNull(trial.spatial_frequency_cyc_per_patch),
+        raw: toFiniteNumberOrNull(trial.spatial_frequency ?? trial.gabor_spatial_frequency),
+        unit: (trial.spatial_frequency_unit ?? '').toString().trim().toLowerCase()
+      };
       const gratingWaveform = (trial.grating_waveform ?? 'sinusoidal').toString();
 
       const patchBorder = {
