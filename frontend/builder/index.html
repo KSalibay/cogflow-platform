@@ -1664,6 +1664,15 @@
                 showInstructionsEditor(component, componentData);
             } else {
                 // Use TimelineBuilder system for other components
+                if (window.jsonBuilderInstance && !window.jsonBuilderInstance.timelineBuilder && typeof window.TimelineBuilder === 'function') {
+                    try {
+                        window.jsonBuilderInstance.timelineBuilder = new window.TimelineBuilder(window.jsonBuilderInstance);
+                        console.info('TimelineBuilder recovered lazily for edit flow');
+                    } catch (e) {
+                        console.error('TimelineBuilder lazy init failed:', e);
+                    }
+                }
+
                 if (window.jsonBuilderInstance && window.jsonBuilderInstance.timelineBuilder) {
                     window.jsonBuilderInstance.setEditingComponent(component);
                     

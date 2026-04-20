@@ -882,13 +882,30 @@ class JsonBuilder {
     initializeModules() {
         try {
             this.dataModules = new DataCollectionModules();
-            this.trialManager = new TrialManager(this);
-            this.timelineBuilder = new TimelineBuilder(this);
-            this.schemaValidator = new JSPsychSchemas();
-            
-            console.log('All modules initialized successfully');
         } catch (error) {
-            console.error('Error initializing modules:', error);
+            console.error('Error initializing DataCollectionModules:', error);
+        }
+
+        try {
+            this.trialManager = new TrialManager(this);
+        } catch (error) {
+            console.error('Error initializing TrialManager:', error);
+        }
+
+        try {
+            this.timelineBuilder = new TimelineBuilder(this);
+        } catch (error) {
+            console.error('Error initializing TimelineBuilder:', error);
+        }
+
+        try {
+            this.schemaValidator = new JSPsychSchemas();
+        } catch (error) {
+            console.error('Error initializing JSPsychSchemas:', error);
+        }
+
+        if (this.dataModules && this.trialManager && this.timelineBuilder && this.schemaValidator) {
+            console.log('All modules initialized successfully');
         }
     }
 
