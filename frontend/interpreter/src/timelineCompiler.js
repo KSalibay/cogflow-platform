@@ -1120,6 +1120,164 @@
       return fallback;
     };
 
+    const shuffleWithRng = (arr, randomFn = rng) => {
+      const out = Array.isArray(arr) ? arr.slice() : [];
+      for (let i = out.length - 1; i > 0; i--) {
+        const j = Math.floor(randomFn() * (i + 1));
+        const tmp = out[i];
+        out[i] = out[j];
+        out[j] = tmp;
+      }
+      return out;
+    };
+
+    const buildBalancedBoolSchedule = (total, pTrue, randomFn = rng) => {
+      const n = Math.max(0, Number.parseInt(total, 10) || 0);
+      if (n <= 0) return [];
+      const p = clamp(pTrue, 0, 1);
+      const nTrue = Math.max(0, Math.min(n, Math.round(n * p)));
+      const schedule = [];
+      for (let i = 0; i < nTrue; i++) schedule.push(true);
+      for (let i = nTrue; i < n; i++) schedule.push(false);
+      return shuffleWithRng(schedule, randomFn);
+    };
+
+    const toUniqueFiniteNumbers = (raw) => {
+      const out = [];
+      const seen = new Set();
+      const opts = normalizeOptions(raw);
+      for (const v of opts) {
+        const n = Number(v);
+        if (!Number.isFinite(n)) continue;
+        const key = String(n);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(n);
+      }
+      return out;
+    };
+
+    const buildBalancedPairSchedule = (total, aVals, bVals, randomFn = rng) => {
+      const n = Math.max(0, Number.parseInt(total, 10) || 0);
+      const a = Array.isArray(aVals) ? aVals : [];
+      const b = Array.isArray(bVals) ? bVals : [];
+      if (n <= 0 || a.length === 0 || b.length === 0) return [];
+
+      const combos = [];
+      for (const av of a) {
+        for (const bv of b) {
+          combos.push({ a: av, b: bv });
+        }
+      }
+      if (combos.length === 0) return [];
+
+      const out = [];
+      while (out.length < n) {
+        const cycle = shuffleWithRng(combos, randomFn);
+        for (const c of cycle) {
+          out.push(c);
+          if (out.length >= n) break;
+        }
+      }
+      return out;
+    };
+
+    const applyGaborBlockCounterbalance = (generatedTrials) => {
+      if (!Array.isArray(generatedTrials) || generatedTrials.length === 0) return;
+
+      const targetLocationOpts = normalizeOptions(values.target_location).map(v => (v ?? '').toString().trim().toLowerCase());
+      const hasBothTargetSides = targetLocationOpts.includes('left') && targetLocationOpts.includes('right');
+      const pTargetLeftRaw = Number(values.target_left_probability);
+      const targetPlan = (Number.isFinite(pTargetLeftRaw) && hasBothTargetSides)
+        ? buildBalancedBoolSchedule(generatedTrials.length, clamp(pTargetLeftRaw, 0, 1), rng)
+        : null;
+
+      const spatialCueTargetMode = (values.spatial_cue_target_mode ?? 'couple_target_to_cue').toString().trim().toLowerCase();
+      const pCueValidRaw = Number(values.spatial_cue_validity_probability);
+
+      if (Number.isFinite(pCueValidRaw) && spatialCueTargetMode !== 'preserve_target_distribution') {
+        const pValid = clamp(pCueValidRaw, 0, 1);
+        for (const cueSide of ['left', 'right']) {
+          const indices = [];
+          for (let i = 0; i < generatedTrials.length; i++) {
+            const cue = (generatedTrials[i].spatial_cue ?? 'none').toString().trim().toLowerCase();
+            if (cue === cueSide) indices.push(i);
+          }
+          const validity = buildBalancedBoolSchedule(indices.length, pValid, rng);
+          for (let j = 0; j < indices.length; j++) {
+            const idx = indices[j];
+            const isValid = validity[j] === true;
+            generatedTrials[idx].spatial_cue_valid = isValid;
+            generatedTrials[idx].target_location = isValid
+              ? cueSide
+              : (cueSide === 'left' ? 'right' : 'left');
+          }
+        }
+      }
+
+      if (targetPlan) {
+        for (let i = 0; i < generatedTrials.length; i++) {
+          const cue = (generatedTrials[i].spatial_cue ?? 'none').toString().trim().toLowerCase();
+          const unilateralCoupled = Number.isFinite(pCueValidRaw)
+            && spatialCueTargetMode !== 'preserve_target_distribution'
+            && (cue === 'left' || cue === 'right');
+          if (!unilateralCoupled) {
+            generatedTrials[i].target_location = targetPlan[i] ? 'left' : 'right';
+          }
+        }
+      }
+
+      const valueTarget = (values.value_target_value ?? 'any').toString().trim().toLowerCase();
+      const valueNonTarget = (values.value_non_target_value ?? 'any').toString().trim().toLowerCase();
+      if (valueTarget === 'high' || valueTarget === 'low' || valueTarget === 'neutral') {
+        for (let i = 0; i < generatedTrials.length; i++) {
+          const trial = generatedTrials[i];
+          const desired = targetPlan
+            ? (targetPlan[i] ? 'left' : 'right')
+            : (((trial.target_location ?? '').toString().trim().toLowerCase() === 'right') ? 'right' : 'left');
+
+          const chosen = desired;
+
+          trial.target_location = chosen;
+          trial.value_target_value = valueTarget;
+          if (chosen === 'left') {
+            trial.left_value = valueTarget;
+            if (valueNonTarget === 'high' || valueNonTarget === 'low' || valueNonTarget === 'neutral') {
+              trial.right_value = valueNonTarget;
+            }
+          } else if (chosen === 'right') {
+            trial.right_value = valueTarget;
+            if (valueNonTarget === 'high' || valueNonTarget === 'low' || valueNonTarget === 'neutral') {
+              trial.left_value = valueNonTarget;
+            }
+          }
+        }
+      }
+
+      if (adaptiveMeta && adaptiveMeta.mode === 'quest') return;
+
+      const targetTiltOptions = toUniqueFiniteNumbers(values.target_tilt_deg);
+      const distractorOptions = toUniqueFiniteNumbers(values.distractor_orientation_deg);
+      if (targetTiltOptions.length === 0 || distractorOptions.length === 0) return;
+
+      for (const side of ['left', 'right']) {
+        const indices = [];
+        for (let i = 0; i < generatedTrials.length; i++) {
+          const loc = (generatedTrials[i].target_location ?? '').toString().trim().toLowerCase();
+          if (loc === side) indices.push(i);
+        }
+
+        const comboPlan = buildBalancedPairSchedule(indices.length, targetTiltOptions, distractorOptions, rng);
+        for (let j = 0; j < indices.length; j++) {
+          const idx = indices[j];
+          const pair = comboPlan[j];
+          if (!pair) continue;
+          generatedTrials[idx].target_tilt_deg = pair.a;
+          generatedTrials[idx].distractor_orientation_deg = pair.b;
+        }
+      }
+    };
+
     const trials = [];
     for (let i = 0; i < length; i++) {
       const t = { type: baseType, _generated_from_block: true, _block_index: i };
@@ -1687,6 +1845,10 @@
       }
 
       trials.push(t);
+    }
+
+    if (baseType === 'gabor-trial' || baseType === 'gabor-quest') {
+      applyGaborBlockCounterbalance(trials);
     }
 
     return trials;
@@ -3953,7 +4115,91 @@
           return arr[Math.max(0, Math.min(arr.length - 1, idx))];
         };
 
-        const applyCueLearningPolicies = (trial) => {
+        const shuffleLearning = (arr) => {
+          const out = Array.isArray(arr) ? arr.slice() : [];
+          for (let i = out.length - 1; i > 0; i--) {
+            const j = Math.floor(learningRng() * (i + 1));
+            const tmp = out[i];
+            out[i] = out[j];
+            out[j] = tmp;
+          }
+          return out;
+        };
+
+        const buildLearningBoolPlan = (total, pTrue) => {
+          const n = Math.max(0, Number.parseInt(total, 10) || 0);
+          if (n <= 0) return [];
+          const p = clamp(pTrue, 0, 1);
+          const nTrue = Math.max(0, Math.min(n, Math.round(n * p)));
+          const out = [];
+          for (let i = 0; i < nTrue; i++) out.push(true);
+          for (let i = nTrue; i < n; i++) out.push(false);
+          return shuffleLearning(out);
+        };
+
+        const learningNumberOptions = (raw) => {
+          const out = [];
+          const seen = new Set();
+          const arr = normalizeLearningOptions(raw);
+          for (const v of arr) {
+            const n = Number(v);
+            if (!Number.isFinite(n)) continue;
+            const key = String(n);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            out.push(n);
+          }
+          return out;
+        };
+
+        const buildLearningPairPlan = (total, aVals, bVals) => {
+          const n = Math.max(0, Number.parseInt(total, 10) || 0);
+          const a = Array.isArray(aVals) ? aVals : [];
+          const b = Array.isArray(bVals) ? bVals : [];
+          if (n <= 0 || a.length === 0 || b.length === 0) return [];
+
+          const combos = [];
+          for (const av of a) {
+            for (const bv of b) combos.push({ a: av, b: bv });
+          }
+          if (combos.length === 0) return [];
+
+          const out = [];
+          while (out.length < n) {
+            const cycle = shuffleLearning(combos);
+            for (const c of cycle) {
+              out.push(c);
+              if (out.length >= n) break;
+            }
+          }
+          return out;
+        };
+
+        const learningTargetLocationOpts = normalizeLearningOptions(src.target_location).map(v => (v ?? '').toString().trim().toLowerCase());
+        const learningHasBothTargetSides = learningTargetLocationOpts.includes('left') && learningTargetLocationOpts.includes('right');
+        const learningPTargetLeft = Number(src.target_left_probability);
+        const learningTargetPlan = (Number.isFinite(learningPTargetLeft) && learningHasBothTargetSides)
+          ? buildLearningBoolPlan(Math.max(1, Number.parseInt(src.learning_max_trials ?? 200, 10) || 200), clamp(learningPTargetLeft, 0, 1))
+          : [];
+
+        const learningPCueValid = Number(src.spatial_cue_validity_probability);
+        const learningCueValidityPlan = {
+          left: Number.isFinite(learningPCueValid)
+            ? buildLearningBoolPlan(Math.max(1, Number.parseInt(src.learning_max_trials ?? 200, 10) || 200), clamp(learningPCueValid, 0, 1))
+            : [],
+          right: Number.isFinite(learningPCueValid)
+            ? buildLearningBoolPlan(Math.max(1, Number.parseInt(src.learning_max_trials ?? 200, 10) || 200), clamp(learningPCueValid, 0, 1))
+            : []
+        };
+
+        const learningTargetTiltOptions = learningNumberOptions(src.target_tilt_deg);
+        const learningDistractorOptions = learningNumberOptions(src.distractor_orientation_deg);
+        const learningTiltDistrPlan = {
+          left: buildLearningPairPlan(Math.max(1, Number.parseInt(src.learning_max_trials ?? 200, 10) || 200), learningTargetTiltOptions, learningDistractorOptions),
+          right: buildLearningPairPlan(Math.max(1, Number.parseInt(src.learning_max_trials ?? 200, 10) || 200), learningTargetTiltOptions, learningDistractorOptions)
+        };
+
+        const applyCueLearningPolicies = (trial, learningIndex, gState) => {
           const hasSpatialGate = (
             Object.prototype.hasOwnProperty.call(src, 'spatial_cue_enabled')
             || Object.prototype.hasOwnProperty.call(src, 'spatial_cue_probability')
@@ -4002,17 +4248,13 @@
             }
           }
 
-          const targetLocationOpts = normalizeLearningOptions(src.target_location).map(v => (v ?? '').toString().trim().toLowerCase());
-          const pTargetLeftRaw = Number(src.target_left_probability);
-          if (Number.isFinite(pTargetLeftRaw) && targetLocationOpts.includes('left') && targetLocationOpts.includes('right')) {
-            const pLeft = clamp(pTargetLeftRaw, 0, 1);
-            trial.target_location = (learningRng() < pLeft) ? 'left' : 'right';
+          if (learningTargetPlan.length > 0) {
+            const idx = Math.max(0, Math.min(learningTargetPlan.length - 1, learningIndex));
+            trial.target_location = learningTargetPlan[idx] ? 'left' : 'right';
           }
 
           const spatialCueTargetMode = (src.spatial_cue_target_mode ?? 'couple_target_to_cue').toString().trim().toLowerCase();
-          const pCueValid = Number(src.spatial_cue_validity_probability);
-          if (Number.isFinite(pCueValid)) {
-            const pValid = clamp(pCueValid, 0, 1);
+          if (Number.isFinite(learningPCueValid)) {
             const cue = (trial.spatial_cue ?? 'none').toString().trim().toLowerCase();
             const currentTarget = (trial.target_location ?? 'left').toString().trim().toLowerCase();
 
@@ -4023,7 +4265,12 @@
               if (spatialCueTargetMode === 'preserve_target_distribution') {
                 cueValid = (currentTarget === cue);
               } else {
-                cueValid = learningRng() < pValid;
+                const cursor = (cue === 'right') ? gState.cueValidityCursorRight : gState.cueValidityCursorLeft;
+                const plan = (cue === 'right') ? learningCueValidityPlan.right : learningCueValidityPlan.left;
+                const safeIdx = Math.max(0, Math.min(plan.length - 1, cursor));
+                cueValid = plan.length > 0 ? (plan[safeIdx] === true) : (learningRng() < clamp(learningPCueValid, 0, 1));
+                if (cue === 'right') gState.cueValidityCursorRight += 1;
+                else gState.cueValidityCursorLeft += 1;
                 nextTarget = cueValid ? cue : (cue === 'left' ? 'right' : 'left');
               }
             }
@@ -4040,23 +4287,9 @@
           const valueNonTarget = (src.value_non_target_value ?? 'any').toString().trim().toLowerCase();
           const shouldApplyValueTarget = (!hasValueGate || valuePresentForTrial);
           if (shouldApplyValueTarget && (valueTarget === 'high' || valueTarget === 'low' || valueTarget === 'neutral')) {
-            const lv = (trial.left_value ?? 'neutral').toString().trim().toLowerCase();
-            const rv = (trial.right_value ?? 'neutral').toString().trim().toLowerCase();
-
-            const candidates = [];
-            if (lv === valueTarget) candidates.push('left');
-            if (rv === valueTarget) candidates.push('right');
-
-            let chosen = null;
-            if (candidates.length === 1) {
-              chosen = candidates[0];
-            } else if (candidates.length > 1) {
-              chosen = learningRng() < 0.5 ? 'left' : 'right';
-            } else {
-              chosen = learningRng() < 0.5 ? 'left' : 'right';
-              if (chosen === 'left') trial.left_value = valueTarget;
-              if (chosen === 'right') trial.right_value = valueTarget;
-            }
+            const chosen = learningTargetPlan.length > 0
+              ? (learningTargetPlan[Math.max(0, Math.min(learningTargetPlan.length - 1, learningIndex))] ? 'left' : 'right')
+              : ((trial.target_location ?? '').toString().trim().toLowerCase() === 'right' ? 'right' : 'left');
 
             if (chosen) {
               trial.target_location = chosen;
@@ -4089,11 +4322,25 @@
             trial.reward_availability_probability = pAvail;
             trial.reward_available = (learningRng() < pAvail);
           }
+
+          const side = ((trial.target_location ?? '').toString().trim().toLowerCase() === 'right') ? 'right' : 'left';
+          const plan = side === 'right' ? learningTiltDistrPlan.right : learningTiltDistrPlan.left;
+          const cursor = side === 'right' ? gState.tiltDistrCursorRight : gState.tiltDistrCursorLeft;
+          const safeIdx = Math.max(0, Math.min(plan.length - 1, cursor));
+          const pair = plan.length > 0 ? plan[safeIdx] : null;
+          if (side === 'right') gState.tiltDistrCursorRight += 1;
+          else gState.tiltDistrCursorLeft += 1;
+
+          if (pair) {
+            trial.target_tilt_deg = pair.a;
+            trial.distractor_orientation_deg = pair.b;
+          }
         };
 
         const streakLength = Math.max(1, Number.parseInt(src.learning_streak_length ?? 20, 10) || 20);
         const targetAccuracy = Number.isFinite(Number(src.learning_target_accuracy)) ? Number(src.learning_target_accuracy) : 0.9;
         const maxTrials = Math.max(1, Number.parseInt(src.learning_max_trials ?? 200, 10) || 200);
+        const accuracyStartTrial = Math.max(1, Number.parseInt(src.learning_accuracy_start_trial ?? streakLength, 10) || streakLength);
         const showFeedback = src.show_feedback !== false;
         const feedbackDurationMs = Math.max(0, Number(src.feedback_duration_ms ?? 800) || 0);
         const useStoredThresholdsForLearning = (
@@ -4135,7 +4382,14 @@
           }
         };
 
-        const gLearningState = { trialCount: 0, history: [] };
+        const gLearningState = {
+          trialCount: 0,
+          history: [],
+          cueValidityCursorLeft: 0,
+          cueValidityCursorRight: 0,
+          tiltDistrCursorLeft: 0,
+          tiltDistrCursorRight: 0,
+        };
 
         const trialTemplate = {
           type: Gabor,
@@ -4146,7 +4400,7 @@
             for (const [k, v] of Object.entries(src)) {
               if (
                 k === 'learning_streak_length' || k === 'learning_target_accuracy' ||
-                k === 'learning_max_trials' || k === 'show_feedback' ||
+                k === 'learning_max_trials' || k === 'learning_accuracy_start_trial' || k === 'show_feedback' ||
                 k === 'feedback_duration_ms' || k === 'block_component_type' ||
                 k === 'component_type' || k === 'block_length' || k === 'type' ||
                 k === 'parameter_values' || k === 'parameter_windows' ||
@@ -4169,7 +4423,8 @@
               trial[k] = sampled;
             }
 
-            applyCueLearningPolicies(trial);
+            const learningIndex = Math.max(0, gLearningState.trialCount);
+            applyCueLearningPolicies(trial, learningIndex, gLearningState);
             applyStoredThresholdForLearning(trial);
 
             trial.show_feedback = showFeedback;
@@ -4199,6 +4454,7 @@
           timeline: [trialTemplate],
           loop_function: () => {
             if (gLearningState.trialCount >= maxTrials) return false;
+            if (gLearningState.trialCount < accuracyStartTrial) return true;
             if (gLearningState.history.length < streakLength) return true;
             const acc = gLearningState.history.reduce((a, b) => a + b, 0) / streakLength;
             return acc < targetAccuracy;
