@@ -1524,7 +1524,7 @@ class TimelineBuilder {
                             ? 'feedbackArrowCustomColor'
                             : ((paramName === 'feedback_arrow_correct_color' || paramName === 'feedback_arrow_incorrect_color')
                                 ? 'feedbackArrowAutoColors'
-                                : '')));
+                                : ''))));
             const dynamicTargetSubGroup = (paramName === 'dynamic_target_group_every_n_frames') ? 'dynamicTargetRange' : '';
             const dependentDirectionSubGroup = (paramName === 'dependent_group_1_direction_options' || paramName === 'dependent_group_direction_difference_options') ? 'dependentDirectionFields' : '';
 
@@ -1695,7 +1695,7 @@ class TimelineBuilder {
                             ? 'feedbackArrowCustomColor'
                             : ((paramName === 'feedback_arrow_correct_color' || paramName === 'feedback_arrow_incorrect_color')
                                 ? 'feedbackArrowAutoColors'
-                                : '')));
+                                : ''))));
             const dynamicTargetSubGroup = (paramName === 'dynamic_target_group_every_n_frames') ? 'dynamicTargetRange' : '';
             const dependentDirectionSubGroup = (paramName === 'dependent_group_1_direction_options' || paramName === 'dependent_group_direction_difference_options') ? 'dependentDirectionFields' : '';
 
