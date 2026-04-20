@@ -2181,6 +2181,22 @@ class TimelineBuilder {
             const feedbackEnabled = (effectiveMode !== 'off');
             const arrowEnabled = (effectiveMode === 'arrow');
 
+            const inheritedArrowColorMode = (() => {
+                try {
+                    const defaults = this.jsonBuilder?.getRDMResponseParameters?.() || {};
+                    const t = (defaults?.feedback?.arrow_color_mode ?? 'auto').toString().trim().toLowerCase();
+                    return (t === 'neutral' || t === 'custom' || t === 'auto') ? t : 'auto';
+                } catch {
+                    return 'auto';
+                }
+            })();
+
+            const effectiveArrowColorMode = (() => {
+                const t = (arrowColorMode || 'auto').toString().trim().toLowerCase();
+                if (t === 'inherit') return inheritedArrowColorMode;
+                return (t === 'neutral' || t === 'custom' || t === 'auto') ? t : 'auto';
+            })();
+
             // Duration only relevant when explicitly enabled (not inherit/off)
             formContainer.querySelectorAll('[data-feedback-subgroup="feedbackDuration"]').forEach(el => {
                 const show = feedbackEnabled;
@@ -2199,7 +2215,7 @@ class TimelineBuilder {
             });
 
             formContainer.querySelectorAll('[data-feedback-subgroup="feedbackArrowNeutralColor"]').forEach(el => {
-                const show = arrowEnabled && arrowColorMode === 'neutral';
+                const show = arrowEnabled && effectiveArrowColorMode === 'neutral';
                 el.style.display = show ? '' : 'none';
                 el.querySelectorAll('input, select, textarea').forEach(i => {
                     i.disabled = !show;
@@ -2207,7 +2223,7 @@ class TimelineBuilder {
             });
 
             formContainer.querySelectorAll('[data-feedback-subgroup="feedbackArrowCustomColor"]').forEach(el => {
-                const show = arrowEnabled && arrowColorMode === 'custom';
+                const show = arrowEnabled && effectiveArrowColorMode === 'custom';
                 el.style.display = show ? '' : 'none';
                 el.querySelectorAll('input, select, textarea').forEach(i => {
                     i.disabled = !show;
@@ -2215,7 +2231,7 @@ class TimelineBuilder {
             });
 
             formContainer.querySelectorAll('[data-feedback-subgroup="feedbackArrowAutoColors"]').forEach(el => {
-                const show = arrowEnabled && arrowColorMode === 'auto';
+                const show = arrowEnabled && effectiveArrowColorMode === 'auto';
                 el.style.display = show ? '' : 'none';
                 el.querySelectorAll('input, select, textarea').forEach(i => {
                     i.disabled = !show;
