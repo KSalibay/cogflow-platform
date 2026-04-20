@@ -2165,8 +2165,21 @@ class TimelineBuilder {
         const updateFeedbackVisibility = () => {
             const mode = feedbackModeEl ? feedbackModeEl.value : 'inherit';
             const arrowColorMode = feedbackArrowColorModeEl ? feedbackArrowColorModeEl.value : 'auto';
-            const feedbackEnabled = (mode !== 'inherit' && mode !== 'off');
-            const arrowEnabled = (feedbackEnabled && mode === 'arrow');
+
+            // Inherit should follow experiment-wide response feedback defaults.
+            const inheritedMode = (() => {
+                try {
+                    const defaults = this.jsonBuilder?.getRDMResponseParameters?.() || {};
+                    const t = (defaults?.feedback?.type ?? 'off').toString().trim().toLowerCase();
+                    return (t === 'arrow' || t === 'corner-text' || t === 'custom') ? t : 'off';
+                } catch {
+                    return 'off';
+                }
+            })();
+
+            const effectiveMode = (mode === 'inherit') ? inheritedMode : mode;
+            const feedbackEnabled = (effectiveMode !== 'off');
+            const arrowEnabled = (effectiveMode === 'arrow');
 
             // Duration only relevant when explicitly enabled (not inherit/off)
             formContainer.querySelectorAll('[data-feedback-subgroup="feedbackDuration"]').forEach(el => {
