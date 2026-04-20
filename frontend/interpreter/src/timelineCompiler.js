@@ -5274,6 +5274,58 @@
       return { min, max };
     };
 
+    const parseDirectionExpression = (raw) => {
+      const s = (raw ?? '').toString().trim();
+      if (!s) return null;
+
+      const tokens = s
+        .split(/[\n,]+/)
+        .map((x) => x.trim())
+        .filter(Boolean);
+      if (tokens.length === 0) return null;
+
+      const items = [];
+      for (const token of tokens) {
+        const n = Number(token);
+        if (Number.isFinite(n)) {
+          items.push({ kind: 'value', value: n });
+          continue;
+        }
+
+        const m = /^(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)$/.exec(token);
+        if (!m) return null;
+
+        const a = Number(m[1]);
+        const b = Number(m[2]);
+        if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+
+        items.push({ kind: 'range', min: Math.min(a, b), max: Math.max(a, b) });
+      }
+
+      if (items.length === 0) return null;
+      return items;
+    };
+
+    const sampleDirectionExpression = (raw) => {
+      const spec = parseDirectionExpression(raw);
+      if (!spec) return null;
+
+      const pick = spec[Math.floor(Math.random() * spec.length)];
+      if (!pick) return null;
+
+      if (pick.kind === 'value') return pick.value;
+
+      const min = Number(pick.min);
+      const max = Number(pick.max);
+      if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+      if (Math.floor(min) === min && Math.floor(max) === max) {
+        const lo = Math.trunc(min);
+        const hi = Math.trunc(max);
+        return lo + Math.floor(Math.random() * (hi - lo + 1));
+      }
+      return min + (max - min) * Math.random();
+    };
+
     // Allow nested config style: per-trial overrides may provide aperture fields under
     // `aperture_parameters: { ... }`. Flatten any missing keys for convenience.
     if (isObject(p.aperture_parameters)) {
@@ -5309,6 +5361,13 @@
       } else {
         delete p.dynamic_target_group_every_n_frames_min;
         delete p.dynamic_target_group_every_n_frames_max;
+      }
+    }
+
+    if (typeof p.direction === 'string') {
+      const sampledDirection = sampleDirectionExpression(p.direction);
+      if (Number.isFinite(sampledDirection)) {
+        p.direction = sampledDirection;
       }
     }
 

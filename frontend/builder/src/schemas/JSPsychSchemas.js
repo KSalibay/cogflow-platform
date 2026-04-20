@@ -4429,12 +4429,46 @@ class JSPsychSchemas {
         const valuesToCheck = paramDef.array ? value : [value];
         
         for (const val of valuesToCheck) {
-            if (!this.isValidParameterType(val, paramDef.type)) {
+            const acceptsDirectionalExpression = (
+                paramDef.type === this.parameterTypes.FLOAT
+                && this.isDirectionalFloatParam(paramName)
+                && this.isDirectionalExpression(val)
+            );
+
+            if (!acceptsDirectionalExpression && !this.isValidParameterType(val, paramDef.type)) {
                 errors.push(`Trial ${trialIndex}: Parameter '${paramName}' has invalid type. Expected ${paramDef.type}`);
             }
         }
 
         return { errors, warnings };
+    }
+
+    isDirectionalFloatParam(paramName) {
+        const p = (paramName || '').toString().trim();
+        return [
+            'direction',
+            'group_1_direction',
+            'group_2_direction',
+            'dependent_group_1_direction',
+            'dependent_group_direction_difference'
+        ].includes(p);
+    }
+
+    isDirectionalExpression(value) {
+        if (typeof value !== 'string') return false;
+        const raw = value.trim();
+        if (!raw) return false;
+
+        const parts = raw
+            .split(/[\n,]+/)
+            .map((x) => x.trim())
+            .filter(Boolean);
+        if (parts.length === 0) return false;
+
+        const isNum = (s) => /^-?\d+(?:\.\d+)?$/.test(s);
+        const isRange = (s) => /^-?\d+(?:\.\d+)?\s*-\s*-?\d+(?:\.\d+)?$/.test(s);
+
+        return parts.every((token) => isNum(token) || isRange(token));
     }
 
     /**
