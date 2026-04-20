@@ -55,6 +55,8 @@ _interpreter_dir = settings.BASE_DIR / "frontend" / "interpreter"
 if not _interpreter_dir.exists():
     _interpreter_dir = settings.BASE_DIR.parent / "frontend" / "interpreter"
 
+_portal_assets_dir = settings.BASE_DIR / "project" / "templates" / "portal" / "assets"
+
 schema_view = get_schema_view(
     title="CogFlow Platform API",
     description="OpenAPI schema for CogFlow Platform v1 endpoints.",
@@ -64,6 +66,12 @@ schema_view = get_schema_view(
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    re_path(
+        r"^favicon\.ico$",
+        static_serve,
+        {"path": "favicon.ico", "document_root": str(_portal_assets_dir)},
+    ),
+    re_path(r"^portal/assets/(?P<path>.+)$", static_serve, {"document_root": str(_portal_assets_dir)}),
     path("", PortalDashboardView.as_view(), name="portal-home"),
     path("index.html", PortalDashboardView.as_view(), name="portal-index"),
     path("portal/", PortalDashboardView.as_view(), name="portal-dashboard"),
