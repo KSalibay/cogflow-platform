@@ -163,6 +163,16 @@ var jsPsychRdm = (function (jspsych) {
       : (fb.arrow_incorrect_color || '#FF5C5C').toString();
   }
 
+  function resolveArrowFeedbackStyle(feedback) {
+    const fb = feedback && typeof feedback === 'object' ? feedback : {};
+    const sizeRaw = Number(fb.arrow_size_px);
+    const lineWidthRaw = Number(fb.arrow_line_width_px);
+    return {
+      arrowSizePx: (Number.isFinite(sizeRaw) && sizeRaw > 0) ? sizeRaw : null,
+      arrowLineWidthPx: (Number.isFinite(lineWidthRaw) && lineWidthRaw > 0) ? lineWidthRaw : null,
+    };
+  }
+
   function evaluateMouseCorrectness(meta, activeRdm, response, fallbackSide, fallbackCorrectSide) {
     const mouse = (response && response.mouse_response && typeof response.mouse_response === 'object')
       ? response.mouse_response
@@ -448,9 +458,12 @@ var jsPsychRdm = (function (jspsych) {
         } else if (fb.type === 'arrow') {
           const directionDeg = getCorrectDirectionDeg(getActiveRdmParams());
           const arrowColor = resolveArrowFeedbackColor(fb, isCorrect);
+          const arrowStyle = resolveArrowFeedbackStyle(fb);
           if (engine) {
             engine.arrowDirectionDeg = directionDeg;
             engine.arrowColor = arrowColor;
+            engine.arrowSizePx = arrowStyle.arrowSizePx;
+            engine.arrowLineWidthPx = arrowStyle.arrowLineWidthPx;
           }
           el.innerHTML = '';
         } else if (fb.type === 'custom') {
@@ -462,6 +475,8 @@ var jsPsychRdm = (function (jspsych) {
           if (engine) {
             engine.arrowDirectionDeg = null;
             engine.arrowColor = null;
+            engine.arrowSizePx = null;
+            engine.arrowLineWidthPx = null;
           }
         }, feedbackMs);
 

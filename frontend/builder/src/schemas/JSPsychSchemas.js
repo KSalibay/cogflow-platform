@@ -2463,6 +2463,49 @@ class JSPsychSchemas {
                         blockTarget: 'rdm-*',
                         description: 'Feedback duration (ms) when feedback_mode is enabled (corner-text/arrow/custom)'
                     },
+                    feedback_arrow_color_mode: {
+                        type: this.parameterTypes.SELECT,
+                        default: 'inherit',
+                        options: ['inherit', 'auto', 'neutral', 'custom'],
+                        blockTarget: 'rdm-*',
+                        description: 'Arrow feedback color behavior (inherit uses experiment defaults)'
+                    },
+                    feedback_arrow_neutral_color: {
+                        type: this.parameterTypes.COLOR,
+                        default: '#CBD5E1',
+                        blockTarget: 'rdm-*',
+                        description: 'Neutral arrow color when feedback_arrow_color_mode = neutral'
+                    },
+                    feedback_arrow_custom_color: {
+                        type: this.parameterTypes.COLOR,
+                        default: '#93A3B8',
+                        blockTarget: 'rdm-*',
+                        description: 'Custom arrow color when feedback_arrow_color_mode = custom'
+                    },
+                    feedback_arrow_correct_color: {
+                        type: this.parameterTypes.COLOR,
+                        default: '#5CFF8A',
+                        blockTarget: 'rdm-*',
+                        description: 'Arrow color for correct responses when feedback_arrow_color_mode = auto'
+                    },
+                    feedback_arrow_incorrect_color: {
+                        type: this.parameterTypes.COLOR,
+                        default: '#FF5C5C',
+                        blockTarget: 'rdm-*',
+                        description: 'Arrow color for incorrect responses when feedback_arrow_color_mode = auto'
+                    },
+                    feedback_arrow_size_px: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 8,
+                        blockTarget: 'rdm-*',
+                        description: 'Arrow feedback head size in pixels'
+                    },
+                    feedback_arrow_line_width_px: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 3.5,
+                        blockTarget: 'rdm-*',
+                        description: 'Arrow feedback line width in pixels'
+                    },
                     mouse_segments: {
                         type: this.parameterTypes.INT,
                         default: 2,
@@ -2481,6 +2524,25 @@ class JSPsychSchemas {
                         options: ['click', 'hover'],
                         blockTarget: 'rdm-*',
                         description: 'Mouse response: how a segment selection is registered'
+                    },
+                    mouse_accuracy_mode: {
+                        type: this.parameterTypes.SELECT,
+                        default: 'inherit',
+                        options: ['inherit', 'side', 'angular'],
+                        blockTarget: 'rdm-*',
+                        description: 'Mouse/touch accuracy rule: side hemisphere or angular tolerance'
+                    },
+                    mouse_accuracy_tolerance_deg: {
+                        type: this.parameterTypes.FLOAT,
+                        default: null,
+                        blockTarget: 'rdm-*',
+                        description: 'Angular tolerance in degrees for mouse/touch accuracy (if angular mode)'
+                    },
+                    mouse_accuracy_slack_deg: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 0,
+                        blockTarget: 'rdm-*',
+                        description: 'Extra angular slack (degrees) added to tolerance for mouse/touch accuracy'
                     },
 
                     // Shared RDM timing windows (set min=max for constant per-block timing)
@@ -3466,6 +3528,12 @@ class JSPsychSchemas {
                         default: '2,3,4',
                         blockTarget: 'mot-trial',
                         description: 'MOT: comma-separated integers for num_targets sampling'
+                    },
+                    mot_dot_size_px: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 44,
+                        blockTarget: 'mot-trial',
+                        description: 'MOT: dot diameter in pixels'
                     },
                     mot_speed_px_per_s_min: {
                         type: this.parameterTypes.FLOAT,
@@ -4659,6 +4727,16 @@ class JSPsychSchemas {
                 type: this.parameterTypes.COLOR,
                 default: '#FF5C5C',
                 description: 'Arrow color for incorrect responses when feedback_arrow_color_mode = auto'
+            },
+            feedback_arrow_size_px: {
+                type: this.parameterTypes.FLOAT,
+                default: 8,
+                description: 'Arrow feedback head size in pixels'
+            },
+            feedback_arrow_line_width_px: {
+                type: this.parameterTypes.FLOAT,
+                default: 3.5,
+                description: 'Arrow feedback line width in pixels'
             },
             mouse_segments: {
                 type: this.parameterTypes.INT,

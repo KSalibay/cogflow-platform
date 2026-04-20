@@ -119,6 +119,8 @@
       this.rng = Math.random;
       this.arrowDirectionDeg = null;
       this.arrowColor = null;
+      this.arrowSizePx = null;
+      this.arrowLineWidthPx = null;
       this.fps = 0;
       this.debugOverlayEnabled = false;
       this._debugFrameReseeds = 0;
@@ -854,13 +856,16 @@
       ctx.save();
       ctx.strokeStyle = this.arrowColor;
       ctx.fillStyle = this.arrowColor;
-      ctx.lineWidth = 3.5;
+      const lineWidth = Number(this.arrowLineWidthPx);
+      ctx.lineWidth = (Number.isFinite(lineWidth) && lineWidth > 0) ? lineWidth : 3.5;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
 
       const apertureR = this.apertureShape === 'circle' ? this.apertureRadius : (this.apertureSize / 2);
-      const outerOffset = 18;
-      const innerInset = 6;
+      const arrowSize = Number(this.arrowSizePx);
+      const resolvedArrowSize = (Number.isFinite(arrowSize) && arrowSize > 0) ? arrowSize : 8;
+      const outerOffset = Math.max(12, resolvedArrowSize * 2.25);
+      const innerInset = Math.max(4, resolvedArrowSize * 0.75);
 
       // Direction unit vector
       const ux = Math.cos(theta);
@@ -879,18 +884,17 @@
       ctx.stroke();
 
       // Draw arrowhead at x2,y2
-      const arrowSize = 8;
       const anglePerp = theta + Math.PI / 2;
       const uperp = Math.cos(anglePerp);
       const vperp = Math.sin(anglePerp);
 
-      const ax = x2 - ux * arrowSize;
-      const ay = y2 - uy * arrowSize;
+      const ax = x2 - ux * resolvedArrowSize;
+      const ay = y2 - uy * resolvedArrowSize;
 
       ctx.beginPath();
       ctx.moveTo(x2, y2);
-      ctx.lineTo(ax + uperp * (arrowSize * 0.5), ay + vperp * (arrowSize * 0.5));
-      ctx.lineTo(ax - uperp * (arrowSize * 0.5), ay - vperp * (arrowSize * 0.5));
+      ctx.lineTo(ax + uperp * (resolvedArrowSize * 0.5), ay + vperp * (resolvedArrowSize * 0.5));
+      ctx.lineTo(ax - uperp * (resolvedArrowSize * 0.5), ay - vperp * (resolvedArrowSize * 0.5));
       ctx.closePath();
       ctx.fill();
 

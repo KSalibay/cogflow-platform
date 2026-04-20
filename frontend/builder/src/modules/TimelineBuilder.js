@@ -1492,7 +1492,11 @@ class TimelineBuilder {
                 ? '<div class="form-text">When unchecked, ISO timing/RT fields are locked to default values.</div>'
                 : '';
 
-            const responseGroup = (paramName === 'feedback_mode' || paramName === 'feedback_duration_ms')
+            const responseGroup = (paramName === 'feedback_mode' || paramName === 'feedback_duration_ms'
+                || paramName === 'feedback_arrow_color_mode' || paramName === 'feedback_arrow_neutral_color'
+                || paramName === 'feedback_arrow_custom_color' || paramName === 'feedback_arrow_correct_color'
+                || paramName === 'feedback_arrow_incorrect_color' || paramName === 'feedback_arrow_size_px'
+                || paramName === 'feedback_arrow_line_width_px')
                 ? 'feedback'
                 : (paramName === 'cue_border_mode' || paramName === 'cue_border_width' || paramName === 'cue_border_color' || paramName === 'response_target_group')
                     ? 'cue'
@@ -1504,10 +1508,23 @@ class TimelineBuilder {
                                 ? 'dependentDirection'
                                 : (paramName === 'group_speed_mode' || paramName === 'group_1_speed' || paramName === 'group_2_speed')
                                     ? 'groupSpeed'
+                                    : (paramName === 'mouse_segments' || paramName === 'mouse_start_angle_deg' || paramName === 'mouse_selection_mode'
+                                        || paramName === 'mouse_accuracy_mode' || paramName === 'mouse_accuracy_tolerance_deg' || paramName === 'mouse_accuracy_slack_deg')
+                                        ? 'mouse'
                                     : '';
 
             const cueSubGroup = (paramName === 'cue_border_color') ? 'cueColor' : '';
-            const feedbackSubGroup = (paramName === 'feedback_duration_ms') ? 'feedbackDuration' : '';
+            const feedbackSubGroup = (paramName === 'feedback_duration_ms')
+                ? 'feedbackDuration'
+                : ((paramName === 'feedback_arrow_color_mode' || paramName === 'feedback_arrow_size_px' || paramName === 'feedback_arrow_line_width_px')
+                    ? 'feedbackArrowStyle'
+                    : ((paramName === 'feedback_arrow_neutral_color')
+                        ? 'feedbackArrowNeutralColor'
+                        : ((paramName === 'feedback_arrow_custom_color')
+                            ? 'feedbackArrowCustomColor'
+                            : ((paramName === 'feedback_arrow_correct_color' || paramName === 'feedback_arrow_incorrect_color')
+                                ? 'feedbackArrowAutoColors'
+                                : '')));
             const dynamicTargetSubGroup = (paramName === 'dynamic_target_group_every_n_frames') ? 'dynamicTargetRange' : '';
             const dependentDirectionSubGroup = (paramName === 'dependent_group_1_direction_options' || paramName === 'dependent_group_direction_difference_options') ? 'dependentDirectionFields' : '';
 
@@ -1634,7 +1651,9 @@ class TimelineBuilder {
             const isContinuousOnlyParam = (paramName === 'end_condition_on_response_mode');
             const shouldDisable = isTrialBased && (isTransitionParam || isContinuousOnlyParam);
             
-            const responseGroup = (paramName === 'mouse_segments' || paramName === 'mouse_start_angle_deg' || paramName === 'mouse_selection_mode' || paramName === 'go_button')
+            const responseGroup = (paramName === 'mouse_segments' || paramName === 'mouse_start_angle_deg' || paramName === 'mouse_selection_mode'
+                || paramName === 'mouse_accuracy_mode' || paramName === 'mouse_accuracy_tolerance_deg' || paramName === 'mouse_accuracy_slack_deg'
+                || paramName === 'go_button')
                 ? 'mouse'
                 : (paramName === 'mouse_response_mode')
                     ? 'mouse'
@@ -1645,7 +1664,11 @@ class TimelineBuilder {
                     ? 'keyboard'
                     : (paramName === 'choice_keys')
                         ? 'keyboard'
-                    : (paramName === 'feedback_mode' || paramName === 'feedback_duration_ms')
+                    : (paramName === 'feedback_mode' || paramName === 'feedback_duration_ms'
+                        || paramName === 'feedback_arrow_color_mode' || paramName === 'feedback_arrow_neutral_color'
+                        || paramName === 'feedback_arrow_custom_color' || paramName === 'feedback_arrow_correct_color'
+                        || paramName === 'feedback_arrow_incorrect_color' || paramName === 'feedback_arrow_size_px'
+                        || paramName === 'feedback_arrow_line_width_px')
                         ? 'feedback'
                     : (paramName === 'cue_border_mode' || paramName === 'cue_border_width' || paramName === 'cue_border_color' || paramName === 'response_target_group')
                         ? 'cue'
@@ -1662,7 +1685,17 @@ class TimelineBuilder {
                             : '';
 
             const cueSubGroup = (paramName === 'cue_border_color') ? 'cueColor' : '';
-            const feedbackSubGroup = (paramName === 'feedback_duration_ms') ? 'feedbackDuration' : '';
+            const feedbackSubGroup = (paramName === 'feedback_duration_ms')
+                ? 'feedbackDuration'
+                : ((paramName === 'feedback_arrow_color_mode' || paramName === 'feedback_arrow_size_px' || paramName === 'feedback_arrow_line_width_px')
+                    ? 'feedbackArrowStyle'
+                    : ((paramName === 'feedback_arrow_neutral_color')
+                        ? 'feedbackArrowNeutralColor'
+                        : ((paramName === 'feedback_arrow_custom_color')
+                            ? 'feedbackArrowCustomColor'
+                            : ((paramName === 'feedback_arrow_correct_color' || paramName === 'feedback_arrow_incorrect_color')
+                                ? 'feedbackArrowAutoColors'
+                                : '')));
             const dynamicTargetSubGroup = (paramName === 'dynamic_target_group_every_n_frames') ? 'dynamicTargetRange' : '';
             const dependentDirectionSubGroup = (paramName === 'dependent_group_1_direction_options' || paramName === 'dependent_group_direction_difference_options') ? 'dependentDirectionFields' : '';
 
@@ -2128,12 +2161,48 @@ class TimelineBuilder {
 
         // Feedback conditional fields (per-component / per-block)
         const feedbackModeEl = formContainer.querySelector('#param_feedback_mode');
+        const feedbackArrowColorModeEl = formContainer.querySelector('#param_feedback_arrow_color_mode');
         const updateFeedbackVisibility = () => {
             const mode = feedbackModeEl ? feedbackModeEl.value : 'inherit';
+            const arrowColorMode = feedbackArrowColorModeEl ? feedbackArrowColorModeEl.value : 'auto';
+            const feedbackEnabled = (mode !== 'inherit' && mode !== 'off');
+            const arrowEnabled = (feedbackEnabled && mode === 'arrow');
 
             // Duration only relevant when explicitly enabled (not inherit/off)
             formContainer.querySelectorAll('[data-feedback-subgroup="feedbackDuration"]').forEach(el => {
-                const show = (mode !== 'inherit' && mode !== 'off');
+                const show = feedbackEnabled;
+                el.style.display = show ? '' : 'none';
+                el.querySelectorAll('input, select, textarea').forEach(i => {
+                    i.disabled = !show;
+                });
+            });
+
+            formContainer.querySelectorAll('[data-feedback-subgroup="feedbackArrowStyle"]').forEach(el => {
+                const show = arrowEnabled;
+                el.style.display = show ? '' : 'none';
+                el.querySelectorAll('input, select, textarea').forEach(i => {
+                    i.disabled = !show;
+                });
+            });
+
+            formContainer.querySelectorAll('[data-feedback-subgroup="feedbackArrowNeutralColor"]').forEach(el => {
+                const show = arrowEnabled && arrowColorMode === 'neutral';
+                el.style.display = show ? '' : 'none';
+                el.querySelectorAll('input, select, textarea').forEach(i => {
+                    i.disabled = !show;
+                });
+            });
+
+            formContainer.querySelectorAll('[data-feedback-subgroup="feedbackArrowCustomColor"]').forEach(el => {
+                const show = arrowEnabled && arrowColorMode === 'custom';
+                el.style.display = show ? '' : 'none';
+                el.querySelectorAll('input, select, textarea').forEach(i => {
+                    i.disabled = !show;
+                });
+            });
+
+            formContainer.querySelectorAll('[data-feedback-subgroup="feedbackArrowAutoColors"]').forEach(el => {
+                const show = arrowEnabled && arrowColorMode === 'auto';
                 el.style.display = show ? '' : 'none';
                 el.querySelectorAll('input, select, textarea').forEach(i => {
                     i.disabled = !show;
@@ -2143,6 +2212,9 @@ class TimelineBuilder {
 
         if (feedbackModeEl) {
             feedbackModeEl.addEventListener('change', updateFeedbackVisibility);
+            if (feedbackArrowColorModeEl) {
+                feedbackArrowColorModeEl.addEventListener('change', updateFeedbackVisibility);
+            }
             updateFeedbackVisibility();
         }
 

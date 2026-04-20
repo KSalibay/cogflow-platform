@@ -35,6 +35,7 @@ class JsonBuilder {
         this.onDataCollectionChange = this.onDataCollectionChange.bind(this);
         this.onTaskTypeChange = this.onTaskTypeChange.bind(this);
     }
+
     /**
      * Show/hide UI sections based on current settings
      */
@@ -42,6 +43,7 @@ class JsonBuilder {
         const defaultDevice = document.getElementById('defaultResponseDevice')?.value || 'keyboard';
 
         const feedbackType = document.getElementById('defaultFeedbackType')?.value || 'off';
+        const feedbackArrowColorMode = document.getElementById('defaultFeedbackArrowColorMode')?.value || 'auto';
 
         const mouseSettings = document.getElementById('mouseResponseSettings');
         if (mouseSettings) {
@@ -71,6 +73,51 @@ class JsonBuilder {
             const show = feedbackType !== 'off';
             feedbackDurationRow.style.display = show ? '' : 'none';
             feedbackDurationInput.disabled = !show;
+        }
+
+        const feedbackArrowStyleSettings = document.getElementById('feedbackArrowStyleSettings');
+        if (feedbackArrowStyleSettings) {
+            const showArrowSettings = (feedbackType === 'arrow');
+            feedbackArrowStyleSettings.style.display = showArrowSettings ? '' : 'none';
+            feedbackArrowStyleSettings.querySelectorAll('input, select, textarea').forEach((el) => {
+                el.disabled = !showArrowSettings;
+            });
+        }
+
+        const feedbackArrowNeutralColorRow = document.getElementById('feedbackArrowNeutralColorRow');
+        if (feedbackArrowNeutralColorRow) {
+            const showNeutral = (feedbackType === 'arrow' && feedbackArrowColorMode === 'neutral');
+            feedbackArrowNeutralColorRow.style.display = showNeutral ? '' : 'none';
+            feedbackArrowNeutralColorRow.querySelectorAll('input, select, textarea').forEach((el) => {
+                el.disabled = !showNeutral;
+            });
+        }
+
+        const feedbackArrowCustomColorRow = document.getElementById('feedbackArrowCustomColorRow');
+        if (feedbackArrowCustomColorRow) {
+            const showCustom = (feedbackType === 'arrow' && feedbackArrowColorMode === 'custom');
+            feedbackArrowCustomColorRow.style.display = showCustom ? '' : 'none';
+            feedbackArrowCustomColorRow.querySelectorAll('input, select, textarea').forEach((el) => {
+                el.disabled = !showCustom;
+            });
+        }
+
+        const feedbackArrowAutoColorsRow = document.getElementById('feedbackArrowAutoColorsRow');
+        if (feedbackArrowAutoColorsRow) {
+            const showAutoColors = (feedbackType === 'arrow' && feedbackArrowColorMode === 'auto');
+            feedbackArrowAutoColorsRow.style.display = showAutoColors ? '' : 'none';
+            feedbackArrowAutoColorsRow.querySelectorAll('input, select, textarea').forEach((el) => {
+                el.disabled = !showAutoColors;
+            });
+        }
+
+        const mouseAccuracySettings = document.getElementById('mouseAccuracySettings');
+        if (mouseAccuracySettings) {
+            const showMouseAccuracy = (defaultDevice === 'mouse');
+            mouseAccuracySettings.style.display = showMouseAccuracy ? '' : 'none';
+            mouseAccuracySettings.querySelectorAll('input, select, textarea').forEach((el) => {
+                el.disabled = !showMouseAccuracy;
+            });
         }
 
         // N-back defaults: only show template HTML when render_mode=custom_html
@@ -2326,6 +2373,7 @@ class JsonBuilder {
             } else if (innerType === 'mot-trial') {
                 if (Array.isArray(values.num_objects)) out.mot_num_objects_options = csv(values.num_objects);
                 if (Array.isArray(values.num_targets)) out.mot_num_targets_options = csv(values.num_targets);
+                if (values.dot_size_px !== undefined) out.mot_dot_size_px = values.dot_size_px;
                 if (values.motion_type !== undefined) out.mot_motion_type = values.motion_type;
                 if (values.probe_mode !== undefined) out.mot_probe_mode = values.probe_mode;
                 if (values.yes_key !== undefined) out.mot_yes_key = values.yes_key;
@@ -4359,6 +4407,11 @@ class JsonBuilder {
                     <input type="number" class="form-control parameter-input" id="motSpeedDefault" value="150" min="20" max="600">
                 </div>
                 <div class="parameter-row">
+                    <label class="parameter-label">Dot Size (px):</label>
+                    <input type="number" class="form-control parameter-input" id="motDotSizePxDefault" value="44" min="2" max="200">
+                    <div class="parameter-help">Diameter of each MOT object in pixels</div>
+                </div>
+                <div class="parameter-row">
                     <label class="parameter-label">Motion Type:</label>
                     <select class="form-control parameter-input" id="motMotionTypeDefault">
                         <option value="linear" selected>Linear</option>
@@ -5126,6 +5179,40 @@ class JsonBuilder {
                     <input type="number" class="form-control parameter-input" id="defaultFeedbackDuration" value="500" min="0" max="20000" disabled>
                     <div class="parameter-help">How long feedback is displayed after the response</div>
                 </div>
+                <div id="feedbackArrowStyleSettings" style="display:none;">
+                    <div class="parameter-row">
+                        <label class="parameter-label">Arrow Color Mode:</label>
+                        <select class="form-control parameter-input" id="defaultFeedbackArrowColorMode">
+                            <option value="auto" selected>Auto (correct/incorrect colors)</option>
+                            <option value="neutral">Neutral</option>
+                            <option value="custom">Custom single color</option>
+                        </select>
+                        <div class="parameter-help">Controls how arrow feedback color is determined.</div>
+                    </div>
+                    <div class="parameter-row" id="feedbackArrowAutoColorsRow" style="display:none;">
+                        <label class="parameter-label">Auto Colors:</label>
+                        <div class="d-flex gap-2">
+                            <input type="color" class="form-control form-control-color parameter-input" id="defaultFeedbackArrowCorrectColor" value="#5CFF8A" title="Correct color">
+                            <input type="color" class="form-control form-control-color parameter-input" id="defaultFeedbackArrowIncorrectColor" value="#FF5C5C" title="Incorrect color">
+                        </div>
+                    </div>
+                    <div class="parameter-row" id="feedbackArrowNeutralColorRow" style="display:none;">
+                        <label class="parameter-label">Neutral Arrow Color:</label>
+                        <input type="color" class="form-control form-control-color parameter-input" id="defaultFeedbackArrowNeutralColor" value="#CBD5E1">
+                    </div>
+                    <div class="parameter-row" id="feedbackArrowCustomColorRow" style="display:none;">
+                        <label class="parameter-label">Custom Arrow Color:</label>
+                        <input type="color" class="form-control form-control-color parameter-input" id="defaultFeedbackArrowCustomColor" value="#93A3B8">
+                    </div>
+                    <div class="parameter-row">
+                        <label class="parameter-label">Arrow Size (px):</label>
+                        <input type="number" class="form-control parameter-input" id="defaultFeedbackArrowSizePx" value="8" min="2" max="80" step="1">
+                    </div>
+                    <div class="parameter-row">
+                        <label class="parameter-label">Arrow Line Width (px):</label>
+                        <input type="number" class="form-control parameter-input" id="defaultFeedbackArrowLineWidthPx" value="3.5" min="0.5" max="20" step="0.5">
+                    </div>
+                </div>
                 <div id="mouseResponseSettings" style="display: none;">
                     <div class="parameter-row">
                         <label class="parameter-label">Mouse Response:</label>
@@ -5148,6 +5235,24 @@ class JsonBuilder {
                             <option value="hover">Hover (no click)</option>
                         </select>
                         <div class="parameter-help">How a segment selection is registered</div>
+                    </div>
+                    <div id="mouseAccuracySettings">
+                        <div class="parameter-row">
+                            <label class="parameter-label">Accuracy Mode:</label>
+                            <select class="form-control parameter-input" id="mouseAccuracyMode">
+                                <option value="auto" selected>Auto (side for 2 segments, angular for &gt;2)</option>
+                                <option value="side">Side</option>
+                                <option value="angular">Angular tolerance</option>
+                            </select>
+                        </div>
+                        <div class="parameter-row">
+                            <label class="parameter-label">Angular Tolerance (deg):</label>
+                            <input type="number" class="form-control parameter-input" id="mouseAccuracyToleranceDeg" value="" min="0" max="180" step="0.1" placeholder="Auto by segments">
+                        </div>
+                        <div class="parameter-row">
+                            <label class="parameter-label">Angular Slack (deg):</label>
+                            <input type="number" class="form-control parameter-input" id="mouseAccuracySlackDeg" value="0" min="0" max="180" step="0.1">
+                        </div>
                     </div>
                 </div>
             </div>
@@ -5172,6 +5277,11 @@ class JsonBuilder {
         const feedbackTypeEl = document.getElementById('defaultFeedbackType');
         if (feedbackTypeEl) {
             feedbackTypeEl.addEventListener('change', () => this.updateConditionalUI());
+        }
+
+        const feedbackArrowColorModeEl = document.getElementById('defaultFeedbackArrowColorMode');
+        if (feedbackArrowColorModeEl) {
+            feedbackArrowColorModeEl.addEventListener('change', () => this.updateConditionalUI());
         }
 
         // Task-specific conditional UI (Gabor response keys)
@@ -5587,6 +5697,11 @@ class JsonBuilder {
                 <div class="parameter-row">
                     <label class="parameter-label">Speed (px/s):</label>
                     <input type="number" class="form-control parameter-input" id="motSpeedDefault" value="150" min="20" max="600">
+                </div>
+                <div class="parameter-row">
+                    <label class="parameter-label">Dot Size (px):</label>
+                    <input type="number" class="form-control parameter-input" id="motDotSizePxDefault" value="44" min="2" max="200">
+                    <div class="parameter-help">Diameter of each MOT object in pixels</div>
                 </div>
                 <div class="parameter-row">
                     <label class="parameter-label">Motion Type:</label>
@@ -6210,6 +6325,40 @@ class JsonBuilder {
                     <input type="number" class="form-control parameter-input" id="defaultFeedbackDuration" value="500" min="0" max="20000" disabled>
                     <div class="parameter-help">How long feedback is displayed after the response</div>
                 </div>
+                <div id="feedbackArrowStyleSettings" style="display:none;">
+                    <div class="parameter-row">
+                        <label class="parameter-label">Arrow Color Mode:</label>
+                        <select class="form-control parameter-input" id="defaultFeedbackArrowColorMode">
+                            <option value="auto" selected>Auto (correct/incorrect colors)</option>
+                            <option value="neutral">Neutral</option>
+                            <option value="custom">Custom single color</option>
+                        </select>
+                        <div class="parameter-help">Controls how arrow feedback color is determined.</div>
+                    </div>
+                    <div class="parameter-row" id="feedbackArrowAutoColorsRow" style="display:none;">
+                        <label class="parameter-label">Auto Colors:</label>
+                        <div class="d-flex gap-2">
+                            <input type="color" class="form-control form-control-color parameter-input" id="defaultFeedbackArrowCorrectColor" value="#5CFF8A" title="Correct color">
+                            <input type="color" class="form-control form-control-color parameter-input" id="defaultFeedbackArrowIncorrectColor" value="#FF5C5C" title="Incorrect color">
+                        </div>
+                    </div>
+                    <div class="parameter-row" id="feedbackArrowNeutralColorRow" style="display:none;">
+                        <label class="parameter-label">Neutral Arrow Color:</label>
+                        <input type="color" class="form-control form-control-color parameter-input" id="defaultFeedbackArrowNeutralColor" value="#CBD5E1">
+                    </div>
+                    <div class="parameter-row" id="feedbackArrowCustomColorRow" style="display:none;">
+                        <label class="parameter-label">Custom Arrow Color:</label>
+                        <input type="color" class="form-control form-control-color parameter-input" id="defaultFeedbackArrowCustomColor" value="#93A3B8">
+                    </div>
+                    <div class="parameter-row">
+                        <label class="parameter-label">Arrow Size (px):</label>
+                        <input type="number" class="form-control parameter-input" id="defaultFeedbackArrowSizePx" value="8" min="2" max="80" step="1">
+                    </div>
+                    <div class="parameter-row">
+                        <label class="parameter-label">Arrow Line Width (px):</label>
+                        <input type="number" class="form-control parameter-input" id="defaultFeedbackArrowLineWidthPx" value="3.5" min="0.5" max="20" step="0.5">
+                    </div>
+                </div>
                 <div id="mouseResponseSettings" style="display: none;">
                     <div class="parameter-row">
                         <label class="parameter-label">Mouse Response:</label>
@@ -6232,6 +6381,24 @@ class JsonBuilder {
                             <option value="hover">Hover (no click)</option>
                         </select>
                         <div class="parameter-help">How a segment selection is registered</div>
+                    </div>
+                    <div id="mouseAccuracySettings">
+                        <div class="parameter-row">
+                            <label class="parameter-label">Accuracy Mode:</label>
+                            <select class="form-control parameter-input" id="mouseAccuracyMode">
+                                <option value="auto" selected>Auto (side for 2 segments, angular for &gt;2)</option>
+                                <option value="side">Side</option>
+                                <option value="angular">Angular tolerance</option>
+                            </select>
+                        </div>
+                        <div class="parameter-row">
+                            <label class="parameter-label">Angular Tolerance (deg):</label>
+                            <input type="number" class="form-control parameter-input" id="mouseAccuracyToleranceDeg" value="" min="0" max="180" step="0.1" placeholder="Auto by segments">
+                        </div>
+                        <div class="parameter-row">
+                            <label class="parameter-label">Angular Slack (deg):</label>
+                            <input type="number" class="form-control parameter-input" id="mouseAccuracySlackDeg" value="0" min="0" max="180" step="0.1">
+                        </div>
                     </div>
                 </div>
             </div>
@@ -6258,6 +6425,11 @@ class JsonBuilder {
         const feedbackTypeEl = document.getElementById('defaultFeedbackType');
         if (feedbackTypeEl) {
             feedbackTypeEl.addEventListener('change', () => this.updateConditionalUI());
+        }
+
+        const feedbackArrowColorModeEl = document.getElementById('defaultFeedbackArrowColorMode');
+        if (feedbackArrowColorModeEl) {
+            feedbackArrowColorModeEl.addEventListener('change', () => this.updateConditionalUI());
         }
 
         // Task-specific conditional UI (Gabor response keys)
@@ -6673,6 +6845,7 @@ class JsonBuilder {
             const motOnlyParams = {
                 mot_num_objects_options: { type: 'string', default: (document.getElementById('motNumObjectsDefault')?.value || '8').toString() },
                 mot_num_targets_options: { type: 'string', default: (document.getElementById('motNumTargetsDefault')?.value || '4').toString() },
+                mot_dot_size_px: { type: 'number', default: Number.parseFloat(document.getElementById('motDotSizePxDefault')?.value || '44'), min: 2, max: 200 },
                 mot_motion_type: { type: 'select', default: (document.getElementById('motMotionTypeDefault')?.value || 'linear').toString(), options: ['linear', 'curved'] },
                 mot_probe_mode: { type: 'select', default: (document.getElementById('motProbeModeDefault')?.value || 'click').toString(), options: ['click', 'number_entry', 'yes_no_recognition'] },
                 mot_yes_key: { type: 'string', default: (document.getElementById('motYesKeyDefault')?.value || 'y').toString() },
@@ -6733,9 +6906,21 @@ class JsonBuilder {
                 response_device: { type: 'select', default: 'inherit', options: ['inherit', 'keyboard', 'mouse', 'touch', 'voice', 'custom'] },
                 response_keys: { type: 'string', default: '' },
                 require_response_mode: { type: 'select', default: 'inherit', options: ['inherit', 'true', 'false'] },
+                feedback_mode: { type: 'select', default: 'inherit', options: ['inherit', 'off', 'corner-text', 'arrow', 'custom'] },
+                feedback_duration_ms: { type: 'number', default: 500, min: 0, max: 20000 },
+                feedback_arrow_color_mode: { type: 'select', default: 'inherit', options: ['inherit', 'auto', 'neutral', 'custom'] },
+                feedback_arrow_neutral_color: { type: 'COLOR', default: '#CBD5E1' },
+                feedback_arrow_custom_color: { type: 'COLOR', default: '#93A3B8' },
+                feedback_arrow_correct_color: { type: 'COLOR', default: '#5CFF8A' },
+                feedback_arrow_incorrect_color: { type: 'COLOR', default: '#FF5C5C' },
+                feedback_arrow_size_px: { type: 'number', default: 8, min: 2, max: 80 },
+                feedback_arrow_line_width_px: { type: 'number', default: 3.5, min: 0.5, max: 20, step: 0.5 },
                 mouse_segments: { type: 'number', default: 2, min: 1, max: 12 },
                 mouse_start_angle_deg: { type: 'number', default: 0, min: 0, max: 359 },
                 mouse_selection_mode: { type: 'select', default: 'click', options: ['click', 'hover'] },
+                mouse_accuracy_mode: { type: 'select', default: 'inherit', options: ['inherit', 'side', 'angular'] },
+                mouse_accuracy_tolerance_deg: { type: 'number', default: '', min: 0, max: 180, step: 0.1 },
+                mouse_accuracy_slack_deg: { type: 'number', default: 0, min: 0, max: 180, step: 0.1 },
 
                 // Shared RDM timing windows (set min=max for constant per-block timing)
                 stimulus_duration_min: { type: 'number', default: 1500, min: 100, max: 30000 },
@@ -8605,6 +8790,7 @@ class JsonBuilder {
             const numObjects = Number.parseInt(document.getElementById('motNumObjectsDefault')?.value || '8', 10);
             const numTargets = Number.parseInt(document.getElementById('motNumTargetsDefault')?.value || '4', 10);
             const speed = Number.parseFloat(document.getElementById('motSpeedDefault')?.value || '150');
+            const dotSizePx = Number.parseFloat(document.getElementById('motDotSizePxDefault')?.value || '44');
             const motionType = (document.getElementById('motMotionTypeDefault')?.value || 'linear').toString();
             const probeMode = (document.getElementById('motProbeModeDefault')?.value || 'click').toString();
             const yesKey = (document.getElementById('motYesKeyDefault')?.value || 'y').toString().trim() || 'y';
@@ -8623,6 +8809,7 @@ class JsonBuilder {
                 num_objects: Number.isFinite(numObjects) ? numObjects : 8,
                 num_targets: Number.isFinite(numTargets) ? numTargets : 4,
                 speed_px_per_s: Number.isFinite(speed) ? speed : 150,
+                dot_size_px: Number.isFinite(dotSizePx) ? dotSizePx : 44,
                 motion_type: motionType,
                 probe_mode: probeMode,
                 yes_key: yesKey,
@@ -9075,6 +9262,7 @@ class JsonBuilder {
             num_objects: Number.isFinite(Number(d.num_objects)) ? Number(d.num_objects) : 8,
             num_targets: Number.isFinite(Number(d.num_targets)) ? Number(d.num_targets) : 4,
             speed_px_per_s: Number.isFinite(Number(d.speed_px_per_s)) ? Number(d.speed_px_per_s) : 150,
+            dot_size_px: Number.isFinite(Number(d.dot_size_px)) ? Number(d.dot_size_px) : 44,
             motion_type: (d.motion_type || 'linear').toString(),
             probe_mode: (d.probe_mode || 'click').toString(),
             yes_key: (d.yes_key || 'y').toString(),
@@ -9329,6 +9517,7 @@ class JsonBuilder {
             num_objects: Number.parseInt(document.getElementById('motNumObjectsDefault')?.value || '8', 10),
             num_targets: Number.parseInt(document.getElementById('motNumTargetsDefault')?.value || '4', 10),
             speed_px_per_s: Number.parseFloat(document.getElementById('motSpeedDefault')?.value || '150'),
+            dot_size_px: Number.parseFloat(document.getElementById('motDotSizePxDefault')?.value || '44'),
             motion_type: (document.getElementById('motMotionTypeDefault')?.value || 'linear').toString(),
             probe_mode: (document.getElementById('motProbeModeDefault')?.value || 'click').toString(),
             yes_key: (document.getElementById('motYesKeyDefault')?.value || 'y').toString().trim() || 'y',
@@ -9353,6 +9542,7 @@ class JsonBuilder {
         const iti = Number.isFinite(Number(d.iti_ms)) ? Number(d.iti_ms) : 1000;
         const nums = Number.isFinite(Number(d.num_objects)) ? Number(d.num_objects) : 8;
         const tgts = Number.isFinite(Number(d.num_targets)) ? Number(d.num_targets) : 4;
+        const dotSizePx = Number.isFinite(Number(d.dot_size_px)) ? Number(d.dot_size_px) : 44;
         const recognitionProbeCount = Number.isFinite(Number(d.recognition_probe_count)) ? Math.max(1, Number(d.recognition_probe_count)) : 1;
         const borderWidth = Number.isFinite(Number(d.aperture_border_width_px)) ? Number(d.aperture_border_width_px) : 2;
 
@@ -9360,6 +9550,7 @@ class JsonBuilder {
             block_component_type: 'mot-trial',
             mot_num_objects_options: String(nums),
             mot_num_targets_options: String(tgts),
+            mot_dot_size_px: dotSizePx,
             mot_motion_type: (d.motion_type || 'linear').toString(),
             mot_probe_mode: (d.probe_mode || 'click').toString(),
             mot_yes_key: (d.yes_key || 'y').toString(),
@@ -10532,9 +10723,19 @@ class JsonBuilder {
                 'end_condition_on_response_mode',
                 'feedback_mode',
                 'feedback_duration_ms',
+                'feedback_arrow_color_mode',
+                'feedback_arrow_neutral_color',
+                'feedback_arrow_custom_color',
+                'feedback_arrow_correct_color',
+                'feedback_arrow_incorrect_color',
+                'feedback_arrow_size_px',
+                'feedback_arrow_line_width_px',
                 'mouse_segments',
                 'mouse_start_angle_deg',
                 'mouse_selection_mode',
+                'mouse_accuracy_mode',
+                'mouse_accuracy_tolerance_deg',
+                'mouse_accuracy_slack_deg',
                 'response_target_group',
                 'cue_border_mode',
                 'cue_border_color',
@@ -11380,6 +11581,10 @@ class JsonBuilder {
             if (nums.length > 0) values.num_objects = Array.from(new Set(nums));
             const tgts = parseIntCSV(blockComponent.mot_num_targets_options);
             if (tgts.length > 0) values.num_targets = Array.from(new Set(tgts));
+            if (blockComponent.mot_dot_size_px !== undefined && blockComponent.mot_dot_size_px !== null && blockComponent.mot_dot_size_px !== '') {
+                const dotSize = Number.parseFloat(blockComponent.mot_dot_size_px);
+                if (Number.isFinite(dotSize) && dotSize > 0) values.dot_size_px = dotSize;
+            }
             const mtype = (blockComponent.mot_motion_type ?? '').toString().trim();
             if (mtype) values.motion_type = mtype;
             const pm = (blockComponent.mot_probe_mode ?? '').toString().trim();
@@ -11559,6 +11764,8 @@ class JsonBuilder {
         const feedbackArrowCustomColor = componentParams.feedback_arrow_custom_color;
         const feedbackArrowCorrectColor = componentParams.feedback_arrow_correct_color;
         const feedbackArrowIncorrectColor = componentParams.feedback_arrow_incorrect_color;
+        const feedbackArrowSizePxRaw = componentParams.feedback_arrow_size_px;
+        const feedbackArrowLineWidthPxRaw = componentParams.feedback_arrow_line_width_px;
 
         // Dot-groups target + cue border
         const responseTargetGroup = componentParams.response_target_group ?? componentParams.custom_response ?? componentParams.customResponse;
@@ -11578,7 +11785,9 @@ class JsonBuilder {
         const hasFeedbackOverride = typeof feedbackMode === 'string' && feedbackMode !== '' && feedbackMode !== 'inherit';
         const hasFeedbackStyleOverride = (
             typeof feedbackArrowColorMode === 'string' && feedbackArrowColorMode !== '' && feedbackArrowColorMode !== 'inherit'
-        ) || !!feedbackArrowNeutralColor || !!feedbackArrowCustomColor || !!feedbackArrowCorrectColor || !!feedbackArrowIncorrectColor;
+        ) || !!feedbackArrowNeutralColor || !!feedbackArrowCustomColor || !!feedbackArrowCorrectColor || !!feedbackArrowIncorrectColor
+            || (feedbackArrowSizePxRaw !== undefined && feedbackArrowSizePxRaw !== null && feedbackArrowSizePxRaw !== '')
+            || (feedbackArrowLineWidthPxRaw !== undefined && feedbackArrowLineWidthPxRaw !== null && feedbackArrowLineWidthPxRaw !== '');
         const hasMouseOverride = (
             responseDevice === 'mouse' &&
             (
@@ -11644,6 +11853,19 @@ class JsonBuilder {
             if (feedbackArrowCustomColor) merged.feedback.arrow_custom_color = feedbackArrowCustomColor;
             if (feedbackArrowCorrectColor) merged.feedback.arrow_correct_color = feedbackArrowCorrectColor;
             if (feedbackArrowIncorrectColor) merged.feedback.arrow_incorrect_color = feedbackArrowIncorrectColor;
+
+            if (feedbackArrowSizePxRaw !== undefined && feedbackArrowSizePxRaw !== null && feedbackArrowSizePxRaw !== '') {
+                const arrowSize = Number.parseFloat(feedbackArrowSizePxRaw);
+                if (Number.isFinite(arrowSize) && arrowSize > 0) {
+                    merged.feedback.arrow_size_px = arrowSize;
+                }
+            }
+            if (feedbackArrowLineWidthPxRaw !== undefined && feedbackArrowLineWidthPxRaw !== null && feedbackArrowLineWidthPxRaw !== '') {
+                const arrowLineWidth = Number.parseFloat(feedbackArrowLineWidthPxRaw);
+                if (Number.isFinite(arrowLineWidth) && arrowLineWidth > 0) {
+                    merged.feedback.arrow_line_width_px = arrowLineWidth;
+                }
+            }
         }
 
         const effectiveDevice = merged.response_device || 'keyboard';
@@ -11910,6 +12132,28 @@ class JsonBuilder {
                 type: feedbackType,
                 duration_ms: Number.isFinite(duration) ? duration : 500
             };
+
+            if (feedbackType === 'arrow') {
+                const arrowColorMode = (document.getElementById('defaultFeedbackArrowColorMode')?.value || 'auto').toString();
+                const arrowNeutralColor = (document.getElementById('defaultFeedbackArrowNeutralColor')?.value || '#CBD5E1').toString();
+                const arrowCustomColor = (document.getElementById('defaultFeedbackArrowCustomColor')?.value || '#93A3B8').toString();
+                const arrowCorrectColor = (document.getElementById('defaultFeedbackArrowCorrectColor')?.value || '#5CFF8A').toString();
+                const arrowIncorrectColor = (document.getElementById('defaultFeedbackArrowIncorrectColor')?.value || '#FF5C5C').toString();
+                const arrowSize = Number.parseFloat(document.getElementById('defaultFeedbackArrowSizePx')?.value || '8');
+                const arrowLineWidth = Number.parseFloat(document.getElementById('defaultFeedbackArrowLineWidthPx')?.value || '3.5');
+
+                responseParams.feedback.arrow_color_mode = arrowColorMode;
+                responseParams.feedback.arrow_neutral_color = arrowNeutralColor;
+                responseParams.feedback.arrow_custom_color = arrowCustomColor;
+                responseParams.feedback.arrow_correct_color = arrowCorrectColor;
+                responseParams.feedback.arrow_incorrect_color = arrowIncorrectColor;
+                if (Number.isFinite(arrowSize) && arrowSize > 0) {
+                    responseParams.feedback.arrow_size_px = arrowSize;
+                }
+                if (Number.isFinite(arrowLineWidth) && arrowLineWidth > 0) {
+                    responseParams.feedback.arrow_line_width_px = arrowLineWidth;
+                }
+            }
         }
 
         // Only include keyboard keys/mapping when keyboard is the active response device.
@@ -11931,6 +12175,19 @@ class JsonBuilder {
                 start_angle_deg: parseFloat(document.getElementById('mouseSegmentStartAngle')?.value || 0),
                 selection_mode: document.getElementById('mouseSelectionMode')?.value || 'click'
             };
+
+            const accuracyMode = (document.getElementById('mouseAccuracyMode')?.value || 'auto').toString();
+            const accuracyTolerance = Number.parseFloat(document.getElementById('mouseAccuracyToleranceDeg')?.value || '');
+            const accuracySlack = Number.parseFloat(document.getElementById('mouseAccuracySlackDeg')?.value || '');
+            if (accuracyMode === 'side' || accuracyMode === 'angular') {
+                responseParams.mouse_response.accuracy_mode = accuracyMode;
+            }
+            if (Number.isFinite(accuracyTolerance) && accuracyTolerance >= 0) {
+                responseParams.mouse_response.accuracy_tolerance_deg = accuracyTolerance;
+            }
+            if (Number.isFinite(accuracySlack) && accuracySlack >= 0) {
+                responseParams.mouse_response.accuracy_slack_deg = accuracySlack;
+            }
         }
 
         if (responseDevice === 'touch') {
@@ -12737,6 +12994,13 @@ class JsonBuilder {
         if (exp.response_parameters?.feedback?.type) {
             this.setElementValue('defaultFeedbackType', exp.response_parameters.feedback.type);
             this.setElementValue('defaultFeedbackDuration', exp.response_parameters.feedback.duration_ms);
+            this.setElementValue('defaultFeedbackArrowColorMode', exp.response_parameters.feedback.arrow_color_mode);
+            this.setElementValue('defaultFeedbackArrowNeutralColor', exp.response_parameters.feedback.arrow_neutral_color);
+            this.setElementValue('defaultFeedbackArrowCustomColor', exp.response_parameters.feedback.arrow_custom_color);
+            this.setElementValue('defaultFeedbackArrowCorrectColor', exp.response_parameters.feedback.arrow_correct_color);
+            this.setElementValue('defaultFeedbackArrowIncorrectColor', exp.response_parameters.feedback.arrow_incorrect_color);
+            this.setElementValue('defaultFeedbackArrowSizePx', exp.response_parameters.feedback.arrow_size_px);
+            this.setElementValue('defaultFeedbackArrowLineWidthPx', exp.response_parameters.feedback.arrow_line_width_px);
         }
 
         // Mouse response (optional)
@@ -12744,6 +13008,9 @@ class JsonBuilder {
             this.setElementValue('mouseApertureSegments', exp.response_parameters.mouse_response.segments);
             this.setElementValue('mouseSegmentStartAngle', exp.response_parameters.mouse_response.start_angle_deg);
             this.setElementValue('mouseSelectionMode', exp.response_parameters.mouse_response.selection_mode);
+            this.setElementValue('mouseAccuracyMode', exp.response_parameters.mouse_response.accuracy_mode);
+            this.setElementValue('mouseAccuracyToleranceDeg', exp.response_parameters.mouse_response.accuracy_tolerance_deg);
+            this.setElementValue('mouseAccuracySlackDeg', exp.response_parameters.mouse_response.accuracy_slack_deg);
         }
         this.setElementChecked('enableFixation', true);
         
