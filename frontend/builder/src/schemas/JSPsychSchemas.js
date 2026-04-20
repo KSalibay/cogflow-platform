@@ -1889,6 +1889,13 @@ class JSPsychSchemas {
                         max: 80,
                         description: 'Radius of each object in pixels'
                     },
+                    dot_size_px: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 44,
+                        min: 6,
+                        max: 160,
+                        description: 'Object diameter in pixels (alias for object radius; radius = dot_size_px / 2)'
+                    },
                     object_color: {
                         type: this.parameterTypes.COLOR,
                         default: '#FFFFFF',
@@ -4627,6 +4634,32 @@ class JSPsychSchemas {
                 default: 500,
                 description: 'Feedback duration (ms) when feedback_mode is enabled (corner-text/arrow/custom)'
             },
+            feedback_arrow_color_mode: {
+                type: this.parameterTypes.SELECT,
+                default: 'inherit',
+                options: ['inherit', 'auto', 'neutral', 'custom'],
+                description: 'Arrow feedback color behavior (inherit uses experiment defaults)'
+            },
+            feedback_arrow_neutral_color: {
+                type: this.parameterTypes.COLOR,
+                default: '#CBD5E1',
+                description: 'Neutral arrow color when feedback_arrow_color_mode = neutral'
+            },
+            feedback_arrow_custom_color: {
+                type: this.parameterTypes.COLOR,
+                default: '#93A3B8',
+                description: 'Custom arrow color when feedback_arrow_color_mode = custom'
+            },
+            feedback_arrow_correct_color: {
+                type: this.parameterTypes.COLOR,
+                default: '#5CFF8A',
+                description: 'Arrow color for correct responses when feedback_arrow_color_mode = auto'
+            },
+            feedback_arrow_incorrect_color: {
+                type: this.parameterTypes.COLOR,
+                default: '#FF5C5C',
+                description: 'Arrow color for incorrect responses when feedback_arrow_color_mode = auto'
+            },
             mouse_segments: {
                 type: this.parameterTypes.INT,
                 default: 2,
@@ -4642,6 +4675,22 @@ class JSPsychSchemas {
                 default: 'click',
                 options: ['click', 'hover'],
                 description: 'Mouse response: how a segment selection is registered'
+            },
+            mouse_accuracy_mode: {
+                type: this.parameterTypes.SELECT,
+                default: 'inherit',
+                options: ['inherit', 'side', 'angular'],
+                description: 'Mouse/touch accuracy rule: side hemisphere or angular tolerance'
+            },
+            mouse_accuracy_tolerance_deg: {
+                type: this.parameterTypes.FLOAT,
+                default: 0,
+                description: 'Angular tolerance in degrees (0 = auto half-segment tolerance)'
+            },
+            mouse_accuracy_slack_deg: {
+                type: this.parameterTypes.FLOAT,
+                default: 0,
+                description: 'Extra angular slack in degrees added to tolerance for click/hover precision'
             }
         };
 

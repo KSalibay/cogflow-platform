@@ -89,7 +89,7 @@ var jsPsychRdm = (function (jspsych) {
     const dx = x - cx;
     const dy = y - cy;
     const angle = (Math.atan2(dy, dx) * 180) / Math.PI; // -180..180, 0=right
-    const norm = (angle - startAngleDeg + 360) % 360;
+    const norm = ((angle % 360) + 360) % 360;
     const seg = Math.floor((norm / 360) * segments);
 
     // For 2 segments, seg 0 = right half, seg 1 = left half.
@@ -105,10 +105,9 @@ var jsPsychRdm = (function (jspsych) {
     const rawAngle = (Math.atan2(dy, dx) * 180) / Math.PI; // -180..180, 0=right
     const angleFromStart = (rawAngle - startAngleDeg + 360) % 360; // 0..360
     const seg = Math.floor((angleFromStart / 360) * segments);
+    const rawNorm = ((rawAngle % 360) + 360) % 360;
 
-    const side = (segments === 2)
-      ? (seg === 0 ? 'right' : 'left')
-      : (seg < segments / 2 ? 'right' : 'left');
+    const side = Math.cos((rawNorm * Math.PI) / 180) >= 0 ? 'right' : 'left';
 
     return {
       side,
@@ -139,6 +138,70 @@ var jsPsychRdm = (function (jspsych) {
     }
 
     return normalizeAngleDeg(Number(p.direction ?? p.coherent_direction ?? 0));
+  }
+
+  function angularDistanceDeg(a, b) {
+    const aa = normalizeAngleDeg(a);
+    const bb = normalizeAngleDeg(b);
+    const d = Math.abs(aa - bb);
+    return Math.min(d, 360 - d);
+  }
+
+  function resolveArrowFeedbackColor(feedback, isCorrect) {
+    const fb = feedback && typeof feedback === 'object' ? feedback : {};
+    const modeRaw = (fb.arrow_color_mode ?? 'auto').toString().trim().toLowerCase();
+    const mode = (modeRaw === 'inherit' || modeRaw === '') ? 'auto' : modeRaw;
+
+    if (mode === 'neutral') {
+      return (fb.arrow_neutral_color || '#CBD5E1').toString();
+    }
+    if (mode === 'custom') {
+      return (fb.arrow_custom_color || '#93A3B8').toString();
+    }
+    return isCorrect
+      ? (fb.arrow_correct_color || '#5CFF8A').toString()
+      : (fb.arrow_incorrect_color || '#FF5C5C').toString();
+  }
+
+  function evaluateMouseCorrectness(meta, activeRdm, response, fallbackSide, fallbackCorrectSide) {
+    const mouse = (response && response.mouse_response && typeof response.mouse_response === 'object')
+      ? response.mouse_response
+      : {};
+    const segments = Math.max(2, Number(mouse.segments ?? 2));
+    const modeRaw = (mouse.accuracy_mode ?? '').toString().trim().toLowerCase();
+    const mode = (modeRaw === 'angular' || modeRaw === 'side')
+      ? modeRaw
+      : (segments > 2 ? 'angular' : 'side');
+
+    if (mode === 'side' || !meta || !Number.isFinite(meta.raw_angle_deg)) {
+      return {
+        isCorrect: (fallbackSide !== null && fallbackCorrectSide !== null) ? (fallbackSide === fallbackCorrectSide) : null,
+        method: 'side',
+        angleErrorDeg: null,
+        toleranceDeg: null,
+        targetDirectionDeg: null,
+      };
+    }
+
+    const targetDirectionDeg = getCorrectDirectionDeg(activeRdm || {});
+    const responseDirectionDeg = normalizeAngleDeg(meta.raw_angle_deg);
+    const angleErrorDeg = angularDistanceDeg(responseDirectionDeg, targetDirectionDeg);
+
+    const toleranceRaw = Number(mouse.accuracy_tolerance_deg);
+    const baseToleranceDeg = (Number.isFinite(toleranceRaw) && toleranceRaw > 0)
+      ? toleranceRaw
+      : (180 / segments);
+    const slackDegRaw = Number(mouse.accuracy_slack_deg);
+    const slackDeg = (Number.isFinite(slackDegRaw) && slackDegRaw > 0) ? slackDegRaw : 0;
+    const toleranceDeg = Math.max(0, baseToleranceDeg + slackDeg);
+
+    return {
+      isCorrect: angleErrorDeg <= toleranceDeg,
+      method: 'angular',
+      angleErrorDeg,
+      toleranceDeg,
+      targetDirectionDeg,
+    };
   }
 
   class JsPsychRdmPlugin {
@@ -216,6 +279,10 @@ var jsPsychRdm = (function (jspsych) {
       let responseWithinAperture = null;
       let responseWithinBoundaryBand = null;
       let responseWithinCanvas = null;
+      let responseAccuracyMethod = null;
+      let responseAngleErrorDeg = null;
+      let responseToleranceDeg = null;
+      let targetDirectionDeg = null;
 
       let mouseSelectionMode = null;
       let mouseRegionPolicy = null;
@@ -275,7 +342,16 @@ var jsPsychRdm = (function (jspsych) {
 
         const activeRdm = getActiveRdmParams();
         const correctSide = getCurrentCorrectSide();
-        const isCorrect = (responseSide !== null) ? (responseSide === correctSide) : null;
+        const mouseEval = ((responseDevice === 'mouse' || responseDevice === 'touch') && responseSide !== null)
+          ? evaluateMouseCorrectness({ raw_angle_deg: responseAngleRawDeg }, activeRdm, response, responseSide, correctSide)
+          : {
+              isCorrect: (responseSide !== null) ? (responseSide === correctSide) : null,
+              method: responseDevice,
+              angleErrorDeg: null,
+              toleranceDeg: null,
+              targetDirectionDeg: null,
+            };
+        const isCorrect = mouseEval.isCorrect;
         const responseRegistered = responded === true;
 
         let responseNotRegisteredReason = null;
@@ -314,6 +390,10 @@ var jsPsychRdm = (function (jspsych) {
           response_within_aperture: responseWithinAperture,
           response_within_boundary_band: responseWithinBoundaryBand,
           response_within_canvas: responseWithinCanvas,
+          response_accuracy_method: responseAccuracyMethod,
+          response_angle_error_deg: responseAngleErrorDeg,
+          response_tolerance_deg: responseToleranceDeg,
+          target_direction_deg: targetDirectionDeg,
           response_region_policy: mouseRegionPolicy,
           response_selection_mode: mouseSelectionMode,
           mouse_aperture_radius_px: mouseApertureRadiusPx,
@@ -367,7 +447,7 @@ var jsPsychRdm = (function (jspsych) {
           </div>`;
         } else if (fb.type === 'arrow') {
           const directionDeg = getCorrectDirectionDeg(getActiveRdmParams());
-          const arrowColor = isCorrect ? '#5CFF8A' : '#FF5C5C';
+          const arrowColor = resolveArrowFeedbackColor(fb, isCorrect);
           if (engine) {
             engine.arrowDirectionDeg = directionDeg;
             engine.arrowColor = arrowColor;
@@ -432,7 +512,22 @@ var jsPsychRdm = (function (jspsych) {
         responseTs = nowMs();
         rt = startTs ? Math.round(responseTs - startTs) : null;
 
-        const isCorrect = responseSide !== null ? responseSide === getCurrentCorrectSide() : null;
+        const activeRdm = getActiveRdmParams();
+        const correctSide = getCurrentCorrectSide();
+        const mouseEval = ((responseDevice === 'mouse' || responseDevice === 'touch') && responseSide !== null)
+          ? evaluateMouseCorrectness(payload, activeRdm, response, responseSide, correctSide)
+          : {
+              isCorrect: responseSide !== null ? responseSide === correctSide : null,
+              method: responseDevice,
+              angleErrorDeg: null,
+              toleranceDeg: null,
+              targetDirectionDeg: null,
+            };
+        const isCorrect = mouseEval.isCorrect;
+        responseAccuracyMethod = mouseEval.method;
+        responseAngleErrorDeg = mouseEval.angleErrorDeg;
+        responseToleranceDeg = mouseEval.toleranceDeg;
+        targetDirectionDeg = mouseEval.targetDirectionDeg;
         const feedbackMs = (isCorrect !== null) ? showFeedback(isCorrect) : 0;
 
         if (experimentType === 'trial-based') {

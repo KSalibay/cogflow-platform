@@ -11554,6 +11554,11 @@ class JsonBuilder {
         // Feedback override
         const feedbackMode = componentParams.feedback_mode;
         const feedbackDurationRaw = componentParams.feedback_duration_ms;
+        const feedbackArrowColorMode = componentParams.feedback_arrow_color_mode;
+        const feedbackArrowNeutralColor = componentParams.feedback_arrow_neutral_color;
+        const feedbackArrowCustomColor = componentParams.feedback_arrow_custom_color;
+        const feedbackArrowCorrectColor = componentParams.feedback_arrow_correct_color;
+        const feedbackArrowIncorrectColor = componentParams.feedback_arrow_incorrect_color;
 
         // Dot-groups target + cue border
         const responseTargetGroup = componentParams.response_target_group ?? componentParams.custom_response ?? componentParams.customResponse;
@@ -11571,15 +11576,25 @@ class JsonBuilder {
             endConditionMode !== 'inherit'
         );
         const hasFeedbackOverride = typeof feedbackMode === 'string' && feedbackMode !== '' && feedbackMode !== 'inherit';
+        const hasFeedbackStyleOverride = (
+            typeof feedbackArrowColorMode === 'string' && feedbackArrowColorMode !== '' && feedbackArrowColorMode !== 'inherit'
+        ) || !!feedbackArrowNeutralColor || !!feedbackArrowCustomColor || !!feedbackArrowCorrectColor || !!feedbackArrowIncorrectColor;
         const hasMouseOverride = (
             responseDevice === 'mouse' &&
-            (componentParams.mouse_segments !== undefined || componentParams.mouse_start_angle_deg !== undefined || componentParams.mouse_selection_mode !== undefined)
+            (
+                componentParams.mouse_segments !== undefined
+                || componentParams.mouse_start_angle_deg !== undefined
+                || componentParams.mouse_selection_mode !== undefined
+                || componentParams.mouse_accuracy_mode !== undefined
+                || componentParams.mouse_accuracy_tolerance_deg !== undefined
+                || componentParams.mouse_accuracy_slack_deg !== undefined
+            )
         );
 
         const hasTargetOverride = typeof responseTargetGroup === 'string' && responseTargetGroup !== '' && responseTargetGroup !== 'none';
         const hasCueOverride = typeof cueBorderMode === 'string' && cueBorderMode !== '' && cueBorderMode !== 'off';
 
-        if (!hasDeviceOverride && !hasKeysOverride && !hasRequireOverride && !hasEndConditionOverride && !hasFeedbackOverride && !hasMouseOverride && !hasTargetOverride && !hasCueOverride) {
+        if (!hasDeviceOverride && !hasKeysOverride && !hasRequireOverride && !hasEndConditionOverride && !hasFeedbackOverride && !hasFeedbackStyleOverride && !hasMouseOverride && !hasTargetOverride && !hasCueOverride) {
             return null;
         }
 
@@ -11621,6 +11636,16 @@ class JsonBuilder {
             }
         }
 
+        if (merged.feedback && merged.feedback.enabled) {
+            if (typeof feedbackArrowColorMode === 'string' && feedbackArrowColorMode !== '' && feedbackArrowColorMode !== 'inherit') {
+                merged.feedback.arrow_color_mode = feedbackArrowColorMode;
+            }
+            if (feedbackArrowNeutralColor) merged.feedback.arrow_neutral_color = feedbackArrowNeutralColor;
+            if (feedbackArrowCustomColor) merged.feedback.arrow_custom_color = feedbackArrowCustomColor;
+            if (feedbackArrowCorrectColor) merged.feedback.arrow_correct_color = feedbackArrowCorrectColor;
+            if (feedbackArrowIncorrectColor) merged.feedback.arrow_incorrect_color = feedbackArrowIncorrectColor;
+        }
+
         const effectiveDevice = merged.response_device || 'keyboard';
 
         // Apply key overrides (keyboard only)
@@ -11646,7 +11671,14 @@ class JsonBuilder {
                 mode: 'aperture-segments',
                 segments: parseInt(componentParams.mouse_segments ?? merged.mouse_response?.segments ?? 2),
                 start_angle_deg: parseFloat(componentParams.mouse_start_angle_deg ?? merged.mouse_response?.start_angle_deg ?? 0),
-                selection_mode: componentParams.mouse_selection_mode ?? merged.mouse_response?.selection_mode ?? 'click'
+                selection_mode: componentParams.mouse_selection_mode ?? merged.mouse_response?.selection_mode ?? 'click',
+                accuracy_mode: componentParams.mouse_accuracy_mode ?? merged.mouse_response?.accuracy_mode,
+                accuracy_tolerance_deg: (componentParams.mouse_accuracy_tolerance_deg !== undefined && componentParams.mouse_accuracy_tolerance_deg !== null && componentParams.mouse_accuracy_tolerance_deg !== '')
+                    ? parseFloat(componentParams.mouse_accuracy_tolerance_deg)
+                    : merged.mouse_response?.accuracy_tolerance_deg,
+                accuracy_slack_deg: (componentParams.mouse_accuracy_slack_deg !== undefined && componentParams.mouse_accuracy_slack_deg !== null && componentParams.mouse_accuracy_slack_deg !== '')
+                    ? parseFloat(componentParams.mouse_accuracy_slack_deg)
+                    : merged.mouse_response?.accuracy_slack_deg
             };
         } else {
             // Keep output clean if not a mouse-response component

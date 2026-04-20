@@ -22,6 +22,7 @@
       num_objects:          { type: PT.INT,    default: 8 },
       num_targets:          { type: PT.INT,    default: 4 },
       object_radius_px:     { type: PT.INT,    default: 22 },
+      dot_size_px:          { type: PT.FLOAT,  default: null },
       object_color:         { type: PT.STRING, default: '#FFFFFF' },
       target_cue_color:     { type: PT.STRING, default: '#FF9900' },
       background_color:     { type: PT.STRING, default: '#111111' },
@@ -93,7 +94,7 @@
       const jsPsych = this.jsPsych;
 
       const {
-        num_objects, num_targets, object_radius_px,
+        num_objects, num_targets, object_radius_px, dot_size_px,
         object_color, target_cue_color, background_color,
         arena_width_px: W, arena_height_px: H,
         aperture_shape, aperture_border_enabled, aperture_border_color, aperture_border_width_px,
@@ -103,7 +104,10 @@
         probe_mode, yes_key, no_key, recognition_probe_count, probe_timeout_ms, show_feedback, feedback_duration_ms
       } = trial;
 
-      const r = object_radius_px;
+      const radiusFromDotSize = Number.isFinite(Number(dot_size_px)) && Number(dot_size_px) > 0
+        ? (Number(dot_size_px) / 2)
+        : null;
+      const r = radiusFromDotSize !== null ? radiusFromDotSize : object_radius_px;
 
       // ── DOM ──────────────────────────────────────────────────────────────
       display_element.innerHTML = `
