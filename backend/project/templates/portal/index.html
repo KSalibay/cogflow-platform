@@ -1698,7 +1698,7 @@
       </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/lib/browser.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
     <script>
     "use strict";
@@ -1732,6 +1732,8 @@
     let currentUser   = null;
     let mfaSetupState = null;
     let studiesList   = [];
+    let studiesLoadInFlight = false;
+    let studiesLoadQueued = false;
     let integrationsRollout = null;
     const latestConfigCache = {};
     const studyUiState = {};
@@ -2968,9 +2970,21 @@
     document.getElementById("adminRefreshBtn")?.addEventListener("click", () => loadAdminUsers(true));
 
     // ── Studies ────────────────────────────────────────────────
+    function refreshStudiesUiFromCache() {
+      renderStudyRows(studiesList);
+      populatePreviewSelect(studiesList);
+      populateIntegrationsStudySelect(studiesList);
+    }
+
     async function loadStudies() {
+      if (studiesLoadInFlight) {
+        studiesLoadQueued = true;
+        return;
+      }
+
       const statusEl  = document.getElementById("studiesStatus");
       const refreshBtn = document.getElementById("refreshBtn");
+      studiesLoadInFlight = true;
       refreshBtn.disabled = true;
       statusEl.className = "status-bar";
       statusEl.textContent = "Refreshing…";
@@ -2980,16 +2994,19 @@
         const d = await r.json();
         studiesList = d.studies || [];
         invalidateLatestConfigCache();
-        renderStudyRows(studiesList);
-        populatePreviewSelect(studiesList);
-        populateIntegrationsStudySelect(studiesList);
+        refreshStudiesUiFromCache();
         statusEl.className = "status-bar ok";
         statusEl.textContent = `${studiesList.length} ${studiesList.length === 1 ? "study" : "studies"} — refreshed ${new Date().toLocaleTimeString()}.`;
       } catch (err) {
         statusEl.className = "status-bar error";
         statusEl.textContent = `Failed to load studies: ${err?.message || err}`;
       } finally {
+        studiesLoadInFlight = false;
         refreshBtn.disabled = false;
+        if (studiesLoadQueued) {
+          studiesLoadQueued = false;
+          loadStudies();
+        }
       }
     }
 
@@ -3344,13 +3361,13 @@
       const st = getStudyState(slug);
       st.expanded = !st.expanded;
       if (st.expanded && !st.runsLoaded && !st.runsLoading) { await loadRuns(slug); return; }
-      loadStudies();
+      refreshStudiesUiFromCache();
     }
 
     async function loadRuns(slug) {
       const st = getStudyState(slug);
       st.expanded = true; st.runsLoading = true; st.runsError = null;
-      loadStudies();
+      refreshStudiesUiFromCache();
       try {
         const r = await fetch(`${API}/api/v1/studies/${encodeURIComponent(slug)}/runs`, { credentials: "include" });
         const d = await r.json().catch(() => ({}));
@@ -3360,7 +3377,7 @@
       } catch (err) {
         st.runs = []; st.runsLoaded = false; st.runsError = err?.message || String(err);
       } finally {
-        st.runsLoading = false; loadStudies();
+        st.runsLoading = false; refreshStudiesUiFromCache();
       }
     }
 
