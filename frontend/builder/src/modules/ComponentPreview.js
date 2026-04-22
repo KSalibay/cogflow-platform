@@ -3580,13 +3580,42 @@ class ComponentPreview {
             return Math.floor(lo + (hi - lo + 1) * rng());
         };
 
+        const expandIntegerRangeTokens = (raw) => {
+            const parts = Array.isArray(raw)
+                ? raw
+                : raw
+                    .toString()
+                    .split(',')
+                    .map(s => s.trim())
+                    .filter(Boolean);
+
+            const out = [];
+            for (const part of parts) {
+                const m = part.match(/^(-?\d+)\s*-\s*(-?\d+)$/);
+                if (!m) {
+                    out.push(part);
+                    continue;
+                }
+
+                const start = Number.parseInt(m[1], 10);
+                const end = Number.parseInt(m[2], 10);
+                if (!Number.isFinite(start) || !Number.isFinite(end)) {
+                    out.push(part);
+                    continue;
+                }
+
+                const step = start <= end ? 1 : -1;
+                for (let n = start; step > 0 ? n <= end : n >= end; n += step) {
+                    out.push(String(n));
+                }
+            }
+
+            return out;
+        };
+
         const parseNumberList = (raw, { min = 0, max = 359 } = {}) => {
             if (raw === undefined || raw === null) return [];
-            const parts = raw
-                .toString()
-                .split(',')
-                .map(s => s.trim())
-                .filter(Boolean);
+            const parts = expandIntegerRangeTokens(raw);
             const nums = [];
             for (const p of parts) {
                 const n = Number(p);

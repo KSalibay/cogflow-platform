@@ -105,6 +105,15 @@
     return ((a % 360) + 360) % 360;
   }
 
+  function parseAngleDegrees(raw) {
+    return normalizeAngleDeg(raw);
+  }
+
+  function computeSideFromUiAngle(rawAngleDeg) {
+    const normalized = normalizeAngleDeg(rawAngleDeg);
+    return Math.cos((normalized * Math.PI) / 180) >= 0 ? 'right' : 'left';
+  }
+
   function getCorrectDirectionDeg(rdmParams) {
     const p = rdmParams || {};
 
