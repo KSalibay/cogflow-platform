@@ -237,6 +237,9 @@ var jsPsychRdm = (function (jspsych) {
 
       // Continuous-only
       const endOnResponse = experimentType === 'continuous' && response.end_condition_on_response === true;
+      const endTrialOnResponse = experimentType === 'trial-based'
+        ? response.end_trial_on_response !== false
+        : endOnResponse;
 
       const choices = normalizeChoices(response);
       const keyMapping = buildKeyMapping(response);
@@ -548,15 +551,20 @@ var jsPsychRdm = (function (jspsych) {
         if (experimentType === 'trial-based') {
           if (feedbackMs > 0) {
             feedbackEndAt = nowMs() + feedbackMs;
-            this.jsPsych.pluginAPI.setTimeout(() => endTrial('response'), feedbackMs);
-          } else {
-            endTrial('response');
+          }
+
+          if (endTrialOnResponse) {
+            if (feedbackMs > 0) {
+              this.jsPsych.pluginAPI.setTimeout(() => endTrial('response'), feedbackMs);
+            } else {
+              endTrial('response');
+            }
           }
           return;
         }
 
         // continuous
-        if (endOnResponse) {
+        if (endTrialOnResponse) {
           if (feedbackMs > 0) {
             feedbackEndAt = nowMs() + feedbackMs;
             this.jsPsych.pluginAPI.setTimeout(() => endTrial('response_end_condition'), feedbackMs);

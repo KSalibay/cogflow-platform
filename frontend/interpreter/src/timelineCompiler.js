@@ -756,6 +756,40 @@
       return [raw];
     };
 
+    // Backward compatibility: some block exports provide raw block fields
+    // instead of JsonBuilder-normalized `values.direction` / `parameter_windows`.
+    const promoteWindow = (windowKey, minKey, maxKey) => {
+      if (isObject(windows[windowKey])) return;
+      const minNum = Number(values[minKey]);
+      const maxNum = Number(values[maxKey]);
+      if (!Number.isFinite(minNum) || !Number.isFinite(maxNum)) return;
+      windows[windowKey] = { min: minNum, max: maxNum };
+      delete values[minKey];
+      delete values[maxKey];
+    };
+
+    const toFiniteNumericOptions = (raw) => {
+      const opts = normalizeOptions(raw)
+        .map(v => Number(v))
+        .filter(v => Number.isFinite(v));
+      return Array.from(new Set(opts));
+    };
+
+    if (baseType === 'rdm-practice') {
+      if (!Object.prototype.hasOwnProperty.call(values, 'direction')
+        && Object.prototype.hasOwnProperty.call(values, 'practice_direction_options')) {
+        const dirs = toFiniteNumericOptions(values.practice_direction_options);
+        if (dirs.length > 0) values.direction = dirs;
+      }
+
+      promoteWindow('coherence', 'practice_coherence_min', 'practice_coherence_max');
+      promoteWindow('feedback_duration', 'practice_feedback_duration_min', 'practice_feedback_duration_max');
+      promoteWindow('lifetime_frames', 'lifetime_frames_min', 'lifetime_frames_max');
+      promoteWindow('stimulus_duration', 'stimulus_duration_min', 'stimulus_duration_max');
+      promoteWindow('response_deadline', 'response_deadline_min', 'response_deadline_max');
+      promoteWindow('inter_trial_interval', 'inter_trial_interval_min', 'inter_trial_interval_max');
+    }
+
     const sampleFromOptions = (opts) => {
       const arr = Array.isArray(opts) ? opts : [];
       if (arr.length === 0) return null;
@@ -3885,6 +3919,12 @@
 
         const responseOverride = isObject(item.response_parameters_override) ? item.response_parameters_override : null;
         const response = responseOverride ? deepMerge(responseDefaults, responseOverride) : { ...responseDefaults };
+
+        // Practice trials should, by default, run through the configured timing
+        // window rather than ending immediately on first response.
+        if (type === 'rdm-practice' && response.end_trial_on_response === undefined) {
+          response.end_trial_on_response = false;
+        }
 
         const timing = isObject(config.timing_parameters) ? config.timing_parameters : {};
 
