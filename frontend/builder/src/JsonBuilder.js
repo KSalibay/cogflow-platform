@@ -7093,6 +7093,7 @@ class JsonBuilder {
                     stimulus_type: { type: 'select', default: 'square', options: ['square', 'circle'] },
                     stimulus_color: { type: 'COLOR', default: '#ff3b3b' },
                     location: { type: 'select', default: 'top-right', options: ['top-right', 'top-left', 'bottom-right', 'bottom-left'] },
+                    size_mode: { type: 'select', default: 'px', options: ['px', 'percent'] },
                     size_px: { type: 'number', default: 18, min: 6, max: 80, step: 1 },
                     size_percent_of_screen: { type: 'number', default: 0, min: 0, max: 95, step: 0.5 },
                     min_rt_ms: { type: 'number', default: 100, min: 0, max: 60000, step: 10 },

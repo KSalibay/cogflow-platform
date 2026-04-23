@@ -214,6 +214,11 @@ class JSPsychSchemas {
                         options: ['block', 'allow'],
                         description: 'Response condition: "block" to respond to harmful entries, "allow" to respond to benign entries'
                     },
+                    show_action_feedback: {
+                        type: this.parameterTypes.BOOL,
+                        default: true,
+                        description: 'Show ALLOW/BLOCK feedback in the Action column after GO responses'
+                    },
                     highlight_subdomains: {
                         type: this.parameterTypes.BOOL,
                         default: true,

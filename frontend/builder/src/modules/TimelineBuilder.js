@@ -938,6 +938,14 @@ class TimelineBuilder {
         const minIntervalMs = component.min_interval_ms ?? component.parameters?.min_interval_ms ?? 0;
         const maxIntervalMs = component.max_interval_ms ?? component.parameters?.max_interval_ms ?? 0;
 
+        const coerceToHtml = (raw) => {
+            const s = (raw === null || raw === undefined) ? '' : String(raw);
+            const trimmed = s.trim();
+            if (/[<][a-z!/]/i.test(trimmed)) return s;
+            const paras = s.split(/\n\s*\n/g).map(p => p.replace(/\n/g, '<br>'));
+            return paras.map(p => `<p>${this.escapeHtml(p)}</p>`).join('');
+        };
+
         modalBody.innerHTML = `
             <div class="mb-3">
                 <label class="form-label fw-bold">Title</label>
@@ -945,7 +953,15 @@ class TimelineBuilder {
             </div>
             <div class="mb-3">
                 <label class="form-label fw-bold">Instructions</label>
-                <textarea class="form-control" id="survey_instructions" rows="3">${this.escapeHtml(String(instructions))}</textarea>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <small class="text-muted">Rendered as HTML in interpreter.</small>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="toggleSurveyInstructionsHtmlBtn">Edit HTML</button>
+                </div>
+                <div id="surveyInstructionsEditorWrap" class="border rounded" style="background:#fff;">
+                    <div id="surveyInstructionsEditorToolbar"></div>
+                    <div id="surveyInstructionsEditor" style="min-height:160px;"></div>
+                </div>
+                <textarea class="form-control d-none" id="survey_instructions" rows="6">${this.escapeHtml(String(instructions))}</textarea>
             </div>
             <div class="mb-3">
                 <label class="form-label fw-bold">Submit button label</label>
@@ -985,7 +1001,7 @@ class TimelineBuilder {
                         <input type="number" class="form-control" id="mw_max_interval_ms" min="0" value="${this.escapeHtmlAttr(String(maxIntervalMs))}" placeholder="0">
                     </div>
                     <div class="col-md-4 d-flex align-items-end pb-1">
-                        <small class="text-muted">When placed before a block, the probe onset is jittered to a random time within [min, max] and interrupts the block at the nearest trial boundary.</small>
+                        <small class="text-muted">One mw-probe component inserts one probe. Jitter [min,max] is applied only when the probe is adjacent to block-generated trials; otherwise it runs at authored position.</small>
                     </div>
                 </div>
             </div>` : ''}
@@ -1024,6 +1040,113 @@ class TimelineBuilder {
             allowTimeoutEl.addEventListener('change', syncTimeoutUi);
         }
         syncTimeoutUi();
+
+        // Survey instructions rich text editor (same Quill pattern as Instructions component editor).
+        try {
+            this._surveyInstructionsEditorState = { mode: 'wysiwyg', quill: null };
+
+            const toolbar = modalBody.querySelector('#surveyInstructionsEditorToolbar');
+            const editor = modalBody.querySelector('#surveyInstructionsEditor');
+            const htmlBtn = modalBody.querySelector('#toggleSurveyInstructionsHtmlBtn');
+            const htmlArea = modalBody.querySelector('#survey_instructions');
+            const wysWrap = modalBody.querySelector('#surveyInstructionsEditorWrap');
+
+            if (window.Quill && toolbar && editor && htmlArea) {
+                toolbar.innerHTML = `
+                    <span class="ql-formats">
+                        <select class="ql-header">
+                            <option selected></option>
+                            <option value="1"></option>
+                            <option value="2"></option>
+                        </select>
+                        <button class="ql-bold"></button>
+                        <button class="ql-italic"></button>
+                        <button class="ql-underline"></button>
+                    </span>
+                    <span class="ql-formats">
+                        <select class="ql-align">
+                            <option selected></option>
+                            <option value="center"></option>
+                            <option value="right"></option>
+                        </select>
+                    </span>
+                    <span class="ql-formats">
+                        <button class="ql-list" value="ordered"></button>
+                        <button class="ql-list" value="bullet"></button>
+                        <button class="ql-blockquote"></button>
+                    </span>
+                    <span class="ql-formats">
+                        <button class="ql-link"></button>
+                        <button class="ql-clean"></button>
+                    </span>
+                `;
+
+                const quill = new Quill(editor, {
+                    theme: 'snow',
+                    modules: { toolbar }
+                });
+
+                quill.clipboard.dangerouslyPasteHTML(coerceToHtml(instructions));
+                this._surveyInstructionsEditorState.quill = quill;
+
+                const syncHtmlAreaFromQuill = () => {
+                    if (!this._surveyInstructionsEditorState?.quill || !htmlArea) return;
+                    htmlArea.value = this._surveyInstructionsEditorState.quill.root.innerHTML;
+                };
+
+                if (htmlBtn && htmlArea && wysWrap) {
+                    htmlBtn.addEventListener('click', () => {
+                        const mode = this._surveyInstructionsEditorState?.mode || 'wysiwyg';
+                        if (mode === 'wysiwyg') {
+                            syncHtmlAreaFromQuill();
+                            this._surveyInstructionsEditorState.mode = 'html';
+                            wysWrap.classList.add('d-none');
+                            htmlArea.classList.remove('d-none');
+                            htmlBtn.textContent = 'Edit WYSIWYG';
+                        } else {
+                            const html = htmlArea.value || '';
+                            try { quill.clipboard.dangerouslyPasteHTML(html); } catch { /* ignore */ }
+                            this._surveyInstructionsEditorState.mode = 'wysiwyg';
+                            htmlArea.classList.add('d-none');
+                            wysWrap.classList.remove('d-none');
+                            htmlBtn.textContent = 'Edit HTML';
+                        }
+                    });
+                }
+
+                quill.on('text-change', () => {
+                    if ((this._surveyInstructionsEditorState?.mode || 'wysiwyg') === 'wysiwyg') {
+                        syncHtmlAreaFromQuill();
+                    }
+                });
+
+                syncHtmlAreaFromQuill();
+            } else {
+                if (wysWrap) wysWrap.classList.add('d-none');
+                if (htmlBtn) htmlBtn.classList.add('d-none');
+                if (htmlArea) {
+                    htmlArea.classList.remove('d-none');
+                    htmlArea.value = coerceToHtml(instructions);
+                }
+            }
+
+            const cleanupSurveyEditor = () => {
+                this._surveyInstructionsEditorState = null;
+                try { modal.removeEventListener('hidden.bs.modal', cleanupSurveyEditor); } catch { /* ignore */ }
+            };
+            modal.addEventListener('hidden.bs.modal', cleanupSurveyEditor);
+        } catch (e) {
+            console.warn('Survey instructions WYSIWYG init failed; falling back to textarea:', e);
+            const htmlArea = modalBody.querySelector('#survey_instructions');
+            const wysWrap = modalBody.querySelector('#surveyInstructionsEditorWrap');
+            const htmlBtn = modalBody.querySelector('#toggleSurveyInstructionsHtmlBtn');
+            if (wysWrap) wysWrap.classList.add('d-none');
+            if (htmlBtn) htmlBtn.classList.add('d-none');
+            if (htmlArea) {
+                htmlArea.classList.remove('d-none');
+                htmlArea.value = coerceToHtml(instructions);
+            }
+        }
 
         const container = modalBody.querySelector('#survey_questions');
         const addBtn = modalBody.querySelector('#survey_add_question');
@@ -4181,6 +4304,9 @@ class TimelineBuilder {
             if (type === 'detection-response-task-start') {
                 const overrideEl = formContainer.querySelector('#param_override_iso_standard');
                 const displayModeEl = formContainer.querySelector('#param_drt_display_mode');
+                const sizeModeEl = formContainer.querySelector('#param_size_mode');
+                const sizePxEl = formContainer.querySelector('#param_size_px');
+                const sizePercentEl = formContainer.querySelector('#param_size_percent_of_screen');
                 const isoFields = [
                     { name: 'min_iti_ms', value: 3000 },
                     { name: 'max_iti_ms', value: 5000 },
@@ -4213,6 +4339,33 @@ class TimelineBuilder {
                     if (inputEl) inputEl.disabled = !visible;
                 };
 
+                const getNormalizedSizeMode = () => {
+                    const raw = (sizeModeEl?.value ?? '').toString().trim().toLowerCase();
+                    if (raw === 'percent' || raw === 'px') return raw;
+
+                    const pct = Number(sizePercentEl?.value ?? 0);
+                    return (Number.isFinite(pct) && pct > 0) ? 'percent' : 'px';
+                };
+
+                const applySizeModeVisibility = () => {
+                    const mode = getNormalizedSizeMode();
+                    const isPercent = mode === 'percent';
+
+                    if (sizeModeEl && sizeModeEl.value !== mode) {
+                        sizeModeEl.value = mode;
+                    }
+
+                    setParamVisibility('size_px', !isPercent);
+                    setParamVisibility('size_percent_of_screen', isPercent);
+
+                    // Keep only one active size path to avoid conflicting values.
+                    if (isPercent) {
+                        if (sizePxEl) sizePxEl.value = '0';
+                    } else {
+                        if (sizePercentEl) sizePercentEl.value = '0';
+                    }
+                };
+
                 const applyDisplayModeVisibility = () => {
                     const mode = (displayModeEl?.value ?? 'corner_dot').toString().trim().toLowerCase();
                     const isBorderMode = mode === 'screen_border';
@@ -4225,7 +4378,11 @@ class TimelineBuilder {
                 if (displayModeEl) {
                     displayModeEl.addEventListener('change', applyDisplayModeVisibility);
                 }
+                if (sizeModeEl) {
+                    sizeModeEl.addEventListener('change', applySizeModeVisibility);
+                }
                 applyDisplayModeVisibility();
+                applySizeModeVisibility();
             }
         } catch {
             // ignore
@@ -4896,6 +5053,29 @@ class TimelineBuilder {
                 const displayMode = (newParameters.drt_display_mode ?? currentData.drt_display_mode ?? 'corner_dot').toString().trim().toLowerCase();
                 newParameters.drt_display_mode = (displayMode === 'screen_border') ? 'screen_border' : 'corner_dot';
 
+                const rawSizeMode = (newParameters.size_mode ?? currentData.size_mode ?? currentData.parameters?.size_mode ?? '').toString().trim().toLowerCase();
+                const sizeMode = (rawSizeMode === 'percent' || rawSizeMode === 'px')
+                    ? rawSizeMode
+                    : (() => {
+                        const pct = Number(newParameters.size_percent_of_screen ?? currentData.size_percent_of_screen ?? currentData.parameters?.size_percent_of_screen ?? 0);
+                        return (Number.isFinite(pct) && pct > 0) ? 'percent' : 'px';
+                    })();
+                newParameters.size_mode = sizeMode;
+
+                if (sizeMode === 'percent') {
+                    const pctRaw = Number(newParameters.size_percent_of_screen ?? currentData.size_percent_of_screen ?? currentData.parameters?.size_percent_of_screen ?? 1);
+                    newParameters.size_percent_of_screen = Number.isFinite(pctRaw)
+                        ? Math.max(0, Math.min(95, pctRaw))
+                        : 1;
+                    delete newParameters.size_px;
+                } else {
+                    const pxRaw = Number(newParameters.size_px ?? currentData.size_px ?? currentData.parameters?.size_px ?? 18);
+                    newParameters.size_px = Number.isFinite(pxRaw)
+                        ? Math.max(6, Math.min(80, pxRaw))
+                        : 18;
+                    delete newParameters.size_percent_of_screen;
+                }
+
                 // Tidy JSON output: remove fields that are ignored by the selected display mode.
                 if (newParameters.drt_display_mode === 'screen_border') {
                     delete newParameters.stimulus_type;
@@ -5352,10 +5532,31 @@ class TimelineBuilder {
                 if ((updatedData.type || '') === 'detection-response-task-start') {
                     const modeRaw = (updatedData.drt_display_mode ?? updatedData.parameters?.drt_display_mode ?? 'corner_dot').toString().trim().toLowerCase();
                     const mode = (modeRaw === 'screen_border') ? 'screen_border' : 'corner_dot';
+                    const sizeModeRaw = (updatedData.size_mode ?? updatedData.parameters?.size_mode ?? '').toString().trim().toLowerCase();
+                    const sizeMode = (sizeModeRaw === 'percent' || sizeModeRaw === 'px')
+                        ? sizeModeRaw
+                        : (() => {
+                            const pct = Number(updatedData.size_percent_of_screen ?? updatedData.parameters?.size_percent_of_screen ?? 0);
+                            return (Number.isFinite(pct) && pct > 0) ? 'percent' : 'px';
+                        })();
 
                     updatedData.drt_display_mode = mode;
+                    updatedData.size_mode = sizeMode;
                     if (updatedData.parameters && typeof updatedData.parameters === 'object') {
                         updatedData.parameters.drt_display_mode = mode;
+                        updatedData.parameters.size_mode = sizeMode;
+                    }
+
+                    if (sizeMode === 'percent') {
+                        if (Object.prototype.hasOwnProperty.call(updatedData, 'size_px')) delete updatedData.size_px;
+                        if (updatedData.parameters && typeof updatedData.parameters === 'object') {
+                            if (Object.prototype.hasOwnProperty.call(updatedData.parameters, 'size_px')) delete updatedData.parameters.size_px;
+                        }
+                    } else {
+                        if (Object.prototype.hasOwnProperty.call(updatedData, 'size_percent_of_screen')) delete updatedData.size_percent_of_screen;
+                        if (updatedData.parameters && typeof updatedData.parameters === 'object') {
+                            if (Object.prototype.hasOwnProperty.call(updatedData.parameters, 'size_percent_of_screen')) delete updatedData.parameters.size_percent_of_screen;
+                        }
                     }
 
                     if (mode === 'screen_border') {

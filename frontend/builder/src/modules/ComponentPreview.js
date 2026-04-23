@@ -173,7 +173,19 @@ class ComponentPreview {
             ? 'screen_border'
             : 'corner_dot';
         const location = (componentData.location ?? 'top-right').toString();
+        const sizeModeRaw = (componentData.size_mode ?? '').toString().trim().toLowerCase();
+        const sizeMode = (sizeModeRaw === 'percent' || sizeModeRaw === 'px')
+            ? sizeModeRaw
+            : (() => {
+                const pct = Number(componentData.size_percent_of_screen ?? 0);
+                return (Number.isFinite(pct) && pct > 0) ? 'percent' : 'px';
+            })();
         const sizePx = Number.isFinite(Number(componentData.size_px)) ? Number(componentData.size_px) : 18;
+        const sizePercent = Number(componentData.size_percent_of_screen ?? 0);
+        const previewBasePx = 220;
+        const computedSizePx = (sizeMode === 'percent' && Number.isFinite(sizePercent) && sizePercent > 0)
+            ? Math.max(1, Math.round(previewBasePx * (sizePercent / 100)))
+            : sizePx;
         const color = (componentData.stimulus_color ?? '#ff3b3b').toString() || '#ff3b3b';
         const shape = (componentData.stimulus_type ?? 'square').toString().toLowerCase() === 'circle' ? 'circle' : 'square';
         const key = (componentData.response_key ?? 'space').toString() || 'space';
@@ -199,6 +211,7 @@ class ComponentPreview {
                         <div class="h5 mb-0">DRT Start Preview</div>
                         <div class="small text-muted">Response key: <span class="badge bg-secondary">${escape(key)}</span></div>
                         <div class="small text-muted">Display mode: <span class="badge bg-light text-dark">${escape(displayMode)}</span></div>
+                        <div class="small text-muted">Size mode: <span class="badge bg-light text-dark">${escape(sizeMode === 'percent' ? 'percent' : 'px')}</span></div>
                     </div>
                     <div class="small text-muted text-end">
                         ITI: ${escape(minIti)}–${escape(maxIti)} ms<br/>
@@ -209,8 +222,8 @@ class ComponentPreview {
 
                 <div class="position-relative border rounded overflow-hidden" style="height:260px;">
                     ${displayMode === 'screen_border'
-                        ? `<div class="position-absolute" style="inset:10px; border:${escape(sizePx)}px solid ${escape(color)}; border-radius:6px;"></div>`
-                        : `<div class="position-absolute" style="${posCss}"><div style="width:${escape(sizePx)}px; height:${escape(sizePx)}px; background:${escape(color)}; border-radius:${shape === 'circle' ? '999px' : '0px'};"></div></div>`}
+                        ? `<div class="position-absolute" style="inset:10px; border:${escape(computedSizePx)}px solid ${escape(color)}; border-radius:6px;"></div>`
+                        : `<div class="position-absolute" style="${posCss}"><div style="width:${escape(computedSizePx)}px; height:${escape(computedSizePx)}px; background:${escape(color)}; border-radius:${shape === 'circle' ? '999px' : '0px'};"></div></div>`}
                     <div class="small text-muted position-absolute" style="left:18px; bottom:18px;">
                         Static preview (runtime will flash this stimulus periodically).
                     </div>
@@ -2245,6 +2258,7 @@ class ComponentPreview {
         // Support both flat storage (preferred) and nested storage under `parameters`.
         const title = componentData?.title ?? componentData?.parameters?.title ?? 'Survey';
         const instructions = componentData?.instructions ?? componentData?.parameters?.instructions ?? '';
+        const instructionsHtml = (instructions === null || instructions === undefined) ? '' : String(instructions);
         const submitLabel = componentData?.submit_label ?? componentData?.parameters?.submit_label ?? 'Continue';
         const allowEmptyOnTimeout = !!(componentData?.allow_empty_on_timeout ?? componentData?.parameters?.allow_empty_on_timeout ?? false);
         const timeoutMs = (componentData?.timeout_ms ?? componentData?.parameters?.timeout_ms ?? null);
@@ -2367,7 +2381,7 @@ class ComponentPreview {
             modalBody.innerHTML = `
                 <div class="survey-preview-container">
                     <h5 class="mb-1">${escape(title)}</h5>
-                    ${instructions ? `<p class="text-muted">${escape(instructions)}</p>` : ''}
+                    ${instructionsHtml ? `<div class="text-muted">${instructionsHtml}</div>` : ''}
                     ${(allowEmptyOnTimeout && timeoutMs !== null && timeoutMs !== '')
                         ? `<div class="alert alert-warning py-2 small mb-2">Auto-continue enabled after <strong>${escape(timeoutMs)}</strong> ms (unanswered = empty/null).</div>`
                         : ''}

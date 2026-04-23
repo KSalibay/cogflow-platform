@@ -422,9 +422,11 @@
     // Backward compatibility: map old values (target/distractor) to new (allow/block)
     if (goCondition === 'target') goCondition = 'allow';
     if (goCondition === 'distractor') goCondition = 'block';
+    const goClassLabel = (goCondition === 'allow') ? 'benign' : 'harmful';
 
     // Keep action outcomes consistent within a run.
     const triageActionOnGo = (goCondition === 'block') ? 'BLOCK' : 'ALLOW';
+    const showActionFeedback = !!(subtask?.show_action_feedback ?? true);
 
     const harmful = parseList(subtask?.harmful_subdomains ?? subtask?.target_subdomains);
     const benign = parseList(subtask?.benign_subdomains ?? subtask?.distractor_subdomains);
@@ -502,7 +504,7 @@
       current.responded = true;
       // Semantics: GO commits a triage decision.
       // Action is bound to the configured GO rule (avoids mixing ALLOW/BLOCK in one run).
-      current.triage_action = triageActionOnGo;
+      current.triage_action = showActionFeedback ? triageActionOnGo : '';
       renderRows();
     };
 
@@ -540,7 +542,7 @@
         ip,
         dst,
         event,
-        triage_action: '—',
+        triage_action: showActionFeedback ? '—' : '',
         kind,
         responded: false
       };
@@ -566,7 +568,8 @@
           ? `<button type="button" class="soc-sart-go-btn" data-row-id="${escHtml(row.id)}" ${row.id !== currentId || row.responded ? 'disabled' : ''}>${escHtml(goButton === 'change' ? 'Change' : 'Action')}</button>`
           : '';
 
-        const triageHtml = escHtml(row.triage_action);
+        const triageDisplay = showActionFeedback ? (row.triage_action || '—') : '------';
+        const triageHtml = escHtml(triageDisplay);
 
         tr.innerHTML = `
           <td>${escHtml(row.time)}</td>

@@ -926,6 +926,7 @@
       goCondition = (goCondition === 'allow' || goCondition === 'block') ? goCondition : 'block';
 
       const showMarkers = (o.show_markers !== undefined) ? !!o.show_markers : false;
+      const showActionFeedback = (o.show_action_feedback !== undefined) ? !!o.show_action_feedback : true;
 
       const highlight = (o.highlight_subdomains !== undefined) ? !!o.highlight_subdomains : true;
       const harmfulColor = (o.harmful_highlight_color ?? o.target_highlight_color ?? '#ff4d4d').toString();
@@ -949,6 +950,7 @@
         go_button: goButton,
         go_condition: goCondition,
         show_markers: showMarkers,
+        show_action_feedback: showActionFeedback,
         highlight_subdomains: highlight,
         harmful_highlight_color: harmfulColor,
         benign_highlight_color: benignColor,
@@ -3854,7 +3856,7 @@
           src_ip: randomIp(),
           dest,
           action,
-          triage_action: '—'
+          triage_action: cfg.show_action_feedback ? '—' : ''
         };
         return entry;
       };
@@ -3863,6 +3865,10 @@
 
       const applyTriageAction = (entry) => {
         if (!entry) return;
+        if (!cfg.show_action_feedback) {
+          entry.triage_action = '';
+          return;
+        }
         // Semantics: GO commits a triage decision.
         // To avoid mixing ALLOW/BLOCK in the same run, bind the action to the configured GO rule:
         // - GO on BENIGN (allow mode)  => ALLOW
@@ -3901,7 +3907,8 @@
           }
 
           const actionCell = (() => {
-            const val = escHtml(e.triage_action ?? '—');
+            const actionValue = cfg.show_action_feedback ? (e.triage_action ?? '—') : '------';
+            const val = escHtml(actionValue);
             if (cfg.response_device !== 'mouse') {
               return `<span class="soc-log-tag">${val}</span>`;
             }
@@ -3970,7 +3977,7 @@
           should_respond: shouldRespond,
           responded,
           response_device: entry.response_device,
-          triage_action: entry.triage_action,
+          triage_action: cfg.show_action_feedback ? entry.triage_action : '',
           correct,
           outcome,
           rt_ms: Number.isFinite(entry.rt_ms) ? entry.rt_ms : null,

@@ -2261,7 +2261,23 @@
         totalDurationMs += estimateTrialDurationMs(trial);
       }
 
-      if (!generatedIdx.length) continue;
+      if (!generatedIdx.length) {
+        // Jittered MW insertion currently works only when the marker touches
+        // block-expanded trials (_generated_from_block=true). For standalone
+        // plugin trials/sequences, the probe remains at its authored position.
+        if ((Number.isFinite(minRaw) && minRaw > 0) || (Number.isFinite(maxRaw) && maxRaw > 0)) {
+          try {
+            console.warn('[timelineCompiler] mw-probe jitter skipped: no adjacent block-generated trials; probe will run only at authored position.', {
+              min_interval_ms: minRaw,
+              max_interval_ms: maxRaw,
+              probe_name: probe.name || probe.title || 'mw-probe'
+            });
+          } catch {
+            // ignore logging failures
+          }
+        }
+        continue;
+      }
 
       let targetMs;
       if (maxMs > 0) {

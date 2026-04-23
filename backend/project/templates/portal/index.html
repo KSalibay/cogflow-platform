@@ -948,6 +948,56 @@
         font-size: 0.9rem;
       }
 
+      #studyPropertiesTaskList {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        gap: 8px;
+      }
+
+      #studyPropertiesTaskList li {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: color-mix(in oklab, var(--panel) 88%, var(--bg));
+        padding: 10px 12px;
+        cursor: grab;
+        user-select: none;
+      }
+
+      #studyPropertiesTaskList li:hover {
+        border-color: color-mix(in oklab, var(--accent) 38%, var(--line));
+        background: color-mix(in oklab, var(--accent-lt) 36%, var(--panel));
+      }
+
+      #studyPropertiesTaskList li.dragging {
+        opacity: 0.55;
+      }
+
+      #studyPropertiesTaskList .study-prop-row {
+        display: grid;
+        grid-template-columns: auto minmax(180px, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+      }
+
+      #studyPropertiesTaskList .study-prop-row input[type="text"] {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 6px 8px;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: inherit;
+        font-size: 0.84rem;
+      }
+
+      #studyPropertiesTaskList .task-order-grip {
+        color: var(--muted);
+        letter-spacing: 1px;
+        font-size: 0.9rem;
+      }
+
       #generateLinksTaskOrder {
         list-style: none;
         margin: 0;
@@ -1228,12 +1278,16 @@
           </div>
 
           <div class="nav-list">
-            <button class="nav-item active" data-view="studies" id="navStudies">
+            <button class="nav-item active" data-view="studiesManagement" id="navStudies">
               <span class="nav-icon">🗂</span>
               <span class="nav-label">My Studies</span>
             </button>
             <div class="sub-nav" id="subNavStudies">
-              <button class="nav-item sub active" data-view="studies" id="navResults">
+              <button class="nav-item sub active" data-view="studiesManagement" id="navStudiesManagement">
+                <span class="nav-icon">🧰</span>
+                <span class="nav-label">Management</span>
+              </button>
+              <button class="nav-item sub" data-view="studiesResults" id="navStudiesResults">
                 <span class="nav-icon">📊</span>
                 <span class="nav-label">Results</span>
               </button>
@@ -1304,12 +1358,12 @@
         <!-- ── Content pane ─────────────────────────────────── -->
         <main class="content-pane">
 
-          <!-- VIEW: My Studies -->
-          <div class="view active" id="viewStudies">
+          <!-- VIEW: My Studies / Management -->
+          <div class="view active" id="viewStudiesManagement">
             <div class="view-header">
               <div>
-                <h1 class="view-title">My Studies</h1>
-                <p class="view-subtitle">Published experiments and run metrics.</p>
+                <h1 class="view-title">My Studies · Management</h1>
+                <p class="view-subtitle">Manage studies, sharing, links, and task properties.</p>
               </div>
               <div style="padding-top:4px;">
                 <button class="btn btn-ghost btn-sm" id="refreshBtn">↻ Refresh</button>
@@ -1330,7 +1384,37 @@
                       <th>Actions</th>
                     </tr>
                   </thead>
-                  <tbody id="studyRows"></tbody>
+                  <tbody id="studyManagementRows"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- VIEW: My Studies / Results -->
+          <div class="view" id="viewStudiesResults">
+            <div class="view-header">
+              <div>
+                <h1 class="view-title">My Studies · Results</h1>
+                <p class="view-subtitle">Open and export run data by study.</p>
+              </div>
+              <div style="padding-top:4px;">
+                <button class="btn btn-ghost btn-sm" id="refreshResultsBtn">↻ Refresh</button>
+              </div>
+            </div>
+            <div class="view-scroll" style="padding-top:16px;">
+              <div class="panel">
+                <div id="studiesResultsStatus" class="status-bar">Loading studies…</div>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Study</th>
+                      <th>Owners</th>
+                      <th>Runs</th>
+                      <th>Last Result</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="studyResultsRows"></tbody>
                 </table>
               </div>
             </div>
@@ -1738,7 +1822,7 @@
     const latestConfigCache = {};
     const studyUiState = {};
     let studiesRefreshTimer = null;
-    let activeView = "studies";
+    let activeView = "studiesManagement";
 
     function getStudyState(slug) {
       const k = String(slug || "");
@@ -1747,9 +1831,80 @@
           expanded: false, rollout: null,
           runs: [], runsLoaded: false, runsLoading: false, runsError: null,
           decryptions: {}, exportBusy: false,
+          taskProfile: null,
         };
       }
       return studyUiState[k];
+    }
+
+    function studyTaskProfileStorageKey(slug) {
+      return `cogflow_study_task_profile::${String(slug || "").trim().toLowerCase()}`;
+    }
+
+    function loadStudyTaskProfile(slug) {
+      const key = studyTaskProfileStorageKey(slug);
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed || !Array.isArray(parsed.items)) return null;
+        return parsed;
+      } catch {
+        return null;
+      }
+    }
+
+    function saveStudyTaskProfile(slug, profile) {
+      const key = studyTaskProfileStorageKey(slug);
+      try {
+        localStorage.setItem(key, JSON.stringify(profile || { items: [] }));
+      } catch {
+        // ignore localStorage failures
+      }
+    }
+
+    function taskDisplayNameForConfig(cfg) {
+      const j = (cfg && typeof cfg === "object") ? (cfg.config || {}) : {};
+      const fromJson = (j.task_name || j.task_label || j.name || "").toString().trim();
+      if (fromJson) return fromJson;
+      const taskType = (cfg?.task_type || "task").toString().trim().toLowerCase() || "task";
+      const ver = (cfg?.config_version_label || "").toString().trim();
+      return ver ? `${taskType} · ${ver}` : taskType;
+    }
+
+    function buildDefaultTaskProfile(configs) {
+      return {
+        items: (Array.isArray(configs) ? configs : []).map((cfg) => ({
+          config_version_id: String(cfg?.config_version_id || "").trim(),
+          task_type: (cfg?.task_type || "").toString().trim().toLowerCase(),
+          label: taskDisplayNameForConfig(cfg),
+          enabled: true,
+        })).filter((x) => !!x.config_version_id),
+      };
+    }
+
+    function normalizeTaskProfileForConfigs(profile, configs) {
+      const cfgs = Array.isArray(configs) ? configs : [];
+      const defaults = buildDefaultTaskProfile(cfgs);
+      const byId = new Map(defaults.items.map((x) => [x.config_version_id, { ...x }]));
+      const out = [];
+
+      if (profile && Array.isArray(profile.items)) {
+        for (const item of profile.items) {
+          const id = String(item?.config_version_id || "").trim();
+          if (!id || !byId.has(id)) continue;
+          const base = byId.get(id);
+          out.push({
+            ...base,
+            label: (item?.label || base.label || "").toString(),
+            enabled: item?.enabled !== false,
+          });
+          byId.delete(id);
+        }
+      }
+
+      for (const x of byId.values()) out.push(x);
+      return { items: out };
     }
 
     // ── Utilities ─────────────────────────────────────────────
@@ -1856,6 +2011,149 @@
       document.body.style.overflow = "";
     }
 
+    function ensureStudyPropertiesModal() {
+      let modalEl = document.getElementById("studyPropertiesModal");
+      if (modalEl) return modalEl;
+
+      const host = document.createElement("div");
+      host.innerHTML = `
+        <div class="modal fade" id="studyPropertiesModal" tabindex="-1" aria-hidden="true">
+          <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title">Study Properties</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+              </div>
+              <div class="modal-body">
+                <div id="studyPropertiesError" class="alert alert-danger py-2 d-none" role="alert"></div>
+                <p style="margin:0 0 10px;color:var(--muted);font-size:.84rem;">Select which tasks are active for this study, rename display labels, and drag to change launch order.</p>
+                <ul id="studyPropertiesTaskList" class="list-group"></ul>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="studyPropertiesSaveBtn">Save Properties</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(host.firstElementChild);
+      modalEl = document.getElementById("studyPropertiesModal");
+      modalEl.querySelectorAll('[data-bs-dismiss="modal"]').forEach((btn) => {
+        btn.addEventListener("click", () => hideStudyPropertiesModal(modalEl));
+      });
+      modalEl.addEventListener("click", (e) => {
+        if (e.target === modalEl) hideStudyPropertiesModal(modalEl);
+      });
+      return modalEl;
+    }
+
+    function showStudyPropertiesModal(modalEl) {
+      if (!modalEl) return;
+      if (window.bootstrap && window.bootstrap.Modal) {
+        window.bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        return;
+      }
+
+      let backdrop = document.getElementById("studyPropertiesModalBackdrop");
+      if (!backdrop) {
+        backdrop = document.createElement("div");
+        backdrop.id = "studyPropertiesModalBackdrop";
+        backdrop.className = "modal-backdrop";
+        backdrop.addEventListener("click", () => hideStudyPropertiesModal(modalEl));
+        document.body.appendChild(backdrop);
+      }
+      modalEl.classList.add("show");
+      modalEl.setAttribute("aria-modal", "true");
+      modalEl.removeAttribute("aria-hidden");
+      document.body.style.overflow = "hidden";
+    }
+
+    function hideStudyPropertiesModal(modalEl) {
+      if (!modalEl) return;
+      if (window.bootstrap && window.bootstrap.Modal) {
+        window.bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+        return;
+      }
+
+      modalEl.classList.remove("show");
+      modalEl.setAttribute("aria-hidden", "true");
+      modalEl.removeAttribute("aria-modal");
+      const backdrop = document.getElementById("studyPropertiesModalBackdrop");
+      if (backdrop) backdrop.remove();
+      document.body.style.overflow = "";
+    }
+
+    function buildTaskProfileFromList(listEl) {
+      const items = Array.from(listEl?.querySelectorAll("li") || []).map((li) => ({
+        config_version_id: String(li.dataset.configId || "").trim(),
+        task_type: String(li.dataset.taskType || "").trim().toLowerCase(),
+        label: (li.querySelector("input[data-role='task-label']")?.value || "").toString().trim(),
+        enabled: !!li.querySelector("input[data-role='task-enabled']")?.checked,
+      })).filter((x) => !!x.config_version_id);
+      return { items };
+    }
+
+    async function openStudyPropertiesModal(slug) {
+      const modalEl = ensureStudyPropertiesModal();
+      const errEl = document.getElementById("studyPropertiesError");
+      const listEl = document.getElementById("studyPropertiesTaskList");
+      const saveBtn = document.getElementById("studyPropertiesSaveBtn");
+      const st = getStudyState(slug);
+
+      const setErr = (msg) => {
+        const s = (msg || "").toString().trim();
+        errEl.textContent = s;
+        errEl.classList.toggle("d-none", !s);
+      };
+
+      setErr("");
+      listEl.innerHTML = "";
+
+      try {
+        const payload = await fetchStudyLatestConfig(slug);
+        const cfgs = Array.isArray(payload?.configs) ? payload.configs : [];
+        const stored = st.taskProfile || loadStudyTaskProfile(slug);
+        const profile = normalizeTaskProfileForConfigs(stored, cfgs);
+        st.taskProfile = profile;
+
+        profile.items.forEach((item) => {
+          const li = document.createElement("li");
+          li.className = "list-group-item";
+          li.dataset.configId = item.config_version_id;
+          li.dataset.taskType = item.task_type || "";
+          li.innerHTML = `
+            <div class="study-prop-row">
+              <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;">
+                <input type="checkbox" data-role="task-enabled" ${item.enabled ? "checked" : ""} />
+                <span style="font-size:.82rem;color:var(--muted);">Include</span>
+              </label>
+              <input type="text" data-role="task-label" value="${esc(item.label || item.task_type || "task")}" />
+              <span class="task-order-grip" aria-hidden="true">⋮⋮</span>
+            </div>
+          `;
+          listEl.appendChild(li);
+        });
+        setupDragList(listEl);
+      } catch (err) {
+        setErr(err?.message || String(err));
+      }
+
+      saveBtn.onclick = () => {
+        const profile = buildTaskProfileFromList(listEl);
+        if (!profile.items.some((x) => x.enabled !== false)) {
+          setErr("At least one task must remain enabled.");
+          return;
+        }
+        st.taskProfile = profile;
+        saveStudyTaskProfile(slug, profile);
+        hideStudyPropertiesModal(modalEl);
+        refreshStudiesUiFromCache();
+      };
+
+      showStudyPropertiesModal(modalEl);
+    }
+
     function setupDragList(listEl) {
       if (!listEl) return;
       let dragEl = null;
@@ -1915,7 +2213,14 @@
       try {
         const payload = await fetchStudyLatestConfig(slug);
         const cfgs = Array.isArray(payload?.configs) ? payload.configs : [];
-        cfgs.forEach((c) => {
+        const st = getStudyState(slug);
+        const profile = normalizeTaskProfileForConfigs(st.taskProfile || loadStudyTaskProfile(slug), cfgs);
+        st.taskProfile = profile;
+
+        const cfgById = new Map(cfgs.map((c) => [String(c?.config_version_id || "").trim(), c]));
+        profile.items.forEach((item) => {
+          const c = cfgById.get(item.config_version_id);
+          if (!c) return;
           const li = document.createElement("li");
           li.className = "list-group-item";
           li.dataset.configId = (c?.config_version_id || "").toString();
@@ -1923,7 +2228,10 @@
           const ver = (c?.config_version_label || "").toString();
           li.innerHTML = `
             <div class="task-order-item">
-              <span><strong>${esc(task)}</strong> <span class="text-muted" style="font-size:.8rem;">${esc(ver)}</span></span>
+              <span style="display:inline-flex;align-items:center;gap:7px;">
+                <input type="checkbox" data-role="task-enabled" ${item.enabled ? "checked" : ""} />
+                <span><strong>${esc(item.label || task)}</strong> <span class="text-muted" style="font-size:.8rem;">${esc(ver)}</span></span>
+              </span>
               <span class="task-order-grip" aria-hidden="true">⋮⋮</span>
             </div>
           `;
@@ -1938,12 +2246,28 @@
         confirmBtn.disabled = true;
         setErr("");
         try {
-          const taskOrder = Array.from(listEl.querySelectorAll("li"))
+          const taskRows = Array.from(listEl.querySelectorAll("li"));
+          const taskOrder = taskRows
+            .filter((li) => !!li.querySelector("input[data-role='task-enabled']")?.checked)
             .map((li) => (li.dataset.configId || "").toString().trim())
             .filter(Boolean);
+
+          if (!taskOrder.length) {
+            throw new Error("Select at least one task to include in generated links.");
+          }
+
+          const profile = buildTaskProfileFromList(listEl);
+          const st = getStudyState(slug);
+          st.taskProfile = profile;
+          saveStudyTaskProfile(slug, profile);
+
+          const hasDisabledTasks = taskOrder.length !== taskRows.length;
+          const strictOrder = hasDisabledTasks || !cbEl.checked;
+
           await generateLink(slug, pidEl.value || "", null, null, {
-            counterbalance_enabled: !!cbEl.checked,
+            counterbalance_enabled: strictOrder ? false : !!cbEl.checked,
             task_order: taskOrder,
+            task_order_strict: strictOrder,
           });
           hideGeneratedModal(modalEl);
         } catch (e) {
@@ -2038,7 +2362,7 @@
     }
 
     // ── Navigation ─────────────────────────────────────────────
-    const VIEWS = ["studies","builder","preview","integrations","ethics","credits","feedback","admin","account"];
+    const VIEWS = ["studiesManagement","studiesResults","builder","preview","integrations","ethics","credits","feedback","admin","account"];
     let builderLoaded = false;
     let adminUsersLoaded = false;
     let adminUsers = [];
@@ -2166,14 +2490,14 @@
         const navEl = document.getElementById(`nav${v[0].toUpperCase()}${v.slice(1)}`);
         if (navEl) navEl.classList.toggle("active", v === id);
       });
-      // Keep "My Studies" and "Results" both highlighted when studies view is active
-      if (id === "studies") {
+
+      const isStudiesView = (id === "studiesManagement" || id === "studiesResults");
+      if (isStudiesView) {
         document.getElementById("navStudies")?.classList.add("active");
-        document.getElementById("navResults")?.classList.add("active");
-      } else {
-        document.getElementById("navResults")?.classList.remove("active");
       }
-      document.getElementById("subNavStudies").classList.toggle("hidden", id !== "studies");
+      document.getElementById("navStudiesManagement")?.classList.toggle("active", id === "studiesManagement");
+      document.getElementById("navStudiesResults")?.classList.toggle("active", id === "studiesResults");
+      document.getElementById("subNavStudies")?.classList.toggle("hidden", !isStudiesView);
 
       if (id === "builder" && !builderLoaded) {
         document.getElementById("builderFrame").src = builderThemeUrl(currentTheme);
@@ -2191,7 +2515,7 @@
       }
 
       // Keep study-dependent views fresh without requiring full-page reload.
-      if (id === "studies" || id === "preview" || id === "integrations") {
+      if (isStudiesView || id === "preview" || id === "integrations") {
         loadStudies();
       }
     }
@@ -2460,7 +2784,7 @@
       studiesRefreshTimer = window.setInterval(() => {
         if (!currentUser) return;
         if (document.hidden) return;
-        if (!["studies", "preview", "integrations"].includes(activeView)) return;
+        if (!["studiesManagement", "studiesResults", "preview", "integrations"].includes(activeView)) return;
         loadStudies();
       }, 15000);
     }
@@ -2472,14 +2796,14 @@
     }
 
     window.addEventListener("focus", () => {
-      if (currentUser && ["studies", "preview", "integrations"].includes(activeView)) {
+      if (currentUser && ["studiesManagement", "studiesResults", "preview", "integrations"].includes(activeView)) {
         loadStudies();
       }
     });
 
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) return;
-      if (currentUser && ["studies", "preview", "integrations"].includes(activeView)) {
+      if (currentUser && ["studiesManagement", "studiesResults", "preview", "integrations"].includes(activeView)) {
         loadStudies();
       }
     });
@@ -2967,11 +3291,13 @@
 
     // ── Refresh ────────────────────────────────────────────────
     document.getElementById("refreshBtn").addEventListener("click", loadStudies);
+    document.getElementById("refreshResultsBtn")?.addEventListener("click", loadStudies);
     document.getElementById("adminRefreshBtn")?.addEventListener("click", () => loadAdminUsers(true));
 
     // ── Studies ────────────────────────────────────────────────
     function refreshStudiesUiFromCache() {
-      renderStudyRows(studiesList);
+      renderStudyManagementRows(studiesList);
+      renderStudyResultsRows(studiesList);
       populatePreviewSelect(studiesList);
       populateIntegrationsStudySelect(studiesList);
     }
@@ -2983,11 +3309,18 @@
       }
 
       const statusEl  = document.getElementById("studiesStatus");
+      const resultsStatusEl = document.getElementById("studiesResultsStatus");
       const refreshBtn = document.getElementById("refreshBtn");
+      const refreshResultsBtn = document.getElementById("refreshResultsBtn");
       studiesLoadInFlight = true;
       refreshBtn.disabled = true;
+      if (refreshResultsBtn) refreshResultsBtn.disabled = true;
       statusEl.className = "status-bar";
       statusEl.textContent = "Refreshing…";
+      if (resultsStatusEl) {
+        resultsStatusEl.className = "status-bar";
+        resultsStatusEl.textContent = "Refreshing…";
+      }
       try {
         const r = await fetch(`${API}/api/v1/studies`, { credentials: "include" });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -2997,12 +3330,21 @@
         refreshStudiesUiFromCache();
         statusEl.className = "status-bar ok";
         statusEl.textContent = `${studiesList.length} ${studiesList.length === 1 ? "study" : "studies"} — refreshed ${new Date().toLocaleTimeString()}.`;
+        if (resultsStatusEl) {
+          resultsStatusEl.className = "status-bar ok";
+          resultsStatusEl.textContent = `${studiesList.length} ${studiesList.length === 1 ? "study" : "studies"} — refreshed ${new Date().toLocaleTimeString()}.`;
+        }
       } catch (err) {
         statusEl.className = "status-bar error";
         statusEl.textContent = `Failed to load studies: ${err?.message || err}`;
+        if (resultsStatusEl) {
+          resultsStatusEl.className = "status-bar error";
+          resultsStatusEl.textContent = `Failed to load studies: ${err?.message || err}`;
+        }
       } finally {
         studiesLoadInFlight = false;
         refreshBtn.disabled = false;
+        if (refreshResultsBtn) refreshResultsBtn.disabled = false;
         if (studiesLoadQueued) {
           studiesLoadQueued = false;
           loadStudies();
@@ -3051,11 +3393,19 @@
       try {
         const payload = await fetchStudyLatestConfig(key);
         const cfgs = Array.isArray(payload?.configs) ? payload.configs : [];
+        const st = getStudyState(key);
+        const profile = normalizeTaskProfileForConfigs(st.taskProfile || loadStudyTaskProfile(key), cfgs);
+        st.taskProfile = profile;
+
+        const cfgById = new Map(cfgs.map((c) => [String(c?.config_version_id || "").trim(), c]));
         const subtasks = [];
-        for (const c of cfgs) {
-          const t = (c?.task_type || '').toString().trim().toLowerCase();
+        profile.items.forEach((item) => {
+          if (item.enabled === false) return;
+          const cfg = cfgById.get(item.config_version_id);
+          const t = (cfg?.task_type || item.task_type || '').toString().trim().toLowerCase();
           if (t && !subtasks.includes(t)) subtasks.push(t);
-        }
+        });
+
         for (const t of subtasks) {
           const o = document.createElement("option");
           o.value = t;
@@ -3084,62 +3434,16 @@
       if (prev) sel.value = prev;
     }
 
-    // ── Study table ────────────────────────────────────────────
-    function renderStudyRows(studies) {
-      const tbody = document.getElementById("studyRows");
-      tbody.innerHTML = "";
-
-      if (!studies.length) {
-        tbody.innerHTML = '<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:32px;">No studies yet. Use the Builder to create and publish a study.</td></tr>';
-        return;
-      }
-
-      for (const s of studies) {
-        const state = getStudyState(s.study_slug);
-        const ownersText = Array.isArray(s.owner_usernames) && s.owner_usernames.length
-          ? s.owner_usernames.join(", ")
-          : (s.owner_username || "—");
-        const reassignBtn = currentUser?.role === "platform_admin"
-          ? `<button class="btn btn-ghost btn-xs" data-action="reassign" data-slug="${esc(s.study_slug)}">Reassign</button>`
-          : "";
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-          <td>
-            <div><strong>${esc(s.study_name || s.study_slug || "—")}</strong></div>
-            <div class="mono" style="color:var(--muted);font-size:.78em;">${esc(s.study_slug || "")}</div>
-          </td>
-          <td>${esc(ownersText)}</td>
-          <td><span class="pill">${esc(s.runtime_mode || "—")}</span></td>
-          <td class="mono">${esc(s.latest_config_version || "—")}</td>
-          <td>${typeof s.run_count === "number" ? s.run_count : "—"}</td>
-          <td style="font-size:.82rem;color:var(--muted);">${fmt(s.last_result_at)}</td>
-          <td>
-            <div style="display:flex;gap:5px;flex-wrap:wrap;">
-              <button class="btn btn-ghost btn-xs" data-action="gen-link"       data-slug="${esc(s.study_slug)}">Generate Links</button>
-              <button class="btn btn-ghost btn-xs" data-action="share-study"    data-slug="${esc(s.study_slug)}">Share</button>
-              <button class="btn btn-ghost btn-xs" data-action="duplicate-study" data-slug="${esc(s.study_slug)}" data-study-name="${esc(s.study_name || s.study_slug)}">Duplicate</button>
-              <button class="btn btn-ghost btn-xs" data-action="remove-study-user" data-slug="${esc(s.study_slug)}">Remove User</button>
-              <button class="btn btn-ghost btn-xs" data-action="toggle-details" data-slug="${esc(s.study_slug)}">${state.expanded ? "Hide" : "Show Results"}</button>
-              <button class="btn btn-ghost btn-xs" data-action="open-preview"   data-slug="${esc(s.study_slug)}">Preview ▶</button>
-              <button class="btn btn-danger btn-xs" data-action="delete-study"  data-slug="${esc(s.study_slug)}">Delete</button>
-              ${reassignBtn}
-            </div>
-          </td>`;
-        tbody.appendChild(tr);
-
-        if (state.expanded) {
-          const w = document.createElement("tbody");
-          w.innerHTML = buildDetailRow(s);
-          tbody.appendChild(w.firstElementChild);
-        }
-      }
-
-      // Action bindings
+    // ── Study tables ───────────────────────────────────────────
+    function bindStudyTableActions(tbody) {
       tbody.querySelectorAll("[data-action='gen-link']").forEach(b =>
         b.addEventListener("click", () => openGenerateLinksModal(b.getAttribute("data-slug")))
       );
       tbody.querySelectorAll("[data-action='toggle-details']").forEach(b =>
         b.addEventListener("click", () => toggleDetails(b.getAttribute("data-slug")))
+      );
+      tbody.querySelectorAll("[data-action='study-properties']").forEach(b =>
+        b.addEventListener("click", () => openStudyPropertiesModal(b.getAttribute("data-slug")))
       );
       tbody.querySelectorAll("[data-action='share-study']").forEach(b =>
         b.addEventListener("click", () => {
@@ -3203,7 +3507,10 @@
         })
       );
       tbody.querySelectorAll("[data-action='collapse']").forEach(b =>
-        b.addEventListener("click", () => { getStudyState(b.getAttribute("data-slug")).expanded = false; loadStudies(); })
+        b.addEventListener("click", () => {
+          getStudyState(b.getAttribute("data-slug")).expanded = false;
+          refreshStudiesUiFromCache();
+        })
       );
       tbody.querySelectorAll("[data-action='export-json']").forEach(b =>
         b.addEventListener("click", () => exportRun(b.getAttribute("data-slug"), b.getAttribute("data-run"), "json"))
@@ -3225,6 +3532,95 @@
       );
     }
 
+    function renderStudyManagementRows(studies) {
+      const tbody = document.getElementById("studyManagementRows");
+      if (!tbody) return;
+      tbody.innerHTML = "";
+
+      if (!studies.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:32px;">No studies yet. Use the Builder to create and publish a study.</td></tr>';
+        return;
+      }
+
+      for (const s of studies) {
+        const ownersText = Array.isArray(s.owner_usernames) && s.owner_usernames.length
+          ? s.owner_usernames.join(", ")
+          : (s.owner_username || "—");
+        const reassignBtn = currentUser?.role === "platform_admin"
+          ? `<button class="btn btn-ghost btn-xs" data-action="reassign" data-slug="${esc(s.study_slug)}">Reassign</button>`
+          : "";
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>
+            <div><strong>${esc(s.study_name || s.study_slug || "—")}</strong></div>
+            <div class="mono" style="color:var(--muted);font-size:.78em;">${esc(s.study_slug || "")}</div>
+          </td>
+          <td>${esc(ownersText)}</td>
+          <td><span class="pill">${esc(s.runtime_mode || "—")}</span></td>
+          <td class="mono">${esc(s.latest_config_version || "—")}</td>
+          <td>${typeof s.run_count === "number" ? s.run_count : "—"}</td>
+          <td style="font-size:.82rem;color:var(--muted);">${fmt(s.last_result_at)}</td>
+          <td>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <button class="btn btn-ghost btn-xs" data-action="gen-link"       data-slug="${esc(s.study_slug)}">Generate Links</button>
+              <button class="btn btn-ghost btn-xs" data-action="study-properties" data-slug="${esc(s.study_slug)}">Properties</button>
+              <button class="btn btn-ghost btn-xs" data-action="share-study"    data-slug="${esc(s.study_slug)}">Share</button>
+              <button class="btn btn-ghost btn-xs" data-action="duplicate-study" data-slug="${esc(s.study_slug)}" data-study-name="${esc(s.study_name || s.study_slug)}">Duplicate</button>
+              <button class="btn btn-ghost btn-xs" data-action="remove-study-user" data-slug="${esc(s.study_slug)}">Remove User</button>
+              <button class="btn btn-ghost btn-xs" data-action="open-preview"   data-slug="${esc(s.study_slug)}">Preview ▶</button>
+              <button class="btn btn-danger btn-xs" data-action="delete-study"  data-slug="${esc(s.study_slug)}">Delete</button>
+              ${reassignBtn}
+            </div>
+          </td>`;
+        tbody.appendChild(tr);
+      }
+
+      bindStudyTableActions(tbody);
+    }
+
+    function renderStudyResultsRows(studies) {
+      const tbody = document.getElementById("studyResultsRows");
+      if (!tbody) return;
+      tbody.innerHTML = "";
+
+      if (!studies.length) {
+        tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:32px;">No studies yet. Publish from Builder to start collecting results.</td></tr>';
+        return;
+      }
+
+      for (const s of studies) {
+        const state = getStudyState(s.study_slug);
+        const ownersText = Array.isArray(s.owner_usernames) && s.owner_usernames.length
+          ? s.owner_usernames.join(", ")
+          : (s.owner_username || "—");
+
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>
+            <div><strong>${esc(s.study_name || s.study_slug || "—")}</strong></div>
+            <div class="mono" style="color:var(--muted);font-size:.78em;">${esc(s.study_slug || "")}</div>
+          </td>
+          <td>${esc(ownersText)}</td>
+          <td>${typeof s.run_count === "number" ? s.run_count : "—"}</td>
+          <td style="font-size:.82rem;color:var(--muted);">${fmt(s.last_result_at)}</td>
+          <td>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <button class="btn btn-ghost btn-xs" data-action="toggle-details" data-slug="${esc(s.study_slug)}">${state.expanded ? "Hide" : "Open Results"}</button>
+              <button class="btn btn-ghost btn-xs" data-action="open-preview"   data-slug="${esc(s.study_slug)}">Preview ▶</button>
+            </div>
+          </td>`;
+        tbody.appendChild(tr);
+
+        if (state.expanded) {
+          const w = document.createElement("tbody");
+          w.innerHTML = buildDetailRow(s, { resultsOnly: true });
+          tbody.appendChild(w.firstElementChild);
+        }
+      }
+
+      bindStudyTableActions(tbody);
+    }
+
     // ── Detail row ─────────────────────────────────────────────
     function rfRow(label, val) {
       const sv = esc(String(val || "—"));
@@ -3244,7 +3640,8 @@
       </div>`;
     }
 
-    function buildDetailRow(study) {
+    function buildDetailRow(study, opts = {}) {
+      const resultsOnly = !!opts.resultsOnly;
       const state = getStudyState(study.study_slug);
       const slug  = esc(study.study_slug);
 
@@ -3339,10 +3736,16 @@
           </div>
         </article>`;
       } else {
-        resultsCard = `<article class="detail-card"><h3>Results</h3><div class="result-message">Use "Show Results" to load recent runs.</div></article>`;
+        resultsCard = `<article class="detail-card"><h3>Results</h3><div class="result-message">Use "Open Results" to load recent runs.</div></article>`;
       }
 
-      return `<tr class="detail-row"><td colspan="7">
+      const detailContent = resultsOnly
+        ? `<div class="detail-grid">${resultsCard}</div>`
+        : `<div class="detail-grid">${rolloutCard}${resultsCard}</div>`;
+
+      const colSpan = resultsOnly ? 5 : 7;
+
+      return `<tr class="detail-row"><td colspan="${colSpan}">
         <div class="detail-panel">
           <div class="detail-header">
             <div>
@@ -3351,7 +3754,7 @@
             </div>
             <button class="btn btn-ghost btn-xs" data-action="collapse" data-slug="${slug}">Close ✕</button>
           </div>
-          <div class="detail-grid">${rolloutCard}${resultsCard}</div>
+          ${detailContent}
         </div>
       </td></tr>`;
     }
@@ -4091,16 +4494,36 @@
       try {
         const previewParticipantId = `preview-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         const launchPayload = { participant_external_id: previewParticipantId, expires_in_hours: 1 };
+        const latest = await fetchStudyLatestConfig(slug);
+        const cfgs = Array.isArray(latest?.configs) ? latest.configs : [];
+        const st = getStudyState(slug);
+        const profile = normalizeTaskProfileForConfigs(st.taskProfile || loadStudyTaskProfile(slug), cfgs);
+        st.taskProfile = profile;
+
+        const cfgById = new Map(cfgs.map((c) => [String(c?.config_version_id || '').trim(), c]));
+        let selectedIds = profile.items
+          .filter((item) => item.enabled !== false)
+          .map((item) => item.config_version_id)
+          .filter((id) => cfgById.has(id));
+
         if (taskType) {
-          const latest = await fetchStudyLatestConfig(slug);
-          const cfgs = Array.isArray(latest?.configs) ? latest.configs : [];
-          const selectedIds = cfgs
-            .filter((c) => ((c?.task_type || '').toString().trim().toLowerCase() === taskType))
-            .map((c) => (c?.config_version_id || '').toString().trim())
-            .filter(Boolean);
+          selectedIds = selectedIds.filter((id) => {
+            const c = cfgById.get(id);
+            const t = (c?.task_type || '').toString().trim().toLowerCase();
+            return t === taskType;
+          });
           if (!selectedIds.length) {
-            throw new Error(`No published config found for subtask: ${taskType}`);
+            throw new Error(`No enabled published config found for subtask: ${taskType}`);
           }
+        }
+
+        const allIds = cfgs
+          .map((c) => (c?.config_version_id || '').toString().trim())
+          .filter(Boolean);
+        const strictNeeded = selectedIds.length > 0 && (
+          selectedIds.length !== allIds.length || selectedIds.some((id, idx) => allIds[idx] !== id)
+        );
+        if (strictNeeded || taskType) {
           launchPayload.counterbalance_enabled = false;
           launchPayload.task_order = selectedIds;
           launchPayload.task_order_strict = true;

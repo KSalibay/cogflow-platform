@@ -295,10 +295,15 @@
         `;
       };
 
+      // Researcher-authored survey/probe instructions may include rich HTML.
+      const instructionsHtml = (trial.instructions === null || trial.instructions === undefined)
+        ? ''
+        : String(trial.instructions);
+
       display_element.innerHTML = `
         <div style="max-width: 900px; margin: 0 auto; text-align:left;">
           <h2 style="margin: 0 0 8px 0;">${esc(trial.title || 'Survey')}</h2>
-          ${trial.instructions ? `<div style="opacity:0.85; margin-bottom: 14px;">${esc(trial.instructions)}</div>` : ''}
+          ${instructionsHtml ? `<div style="opacity:0.85; margin-bottom: 14px;">${instructionsHtml}</div>` : ''}
           <div id="sr-error" style="display:none; margin: 10px 0; padding: 10px; border-radius: 10px; border: 1px solid rgba(255,92,92,0.45); color: #ffd2d2; background: rgba(255,92,92,0.12);"></div>
           <form id="sr-form">
             ${questions.map(renderQuestion).join('')}
