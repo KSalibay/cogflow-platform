@@ -2250,7 +2250,10 @@
         nextIdx.push(k);
       }
 
-      const generatedIdx = prevIdx.length > 0 ? prevIdx : nextIdx;
+      // When a probe marker sits between two generated runs (common with looped
+      // "probe -> block" patterns), prefer anchoring to the following run so
+      // each iteration keeps its own probe instead of drifting into the previous loop.
+      const generatedIdx = nextIdx.length > 0 ? nextIdx : prevIdx;
       let totalDurationMs = 0;
       for (const k of generatedIdx) {
         const trial = out[k];
@@ -3062,7 +3065,14 @@
     if (experimentType === 'continuous' && taskType === 'rdm') {
       const RdmContinuous = requirePlugin('rdm-continuous (window.jsPsychRdmContinuous)', window.jsPsychRdmContinuous);
       const ui = isObject(config) ? config : {};
-      const updateInterval = Number(ui.update_interval ?? 100);
+      const frameRate = Number(config.frame_rate);
+      const derivedFrameIntervalMs = (Number.isFinite(frameRate) && frameRate > 0)
+        ? Math.max(1, Math.round(1000 / frameRate))
+        : 100;
+      const updateIntervalRaw = Number(ui.update_interval_ms ?? ui.update_interval);
+      const updateInterval = Number.isFinite(updateIntervalRaw) && updateIntervalRaw > 0
+        ? updateIntervalRaw
+        : derivedFrameIntervalMs;
 
       let segmentIndex = 0;
       let frames = [];

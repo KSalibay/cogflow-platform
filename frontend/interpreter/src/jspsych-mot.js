@@ -38,6 +38,7 @@
       speed_variability:    { type: PT.FLOAT,  default: 0.0 },
       motion_type:          { type: PT.SELECT, default: 'linear', options: ['linear', 'curved'] },
       curve_strength:       { type: PT.FLOAT,  default: 0.3 },
+      direction_jitter_deg_per_frame: { type: PT.FLOAT, default: 0 },
       cue_duration_ms:      { type: PT.INT,    default: 2000 },
       cue_flash_rate_hz:    { type: PT.FLOAT,  default: 3 },
       tracking_duration_ms: { type: PT.INT,    default: 8000 },
@@ -99,7 +100,7 @@
         arena_width_px: W, arena_height_px: H,
         aperture_shape, aperture_border_enabled, aperture_border_color, aperture_border_width_px,
         boundary_behavior, min_separation_px,
-        speed_px_per_s, speed_variability, motion_type, curve_strength,
+        speed_px_per_s, speed_variability, motion_type, curve_strength, direction_jitter_deg_per_frame,
         cue_duration_ms, cue_flash_rate_hz, tracking_duration_ms, iti_ms,
         probe_mode, yes_key, no_key, recognition_probe_count, probe_timeout_ms, show_feedback, feedback_duration_ms
       } = trial;
@@ -219,7 +220,15 @@
 
       function updateObjects(dtSec) {
         for (const o of objects) {
-          if (motion_type === 'curved') {
+          const jitterDeg = Number(direction_jitter_deg_per_frame);
+          if (Number.isFinite(jitterDeg) && jitterDeg > 0) {
+            const jitterRad = (jitterDeg * Math.PI) / 180;
+            const turn = (Math.random() - 0.5) * 2 * jitterRad;
+            const cos  = Math.cos(turn), sin = Math.sin(turn);
+            const nvx  = o.vx * cos - o.vy * sin;
+            const nvy  = o.vx * sin + o.vy * cos;
+            o.vx = nvx; o.vy = nvy;
+          } else if (motion_type === 'curved') {
             const turn = (Math.random() - 0.5) * 2 * MAX_TURN_RAD_S * curve_strength * dtSec;
             const cos  = Math.cos(turn), sin = Math.sin(turn);
             const nvx  = o.vx * cos - o.vy * sin;

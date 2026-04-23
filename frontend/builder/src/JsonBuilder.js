@@ -2392,6 +2392,7 @@ class JsonBuilder {
                 if (Array.isArray(values.num_targets)) out.mot_num_targets_options = csv(values.num_targets);
                 if (values.dot_size_px !== undefined) out.mot_dot_size_px = values.dot_size_px;
                 if (values.motion_type !== undefined) out.mot_motion_type = values.motion_type;
+                if (values.direction_jitter_deg_per_frame !== undefined) out.mot_direction_jitter_deg_per_frame = values.direction_jitter_deg_per_frame;
                 if (values.probe_mode !== undefined) out.mot_probe_mode = values.probe_mode;
                 if (values.yes_key !== undefined) out.mot_yes_key = values.yes_key;
                 if (values.no_key !== undefined) out.mot_no_key = values.no_key;
@@ -2399,6 +2400,9 @@ class JsonBuilder {
                 if (values.aperture_shape !== undefined) out.mot_aperture_shape = values.aperture_shape;
                 if (values.aperture_border_enabled !== undefined) out.mot_aperture_border_enabled = !!values.aperture_border_enabled;
                 if (values.aperture_border_color !== undefined) out.mot_aperture_border_color = values.aperture_border_color;
+                if (values.object_color !== undefined) out.mot_object_color = values.object_color;
+                if (values.target_cue_color !== undefined) out.mot_target_cue_color = values.target_cue_color;
+                if (values.background_color !== undefined) out.mot_background_color = values.background_color;
                 if (values.show_feedback !== undefined) out.mot_show_feedback = !!values.show_feedback;
             } else if (innerType === 'stroop-trial') {
                 if (Array.isArray(values.word)) out.stroop_word_options = csv(values.word);
@@ -6864,6 +6868,7 @@ class JsonBuilder {
                 mot_num_targets_options: { type: 'string', default: (document.getElementById('motNumTargetsDefault')?.value || '4').toString() },
                 mot_dot_size_px: { type: 'number', default: Number.parseFloat(document.getElementById('motDotSizePxDefault')?.value || '44'), min: 2, max: 200 },
                 mot_motion_type: { type: 'select', default: (document.getElementById('motMotionTypeDefault')?.value || 'linear').toString(), options: ['linear', 'curved'] },
+                mot_direction_jitter_deg_per_frame: { type: 'number', default: 0, min: 0, max: 180, step: 0.5 },
                 mot_probe_mode: { type: 'select', default: (document.getElementById('motProbeModeDefault')?.value || 'click').toString(), options: ['click', 'number_entry', 'yes_no_recognition'] },
                 mot_yes_key: { type: 'string', default: (document.getElementById('motYesKeyDefault')?.value || 'y').toString() },
                 mot_no_key: { type: 'string', default: (document.getElementById('motNoKeyDefault')?.value || 'n').toString() },
@@ -6871,6 +6876,9 @@ class JsonBuilder {
                 mot_aperture_shape: { type: 'select', default: (document.getElementById('motApertureShapeDefault')?.value || 'rectangle').toString(), options: ['rectangle', 'circle'] },
                 mot_aperture_border_enabled: { type: 'boolean', default: !!document.getElementById('motApertureBorderEnabledDefault')?.checked },
                 mot_aperture_border_color: { type: 'COLOR', default: (document.getElementById('motApertureBorderColorDefault')?.value || '#444444').toString() },
+                mot_object_color: { type: 'COLOR', default: (document.getElementById('motObjectColorDefault')?.value || '#FFFFFF').toString() },
+                mot_target_cue_color: { type: 'COLOR', default: (document.getElementById('motTargetCueColorDefault')?.value || '#FF9900').toString() },
+                mot_background_color: { type: 'COLOR', default: (document.getElementById('motBackgroundColorDefault')?.value || '#111111').toString() },
                 mot_show_feedback: { type: 'boolean', default: !!document.getElementById('motShowFeedbackDefault')?.checked },
                 mot_speed_px_per_s_min: { type: 'number', default: Number.parseFloat(document.getElementById('motSpeedDefault')?.value || '150'), min: 20, max: 600 },
                 mot_speed_px_per_s_max: { type: 'number', default: Number.parseFloat(document.getElementById('motSpeedDefault')?.value || '150'), min: 20, max: 600 },
@@ -7086,6 +7094,7 @@ class JsonBuilder {
                     stimulus_color: { type: 'COLOR', default: '#ff3b3b' },
                     location: { type: 'select', default: 'top-right', options: ['top-right', 'top-left', 'bottom-right', 'bottom-left'] },
                     size_px: { type: 'number', default: 18, min: 6, max: 80, step: 1 },
+                    size_percent_of_screen: { type: 'number', default: 0, min: 0, max: 95, step: 0.5 },
                     min_rt_ms: { type: 'number', default: 100, min: 0, max: 60000, step: 10 },
                     max_rt_ms: { type: 'number', default: 2500, min: 50, max: 60000, step: 10 }
                 }
@@ -8809,6 +8818,7 @@ class JsonBuilder {
             const speed = Number.parseFloat(document.getElementById('motSpeedDefault')?.value || '150');
             const dotSizePx = Number.parseFloat(document.getElementById('motDotSizePxDefault')?.value || '44');
             const motionType = (document.getElementById('motMotionTypeDefault')?.value || 'linear').toString();
+            const directionJitter = Number.parseFloat(document.getElementById('motDirectionJitterDefault')?.value || '0');
             const probeMode = (document.getElementById('motProbeModeDefault')?.value || 'click').toString();
             const yesKey = (document.getElementById('motYesKeyDefault')?.value || 'y').toString().trim() || 'y';
             const noKey = (document.getElementById('motNoKeyDefault')?.value || 'n').toString().trim() || 'n';
@@ -8819,6 +8829,9 @@ class JsonBuilder {
             const apertureShape = (document.getElementById('motApertureShapeDefault')?.value || 'rectangle').toString();
             const apertureBorderEnabled = !!document.getElementById('motApertureBorderEnabledDefault')?.checked;
             const apertureBorderColor = (document.getElementById('motApertureBorderColorDefault')?.value || '#444444').toString();
+            const objectColor = (document.getElementById('motObjectColorDefault')?.value || '#FFFFFF').toString();
+            const targetCueColor = (document.getElementById('motTargetCueColorDefault')?.value || '#FF9900').toString();
+            const backgroundColor = (document.getElementById('motBackgroundColorDefault')?.value || '#111111').toString();
             const apertureBorderWidth = Number.parseInt(document.getElementById('motApertureBorderWidthPxDefault')?.value || '2', 10);
             const showFeedback = !!document.getElementById('motShowFeedbackDefault')?.checked;
 
@@ -8828,6 +8841,7 @@ class JsonBuilder {
                 speed_px_per_s: Number.isFinite(speed) ? speed : 150,
                 dot_size_px: Number.isFinite(dotSizePx) ? dotSizePx : 44,
                 motion_type: motionType,
+                direction_jitter_deg_per_frame: Number.isFinite(directionJitter) ? directionJitter : 0,
                 probe_mode: probeMode,
                 yes_key: yesKey,
                 no_key: noKey,
@@ -8838,6 +8852,9 @@ class JsonBuilder {
                 aperture_shape: apertureShape,
                 aperture_border_enabled: apertureBorderEnabled,
                 aperture_border_color: apertureBorderColor,
+                object_color: objectColor,
+                target_cue_color: targetCueColor,
+                background_color: backgroundColor,
                 aperture_border_width_px: Number.isFinite(apertureBorderWidth) ? apertureBorderWidth : 2,
                 show_feedback: showFeedback
             };
@@ -9281,6 +9298,7 @@ class JsonBuilder {
             speed_px_per_s: Number.isFinite(Number(d.speed_px_per_s)) ? Number(d.speed_px_per_s) : 150,
             dot_size_px: Number.isFinite(Number(d.dot_size_px)) ? Number(d.dot_size_px) : 44,
             motion_type: (d.motion_type || 'linear').toString(),
+            direction_jitter_deg_per_frame: Number.isFinite(Number(d.direction_jitter_deg_per_frame)) ? Number(d.direction_jitter_deg_per_frame) : 0,
             probe_mode: (d.probe_mode || 'click').toString(),
             yes_key: (d.yes_key || 'y').toString(),
             no_key: (d.no_key || 'n').toString(),
@@ -9291,6 +9309,9 @@ class JsonBuilder {
             aperture_shape: (d.aperture_shape || 'rectangle').toString(),
             aperture_border_enabled: d.aperture_border_enabled !== false,
             aperture_border_color: (d.aperture_border_color || '#444444').toString(),
+            object_color: (d.object_color || '#FFFFFF').toString(),
+            target_cue_color: (d.target_cue_color || '#FF9900').toString(),
+            background_color: (d.background_color || '#111111').toString(),
             aperture_border_width_px: Number.isFinite(Number(d.aperture_border_width_px)) ? Number(d.aperture_border_width_px) : 2,
             show_feedback: !!d.show_feedback
         };
@@ -9536,6 +9557,7 @@ class JsonBuilder {
             speed_px_per_s: Number.parseFloat(document.getElementById('motSpeedDefault')?.value || '150'),
             dot_size_px: Number.parseFloat(document.getElementById('motDotSizePxDefault')?.value || '44'),
             motion_type: (document.getElementById('motMotionTypeDefault')?.value || 'linear').toString(),
+            direction_jitter_deg_per_frame: Number.parseFloat(document.getElementById('motDirectionJitterDefault')?.value || '0'),
             probe_mode: (document.getElementById('motProbeModeDefault')?.value || 'click').toString(),
             yes_key: (document.getElementById('motYesKeyDefault')?.value || 'y').toString().trim() || 'y',
             no_key: (document.getElementById('motNoKeyDefault')?.value || 'n').toString().trim() || 'n',
@@ -9546,6 +9568,9 @@ class JsonBuilder {
             aperture_shape: (document.getElementById('motApertureShapeDefault')?.value || 'rectangle').toString(),
             aperture_border_enabled: !!document.getElementById('motApertureBorderEnabledDefault')?.checked,
             aperture_border_color: (document.getElementById('motApertureBorderColorDefault')?.value || '#444444').toString(),
+            object_color: (document.getElementById('motObjectColorDefault')?.value || '#FFFFFF').toString(),
+            target_cue_color: (document.getElementById('motTargetCueColorDefault')?.value || '#FF9900').toString(),
+            background_color: (document.getElementById('motBackgroundColorDefault')?.value || '#111111').toString(),
             aperture_border_width_px: Number.parseInt(document.getElementById('motApertureBorderWidthPxDefault')?.value || '2', 10),
             show_feedback: !!document.getElementById('motShowFeedbackDefault')?.checked
         };
@@ -9560,6 +9585,7 @@ class JsonBuilder {
         const nums = Number.isFinite(Number(d.num_objects)) ? Number(d.num_objects) : 8;
         const tgts = Number.isFinite(Number(d.num_targets)) ? Number(d.num_targets) : 4;
         const dotSizePx = Number.isFinite(Number(d.dot_size_px)) ? Number(d.dot_size_px) : 44;
+        const directionJitter = Number.isFinite(Number(d.direction_jitter_deg_per_frame)) ? Number(d.direction_jitter_deg_per_frame) : 0;
         const recognitionProbeCount = Number.isFinite(Number(d.recognition_probe_count)) ? Math.max(1, Number(d.recognition_probe_count)) : 1;
         const borderWidth = Number.isFinite(Number(d.aperture_border_width_px)) ? Number(d.aperture_border_width_px) : 2;
 
@@ -9569,6 +9595,7 @@ class JsonBuilder {
             mot_num_targets_options: String(tgts),
             mot_dot_size_px: dotSizePx,
             mot_motion_type: (d.motion_type || 'linear').toString(),
+            mot_direction_jitter_deg_per_frame: directionJitter,
             mot_probe_mode: (d.probe_mode || 'click').toString(),
             mot_yes_key: (d.yes_key || 'y').toString(),
             mot_no_key: (d.no_key || 'n').toString(),
@@ -9576,6 +9603,9 @@ class JsonBuilder {
             mot_aperture_shape: (d.aperture_shape || 'rectangle').toString(),
             mot_aperture_border_enabled: d.aperture_border_enabled !== false,
             mot_aperture_border_color: (d.aperture_border_color || '#444444').toString(),
+            mot_object_color: (d.object_color || '#FFFFFF').toString(),
+            mot_target_cue_color: (d.target_cue_color || '#FF9900').toString(),
+            mot_background_color: (d.background_color || '#111111').toString(),
             mot_show_feedback: !!d.show_feedback,
             mot_speed_px_per_s_min: speed,
             mot_speed_px_per_s_max: speed,
@@ -11604,6 +11634,10 @@ class JsonBuilder {
             }
             const mtype = (blockComponent.mot_motion_type ?? '').toString().trim();
             if (mtype) values.motion_type = mtype;
+            if (blockComponent.mot_direction_jitter_deg_per_frame !== undefined && blockComponent.mot_direction_jitter_deg_per_frame !== null && blockComponent.mot_direction_jitter_deg_per_frame !== '') {
+                const jitter = Number.parseFloat(blockComponent.mot_direction_jitter_deg_per_frame);
+                if (Number.isFinite(jitter) && jitter >= 0) values.direction_jitter_deg_per_frame = jitter;
+            }
             const pm = (blockComponent.mot_probe_mode ?? '').toString().trim();
             if (pm) values.probe_mode = pm;
             const yesKey = (blockComponent.mot_yes_key ?? '').toString().trim();
@@ -11621,6 +11655,12 @@ class JsonBuilder {
             }
             const apertureBorderColor = (blockComponent.mot_aperture_border_color ?? '').toString().trim();
             if (apertureBorderColor) values.aperture_border_color = apertureBorderColor;
+            const objectColor = (blockComponent.mot_object_color ?? '').toString().trim();
+            if (objectColor) values.object_color = objectColor;
+            const targetCueColor = (blockComponent.mot_target_cue_color ?? '').toString().trim();
+            if (targetCueColor) values.target_cue_color = targetCueColor;
+            const backgroundColor = (blockComponent.mot_background_color ?? '').toString().trim();
+            if (backgroundColor) values.background_color = backgroundColor;
             if (blockComponent.mot_show_feedback !== undefined) {
                 values.show_feedback = !!blockComponent.mot_show_feedback;
             }

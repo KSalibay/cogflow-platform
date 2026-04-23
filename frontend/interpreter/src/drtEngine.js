@@ -56,6 +56,10 @@
     const loc = allowedLocations.has(location) ? location : 'top-right';
 
     const sizePx = clamp(c.size_px ?? 18, 6, 80);
+    const sizePercentRaw = Number(c.size_percent_of_screen ?? c.size_percent ?? c.size_pct);
+    const sizePercentOfScreen = Number.isFinite(sizePercentRaw)
+      ? clamp(sizePercentRaw, 1, 95)
+      : null;
 
     return {
       segment_label: (c.segment_label ?? '').toString(),
@@ -69,7 +73,8 @@
       stimulus_type: stimulusType,
       stimulus_color: stimulusColor,
       location: loc,
-      size_px: sizePx
+      size_px: sizePx,
+      size_percent_of_screen: sizePercentOfScreen
     };
   }
 
@@ -115,7 +120,11 @@
     return el;
   }
 
-  function positionOverlay(container, location, sizePx, displayMode) {
+  function positionOverlay(container, location, sizePx, sizePercentOfScreen, displayMode) {
+        const computedSizePx = Number.isFinite(Number(sizePercentOfScreen))
+          ? clamp(Math.round(Math.min(window.innerWidth || 0, window.innerHeight || 0) * (Number(sizePercentOfScreen) / 100)), 6, 2000)
+          : sizePx;
+
     const dot = container && container.querySelector ? container.querySelector('#psy-drt-dot') : null;
     const frame = container && container.querySelector ? container.querySelector('#psy-drt-frame') : null;
     if (!dot && !frame) return;
@@ -127,7 +136,7 @@
     if (frame) {
       frame.style.opacity = '0';
       frame.style.display = (displayMode === 'screen_border') ? 'block' : 'none';
-      frame.style.borderWidth = `${sizePx}px`;
+      frame.style.borderWidth = `${computedSizePx}px`;
     }
 
     if (displayMode === 'screen_border') {
@@ -136,8 +145,8 @@
 
     if (!dot) return;
 
-    dot.style.width = `${sizePx}px`;
-    dot.style.height = `${sizePx}px`;
+    dot.style.width = `${computedSizePx}px`;
+    dot.style.height = `${computedSizePx}px`;
 
     const margin = 18;
     container.style.left = '';
@@ -387,7 +396,7 @@
 
     state.cfg = cfg;
     state.overlay = ensureOverlay();
-    positionOverlay(state.overlay, cfg.location, cfg.size_px, cfg.drt_display_mode);
+    positionOverlay(state.overlay, cfg.location, cfg.size_px, cfg.size_percent_of_screen, cfg.drt_display_mode);
     styleStimulus(state.overlay, cfg.stimulus_type, cfg.stimulus_color);
     hideStimulus();
 
