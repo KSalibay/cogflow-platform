@@ -69,6 +69,15 @@
       feedback_duration_ms: { type: PT.INT, default: 800 },
       feedback_text_correct: { type: PT.STRING, default: 'Correct' },
       feedback_text_incorrect: { type: PT.STRING, default: 'Incorrect' },
+      too_slow_feedback_enabled: { type: PT.BOOL, default: false },
+      feedback_text_no_response: { type: PT.STRING, default: 'Too slow' },
+      reward_feedback_enabled: { type: PT.BOOL, default: false },
+      reward_fast_rt_threshold_ms: { type: PT.INT, default: 450 },
+      reward_medium_rt_threshold_ms: { type: PT.INT, default: 800 },
+      reward_points_fast: { type: PT.FLOAT, default: 2 },
+      reward_points_medium: { type: PT.FLOAT, default: 1 },
+      reward_points_slow: { type: PT.FLOAT, default: 0 },
+      reward_feedback_text_template: { type: PT.STRING, default: '+{{points}} points' },
 
       detection_response_task_enabled: { type: PT.BOOL, default: false }
     },
@@ -645,6 +654,15 @@
       const feedbackDurationMs = Math.max(0, Number(trial.feedback_duration_ms ?? 800) || 0);
       const fbTextCorrect = (trial.feedback_text_correct ?? 'Correct').toString();
       const fbTextIncorrect = (trial.feedback_text_incorrect ?? 'Incorrect').toString();
+      const tooSlowFeedbackEnabled = trial.too_slow_feedback_enabled === true;
+      const fbTextNoResponse = (trial.feedback_text_no_response ?? 'Too slow').toString();
+      const rewardFeedbackEnabled = trial.reward_feedback_enabled === true;
+      const rewardFastThresholdMs = Math.max(0, Number(trial.reward_fast_rt_threshold_ms ?? 450) || 0);
+      const rewardMediumThresholdMs = Math.max(rewardFastThresholdMs, Number(trial.reward_medium_rt_threshold_ms ?? 800) || rewardFastThresholdMs);
+      const rewardPointsFast = Number.isFinite(Number(trial.reward_points_fast)) ? Number(trial.reward_points_fast) : 2;
+      const rewardPointsMedium = Number.isFinite(Number(trial.reward_points_medium)) ? Number(trial.reward_points_medium) : 1;
+      const rewardPointsSlow = Number.isFinite(Number(trial.reward_points_slow)) ? Number(trial.reward_points_slow) : 0;
+      const rewardTemplate = (trial.reward_feedback_text_template ?? '+{{points}} points').toString();
 
       // Optional researcher-controlled patch diameter.
       // Preferred: degrees-of-visual-angle via trial.patch_diameter_deg + prior visual-angle calibration.
@@ -789,14 +807,66 @@
           ...(drtEnabled ? { drt_enabled: true, drt_shown: drtShown, drt_rt_ms: drtRt } : {})
         };
 
-        if (showFeedback && feedbackDurationMs > 0 && canvas) {
+        const isQuestAdaptive = (
+          (trial && trial.data && trial.data.adaptive_mode === 'quest')
+          || trial.adaptive_mode === 'quest'
+          || (trial.adaptive && trial.adaptive.mode === 'quest')
+        );
+
+        const noResponse = !(responded && Number.isFinite(rt));
+        const hasValueCueContext = (
+          leftValue !== 'neutral'
+          || rightValue !== 'neutral'
+          || (typeof trialData.value_target_value === 'string' && trialData.value_target_value.trim() !== '')
+        );
+
+        let rewardRtTier = null;
+        let rewardPointsAwarded = null;
+        if (
+          rewardFeedbackEnabled
+          && !noResponse
+          && correctness === true
+          && hasValueCueContext
+          && trialData.reward_available !== false
+        ) {
+          if (rt <= rewardFastThresholdMs) {
+            rewardRtTier = 'fast';
+            rewardPointsAwarded = rewardPointsFast;
+          } else if (rt <= rewardMediumThresholdMs) {
+            rewardRtTier = 'medium';
+            rewardPointsAwarded = rewardPointsMedium;
+          } else {
+            rewardRtTier = 'slow';
+            rewardPointsAwarded = rewardPointsSlow;
+          }
+        }
+
+        trialData.no_response = noResponse;
+        trialData.reward_rt_tier = rewardRtTier;
+        trialData.reward_points_awarded = rewardPointsAwarded;
+
+        const shouldShowAnyFeedback = showFeedback || tooSlowFeedbackEnabled || rewardFeedbackEnabled;
+
+        if (shouldShowAnyFeedback && feedbackDurationMs > 0 && canvas) {
           const fbCtx = canvas.getContext('2d');
           if (fbCtx) {
-            const fbText = (correctness === true) ? fbTextCorrect : (correctness === false) ? fbTextIncorrect : '';
+            let fbText = '';
+            let fbColor = '#4caf50';
+
+            if (noResponse && tooSlowFeedbackEnabled && !isQuestAdaptive) {
+              fbText = fbTextNoResponse;
+              fbColor = '#ffb74d';
+            } else if (rewardRtTier !== null && rewardPointsAwarded !== null) {
+              fbText = rewardTemplate.replace(/\{\{\s*points\s*\}\}/gi, String(rewardPointsAwarded));
+              fbColor = '#ffd54f';
+            } else if (showFeedback) {
+              fbText = (correctness === true) ? fbTextCorrect : (correctness === false) ? fbTextIncorrect : '';
+              fbColor = (correctness === true) ? '#4caf50' : '#f44336';
+            }
+
             if (fbText) {
               const cw = canvas.width;
               const ch = canvas.height;
-              const fbColor = (correctness === true) ? '#4caf50' : '#f44336';
               fbCtx.save();
               fbCtx.fillStyle = 'rgba(11,11,11,0.72)';
               fbCtx.fillRect(0, 0, cw, ch);

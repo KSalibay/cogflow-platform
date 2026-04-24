@@ -1705,6 +1705,71 @@ class JSPsychSchemas {
                         type: this.parameterTypes.FLOAT,
                         default: 0.95,
                         description: 'Gabor patch contrast (0–1)'
+                    },
+                    show_feedback: {
+                        type: this.parameterTypes.BOOL,
+                        default: false,
+                        description: 'Show post-trial feedback overlay'
+                    },
+                    feedback_duration_ms: {
+                        type: this.parameterTypes.INT,
+                        default: 800,
+                        description: 'Feedback display duration in ms'
+                    },
+                    feedback_text_correct: {
+                        type: this.parameterTypes.STRING,
+                        default: 'Correct',
+                        description: 'Feedback text for correct responses'
+                    },
+                    feedback_text_incorrect: {
+                        type: this.parameterTypes.STRING,
+                        default: 'Incorrect',
+                        description: 'Feedback text for incorrect responses'
+                    },
+                    too_slow_feedback_enabled: {
+                        type: this.parameterTypes.BOOL,
+                        default: false,
+                        description: 'For non-QUEST trials, show a no-response message when the response window expires'
+                    },
+                    feedback_text_no_response: {
+                        type: this.parameterTypes.STRING,
+                        default: 'Too slow',
+                        description: 'Feedback text shown when no response is made in time (if enabled)'
+                    },
+                    reward_feedback_enabled: {
+                        type: this.parameterTypes.BOOL,
+                        default: false,
+                        description: 'Show reward feedback based on RT in value-cue context'
+                    },
+                    reward_fast_rt_threshold_ms: {
+                        type: this.parameterTypes.INT,
+                        default: 450,
+                        description: 'RT threshold (ms) for fast reward tier'
+                    },
+                    reward_medium_rt_threshold_ms: {
+                        type: this.parameterTypes.INT,
+                        default: 800,
+                        description: 'RT threshold (ms) for medium reward tier'
+                    },
+                    reward_points_fast: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 2,
+                        description: 'Reward points shown for fast RT responses'
+                    },
+                    reward_points_medium: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 1,
+                        description: 'Reward points shown for medium RT responses'
+                    },
+                    reward_points_slow: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 0,
+                        description: 'Reward points shown for slow RT responses'
+                    },
+                    reward_feedback_text_template: {
+                        type: this.parameterTypes.STRING,
+                        default: '+{{points}} points',
+                        description: 'Reward feedback template. Use {{points}} placeholder.'
                     }
                 }
             },
@@ -3427,14 +3492,80 @@ class JSPsychSchemas {
                     gabor_show_feedback: {
                         type: this.parameterTypes.BOOL,
                         default: true,
-                        blockTarget: 'gabor-learning',
+                        blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
                         description: 'Gabor: show correct/incorrect feedback after each trial'
                     },
                     gabor_feedback_duration_ms: {
                         type: this.parameterTypes.INT,
                         default: 800,
-                        blockTarget: 'gabor-learning',
+                        blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
                         description: 'Gabor: duration of feedback display (ms)'
+                    },
+                    gabor_feedback_text_correct: {
+                        type: this.parameterTypes.STRING,
+                        default: 'Correct',
+                        blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
+                        description: 'Gabor: feedback text for correct responses'
+                    },
+                    gabor_feedback_text_incorrect: {
+                        type: this.parameterTypes.STRING,
+                        default: 'Incorrect',
+                        blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
+                        description: 'Gabor: feedback text for incorrect responses'
+                    },
+                    gabor_too_slow_feedback_enabled: {
+                        type: this.parameterTypes.BOOL,
+                        default: false,
+                        blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
+                        description: 'Gabor: for non-QUEST trials, show a no-response message when the response window expires'
+                    },
+                    gabor_feedback_text_no_response: {
+                        type: this.parameterTypes.STRING,
+                        default: 'Too slow',
+                        blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
+                        description: 'Gabor: feedback text for no-response deadlines'
+                    },
+                    gabor_reward_feedback_enabled: {
+                        type: this.parameterTypes.BOOL,
+                        default: false,
+                        blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
+                        description: 'Gabor: show reward feedback based on RT in value-cue context'
+                    },
+                    gabor_reward_fast_rt_threshold_ms: {
+                        type: this.parameterTypes.INT,
+                        default: 450,
+                        blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
+                        description: 'Gabor: RT threshold (ms) for fast reward tier'
+                    },
+                    gabor_reward_medium_rt_threshold_ms: {
+                        type: this.parameterTypes.INT,
+                        default: 800,
+                        blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
+                        description: 'Gabor: RT threshold (ms) for medium reward tier'
+                    },
+                    gabor_reward_points_fast: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 2,
+                        blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
+                        description: 'Gabor: reward points shown for fast RT responses'
+                    },
+                    gabor_reward_points_medium: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 1,
+                        blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
+                        description: 'Gabor: reward points shown for medium RT responses'
+                    },
+                    gabor_reward_points_slow: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 0,
+                        blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
+                        description: 'Gabor: reward points shown for slow RT responses'
+                    },
+                    gabor_reward_feedback_text_template: {
+                        type: this.parameterTypes.STRING,
+                        default: '+{{points}} points',
+                        blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
+                        description: 'Gabor: reward feedback template. Use {{points}} placeholder.'
                     },
                     gabor_stimulus_duration_min: {
                         type: this.parameterTypes.INT,

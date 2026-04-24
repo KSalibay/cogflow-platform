@@ -348,6 +348,7 @@
       : (typeof block.component_type === 'string' && block.component_type.trim())
         ? block.component_type.trim()
         : 'rdm-trial';
+    const canonicalBaseType = (baseType === 'gabor-quest') ? 'gabor-trial' : baseType;
 
     // N-back: treat Block as the generator (Builder UX).
     // Support legacy `nback-block`, the public alias `nback`, and the older name `nback-trial-sequence`.
@@ -1019,7 +1020,7 @@
     };
 
     // Gabor QUEST blocks export values.adaptive = { mode:'quest', parameter: ... }
-    if (baseType === 'gabor-trial' && isObject(values.adaptive) && (values.adaptive.mode || '').toString() === 'quest') {
+    if ((baseType === 'gabor-trial' || baseType === 'gabor-quest') && isObject(values.adaptive) && (values.adaptive.mode || '').toString() === 'quest') {
       const a = values.adaptive;
       const questParam = (a.parameter || 'target_tilt_deg').toString();
       adaptiveMeta = {
@@ -1216,14 +1217,91 @@
       return out;
     };
 
+    const gaborCounterbalanceState = (() => {
+      if (!isObject(opts)) return null;
+      if (!isObject(opts.__gaborCounterbalanceState)) {
+        opts.__gaborCounterbalanceState = {};
+      }
+      return opts.__gaborCounterbalanceState;
+    })();
+
+    const refillBalancedBoolQueue = (state, pTrue, minCount) => {
+      if (!isObject(state)) return;
+      const target = Math.max(1, Number.parseInt(minCount, 10) || 1);
+      const p = clamp(pTrue, 0, 1);
+      const q = Array.isArray(state.queue) ? state.queue : [];
+      state.queue = q;
+      while (state.queue.length < target) {
+        const chunkSize = Math.max(target, 24);
+        state.queue.push(...buildBalancedBoolSchedule(chunkSize, p, rng));
+      }
+    };
+
+    const takeBalancedBoolPlan = (stateKey, pTrue, count) => {
+      const n = Math.max(0, Number.parseInt(count, 10) || 0);
+      if (n <= 0) return [];
+      if (!isObject(gaborCounterbalanceState)) {
+        return buildBalancedBoolSchedule(n, pTrue, rng);
+      }
+      const bucket = isObject(gaborCounterbalanceState[stateKey]) ? gaborCounterbalanceState[stateKey] : {};
+      gaborCounterbalanceState[stateKey] = bucket;
+      refillBalancedBoolQueue(bucket, pTrue, n);
+      return bucket.queue.splice(0, n);
+    };
+
+    const refillPairQueue = (state, aVals, bVals, minCount) => {
+      if (!isObject(state)) return;
+      const a = Array.isArray(aVals) ? aVals : [];
+      const b = Array.isArray(bVals) ? bVals : [];
+      if (a.length === 0 || b.length === 0) return;
+
+      const target = Math.max(1, Number.parseInt(minCount, 10) || 1);
+      state.queue = Array.isArray(state.queue) ? state.queue : [];
+
+      const combos = [];
+      for (const av of a) {
+        for (const bv of b) {
+          combos.push({ a: av, b: bv });
+        }
+      }
+      while (state.queue.length < target) {
+        state.queue.push(...shuffleWithRng(combos, rng));
+      }
+    };
+
+    const takeBalancedPairPlan = (stateKey, aVals, bVals, count) => {
+      const n = Math.max(0, Number.parseInt(count, 10) || 0);
+      if (n <= 0) return [];
+      if (!isObject(gaborCounterbalanceState)) {
+        return buildBalancedPairSchedule(n, aVals, bVals, rng);
+      }
+      const bucket = isObject(gaborCounterbalanceState[stateKey]) ? gaborCounterbalanceState[stateKey] : {};
+      gaborCounterbalanceState[stateKey] = bucket;
+      refillPairQueue(bucket, aVals, bVals, n);
+      return bucket.queue.splice(0, n);
+    };
+
     const applyGaborBlockCounterbalance = (generatedTrials) => {
       if (!Array.isArray(generatedTrials) || generatedTrials.length === 0) return;
+
+      const cbSig = JSON.stringify({
+        baseType,
+        target_location: values.target_location,
+        target_left_probability: values.target_left_probability,
+        spatial_cue_target_mode: values.spatial_cue_target_mode,
+        spatial_cue_validity_probability: values.spatial_cue_validity_probability,
+        value_target_value: values.value_target_value,
+        value_non_target_value: values.value_non_target_value,
+        target_tilt_deg: values.target_tilt_deg,
+        distractor_orientation_deg: values.distractor_orientation_deg,
+        adaptive_mode: (isObject(values.adaptive) ? values.adaptive.mode : null)
+      });
 
       const targetLocationOpts = normalizeOptions(values.target_location).map(v => (v ?? '').toString().trim().toLowerCase());
       const hasBothTargetSides = targetLocationOpts.includes('left') && targetLocationOpts.includes('right');
       const pTargetLeftRaw = Number(values.target_left_probability);
       const targetPlan = (Number.isFinite(pTargetLeftRaw) && hasBothTargetSides)
-        ? buildBalancedBoolSchedule(generatedTrials.length, clamp(pTargetLeftRaw, 0, 1), rng)
+        ? takeBalancedBoolPlan(`target-left:${cbSig}`, clamp(pTargetLeftRaw, 0, 1), generatedTrials.length)
         : null;
 
       const spatialCueTargetMode = (values.spatial_cue_target_mode ?? 'couple_target_to_cue').toString().trim().toLowerCase();
@@ -1237,7 +1315,7 @@
             const cue = (generatedTrials[i].spatial_cue ?? 'none').toString().trim().toLowerCase();
             if (cue === cueSide) indices.push(i);
           }
-          const validity = buildBalancedBoolSchedule(indices.length, pValid, rng);
+          const validity = takeBalancedBoolPlan(`cue-valid:${cueSide}:${cbSig}`, pValid, indices.length);
           for (let j = 0; j < indices.length; j++) {
             const idx = indices[j];
             const isValid = validity[j] === true;
@@ -1301,7 +1379,7 @@
           if (loc === side) indices.push(i);
         }
 
-        const comboPlan = buildBalancedPairSchedule(indices.length, targetTiltOptions, distractorOptions, rng);
+        const comboPlan = takeBalancedPairPlan(`tilt-distr:${side}:${cbSig}`, targetTiltOptions, distractorOptions, indices.length);
         for (let j = 0; j < indices.length; j++) {
           const idx = indices[j];
           const pair = comboPlan[j];
@@ -1314,7 +1392,7 @@
 
     const trials = [];
     for (let i = 0; i < length; i++) {
-      const t = { type: baseType, _generated_from_block: true, _block_index: i };
+      const t = { type: canonicalBaseType, _generated_from_block: true, _block_index: i };
 
       // Apply fixed values
       for (const [k, v] of Object.entries(values)) {
@@ -4531,7 +4609,7 @@
       }
 
       // Gabor task
-      if (type === 'gabor-trial') {
+      if (type === 'gabor-trial' || type === 'gabor-quest') {
         const Gabor = requirePlugin('gabor (window.jsPsychGabor)', window.jsPsychGabor);
         const onStart = typeof item.on_start === 'function' ? item.on_start : null;
         const onFinish0 = typeof item.on_finish === 'function' ? item.on_finish : null;
