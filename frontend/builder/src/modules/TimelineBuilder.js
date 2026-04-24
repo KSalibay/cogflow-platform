@@ -2704,16 +2704,33 @@ class TimelineBuilder {
             const learningParams = [
                 'gabor_learning_streak_length',
                 'gabor_learning_target_accuracy',
-                'gabor_learning_max_trials',
+                'gabor_learning_max_trials'
+            ];
+            const feedbackParams = [
                 'gabor_show_feedback',
-                'gabor_feedback_duration_ms'
+                'gabor_feedback_duration_ms',
+                'gabor_feedback_text_correct',
+                'gabor_feedback_text_incorrect',
+                'gabor_too_slow_feedback_enabled',
+                'gabor_feedback_text_no_response',
+                'gabor_reward_feedback_enabled',
+                'gabor_reward_fast_rt_threshold_ms',
+                'gabor_reward_medium_rt_threshold_ms',
+                'gabor_reward_points_fast',
+                'gabor_reward_points_medium',
+                'gabor_reward_points_slow',
+                'gabor_reward_feedback_text_template'
             ];
             if (selected !== 'gabor-trial' && selected !== 'gabor-quest' && selected !== 'gabor-learning') {
                 // Ensure all hidden when switching to a non-Gabor block type
                 questParams.forEach(p => setParamVisible(p, false));
                 learningParams.forEach(p => setParamVisible(p, false));
+                feedbackParams.forEach(p => setParamVisible(p, false));
                 return;
             }
+
+            // Feedback controls apply to all Gabor block variants.
+            feedbackParams.forEach(p => setParamVisible(p, true));
 
             // Learning mode: show learning params, hide QUEST params
             if (selected === 'gabor-learning') {
@@ -2722,7 +2739,7 @@ class TimelineBuilder {
                 return;
             }
 
-            // gabor-trial / gabor-quest: hide learning params, show QUEST when mode = quest
+            // gabor-trial / gabor-quest: hide learning-only params, show QUEST when mode = quest
             learningParams.forEach(p => setParamVisible(p, false));
 
             const modeEl = formContainer.querySelector('#param_gabor_adaptive_mode');
