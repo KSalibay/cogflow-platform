@@ -2536,34 +2536,18 @@
     }
 
     function groupCreditsEntriesForUi(entries) {
-      const grouped = new Map();
-      (Array.isArray(entries) ? entries : []).forEach((e) => {
-        const taskType = String(e?.task_type || "").trim();
-        const componentType = String(e?.component_type || "").trim();
-        const notes = String(e?.notes || "").trim();
+      return (Array.isArray(entries) ? entries : []).map((e) => {
         const role = String(e?.credit_role || "").trim();
         const username = String(e?.contributor_username || "").trim();
-        const key = `${taskType}||${componentType}||${notes}`;
-        if (!grouped.has(key)) {
-          grouped.set(key, {
-            id: null,
-            task_type: taskType,
-            component_type: componentType,
-            notes,
-            credit_roles: [],
-            contributor_usernames: [],
-          });
-        }
-        const row = grouped.get(key);
-        if (role) row.credit_roles.push(role);
-        if (username) row.contributor_usernames.push(username);
+        return {
+          id: e?.id ?? null,
+          task_type: String(e?.task_type || "").trim(),
+          component_type: String(e?.component_type || "").trim(),
+          notes: String(e?.notes || "").trim(),
+          credit_roles: role ? [role] : [],
+          contributor_usernames: username ? [username] : [],
+        };
       });
-
-      return Array.from(grouped.values()).map((x) => ({
-        ...x,
-        credit_roles: uniqList(x.credit_roles),
-        contributor_usernames: uniqList(x.contributor_usernames),
-      }));
     }
 
     function makeCreditsRowDraft() {
@@ -2625,25 +2609,17 @@
 
     async function saveCreditsFromUi() {
       const rows = Array.isArray(creditsDraftRows) ? creditsDraftRows : [];
-      const entries = [];
-      rows.forEach((row) => {
-        const taskType = String(row?.task_type || "").trim();
-        const componentType = String(row?.component_type || "").trim();
-        const notes = String(row?.notes || "").trim();
-        const roles = uniqList(row?.credit_roles || []);
-        const users = uniqList(row?.contributor_usernames || []);
-        roles.forEach((role) => {
-          users.forEach((username) => {
-            entries.push({
-              task_type: taskType,
-              component_type: componentType,
-              credit_role: role,
-              contributor_username: username,
-              notes,
-            });
-          });
-        });
-      });
+      const entries = rows.map((row) => {
+        const role = uniqList(row?.credit_roles || [])[0] || "";
+        const username = uniqList(row?.contributor_usernames || [])[0] || "";
+        return {
+          task_type: String(row?.task_type || "").trim(),
+          component_type: String(row?.component_type || "").trim(),
+          credit_role: role,
+          contributor_username: username,
+          notes: String(row?.notes || "").trim(),
+        };
+      }).filter((entry) => entry.task_type && entry.component_type && entry.credit_role && entry.contributor_username);
 
       const msg = document.getElementById("creditsMsg");
       if (msg) {
@@ -2886,11 +2862,33 @@
         if (kind === "role") {
           const picker = document.querySelector(`select[data-field='role_picker'][data-row-index='${idx}']`);
           const value = String(picker?.value || "").trim();
-          row.credit_roles = uniqList([...(row.credit_roles || []), value]);
+          if (!value) return;
+          const currentRole = uniqList(row.credit_roles || [])[0] || "";
+          if (!currentRole) {
+            row.credit_roles = [value];
+          } else if (currentRole !== value) {
+            creditsDraftRows.splice(idx + 1, 0, {
+              ...row,
+              id: null,
+              credit_roles: [value],
+              contributor_usernames: uniqList(row.contributor_usernames || []),
+            });
+          }
         } else if (kind === "user") {
           const picker = document.querySelector(`select[data-field='user_picker'][data-row-index='${idx}']`);
           const value = String(picker?.value || "").trim();
-          row.contributor_usernames = uniqList([...(row.contributor_usernames || []), value]);
+          if (!value) return;
+          const currentUser = uniqList(row.contributor_usernames || [])[0] || "";
+          if (!currentUser) {
+            row.contributor_usernames = [value];
+          } else if (currentUser !== value) {
+            creditsDraftRows.splice(idx + 1, 0, {
+              ...row,
+              id: null,
+              credit_roles: uniqList(row.credit_roles || []),
+              contributor_usernames: [value],
+            });
+          }
         }
         renderCreditsView();
         return;
