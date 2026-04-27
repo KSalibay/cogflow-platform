@@ -856,12 +856,12 @@
             <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap;">
               <div>
                 <strong>Job #${Number(job.id)}</strong>
-                <div style="font-size:.82rem;color:${statusTone};text-transform:capitalize;">${esc(job.status || "unknown")}</div>
+                <div class="job-status-badge" style="font-size:.82rem;color:${statusTone};text-transform:capitalize;">${esc(job.status || "unknown")}</div>
                 <div style="font-size:.78rem;color:var(--muted);">${esc((job.engine || "python").toUpperCase())} · created ${esc(fmt(job.created_at))}</div>
               </div>
-              <div style="display:flex;gap:6px;flex-wrap:wrap;">${artifactLinks}${cancelBtn}</div>
+              <div class="job-artifacts" style="display:flex;gap:6px;flex-wrap:wrap;">${artifactLinks}${cancelBtn}</div>
             </div>
-            ${job.error_message ? `<div style="margin-top:8px;color:var(--warn);font-size:.82rem;">${esc(job.error_message)}</div>` : ""}
+            <div class="job-error-message" style="margin-top:${job.error_message ? "8" : "0"}px;color:var(--warn);font-size:.82rem;">${esc(job.error_message || "")}</div>
             ${workerLogSection}
           </div>`;
       }).join("");
@@ -909,9 +909,64 @@
       }
       const pending = (jobs || []).some((job) => ["queued", "running"].includes(String(job?.status || "").trim().toLowerCase()));
       if (!pending || !studySlug) return;
+      // Poll at 4 s but only patch status/artifacts — never wipe the list
       analysisJobsRefreshTimer = window.setTimeout(() => {
-        loadAnalysisJobs(studySlug);
-      }, 2000);
+        loadAnalysisJobsSilent(studySlug);
+      }, 4000);
+    }
+
+    // Silent refresh: fetch latest job data, patch changed jobs in-place without
+    // destroying the DOM so scroll position and open <details> are preserved.
+    async function loadAnalysisJobsSilent(studySlug) {
+      const slug = String(studySlug || document.getElementById("analysisStudySelect")?.value || "").trim();
+      if (!slug) return;
+      try {
+        const r = await fetch(`${API}/api/v1/studies/analysis/jobs?study_slug=${encodeURIComponent(slug)}`, { credentials: "include" });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) return;  // silently skip on error; user still sees last known state
+        const jobs = Array.isArray(d.jobs) ? d.jobs : [];
+        patchAnalysisJobs(jobs);
+        const latestSucceeded = jobs.find((job) => String(job?.status || "") === "succeeded");
+        if (latestSucceeded) await loadAnalysisPreview(latestSucceeded);
+        scheduleAnalysisJobsRefresh(slug, jobs);
+      } catch { /* ignore */ }
+    }
+
+    // Patch individual job cards that have changed status without a full re-render.
+    function patchAnalysisJobs(jobs) {
+      const listEl = document.getElementById("analysisJobsList");
+      if (!listEl) return;
+      // If a job card doesn't exist yet (new job appeared), do a full render instead.
+      const existingIds = new Set([...listEl.querySelectorAll("[data-analysis-job-id]")].map((el) => Number(el.dataset.analysisJobId)));
+      const incomingIds = new Set((jobs || []).map((j) => Number(j.id)));
+      const hasNew = [...incomingIds].some((id) => !existingIds.has(id));
+      if (hasNew || existingIds.size === 0) {
+        renderAnalysisJobs(jobs);
+        return;
+      }
+      // Patch only the status badge and artifact links of each existing card.
+      for (const job of (jobs || [])) {
+        const card = listEl.querySelector(`[data-analysis-job-id="${Number(job.id)}"]`);
+        if (!card) continue;
+        const statusTone = job.status === "succeeded" ? "var(--ok)" : (job.status === "failed" ? "var(--warn)" : "var(--muted)");
+        const statusEl = card.querySelector(".job-status-badge");
+        if (statusEl) {
+          statusEl.style.color = statusTone;
+          statusEl.textContent = job.status || "unknown";
+        }
+        const artifactsEl = card.querySelector(".job-artifacts");
+        const artifacts = Array.isArray(job.artifacts) ? job.artifacts : [];
+        if (artifactsEl) {
+          const cancelBtn = job.status === "queued"
+            ? `<button class="btn btn-ghost btn-xs" style="color:var(--warn);" onclick="cancelAnalysisJob(${Number(job.id)})">Cancel</button>`
+            : "";
+          artifactsEl.innerHTML = artifacts.length
+            ? artifacts.map((a) => `<a class="btn btn-ghost btn-xs" href="${esc(a.download_url || "")}" target="_blank" rel="noopener">${esc((a.format || "file").toUpperCase())}</a>`).join(" ") + cancelBtn
+            : `<span style="color:var(--muted);">No artifacts yet</span>${cancelBtn}`;
+        }
+        const errEl = card.querySelector(".job-error-message");
+        if (errEl) errEl.textContent = job.error_message || "";
+      }
     }
 
     async function loadAnalysisJobs(studySlug) {
