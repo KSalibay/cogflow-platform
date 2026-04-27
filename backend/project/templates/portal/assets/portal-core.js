@@ -795,7 +795,8 @@
       }
 
       // Keep study-dependent views fresh without requiring full-page reload.
-      if (isStudiesView || id === "preview" || id === "analysis" || id === "integrations") {
+      // Analysis intentionally excluded to avoid list re-renders every auto-refresh tick.
+      if (isStudiesView || id === "preview" || id === "integrations") {
         loadStudies();
       }
     }
@@ -1087,7 +1088,8 @@
         sel.appendChild(o);
       }
       if (prev) sel.value = prev;
-      if (activeView === "analysis" && sel.value) loadAnalysisJobs(sel.value);
+      // Do not auto-reload analysis jobs from studies refresh; analysis loading is
+      // driven by explicit user actions and analysis-specific job polling.
     }
 
     function getCreditsTaskScopeMap() {
@@ -1347,7 +1349,7 @@
       studiesRefreshTimer = window.setInterval(() => {
         if (!currentUser) return;
         if (document.hidden) return;
-        if (!["studiesManagement", "studiesResults", "preview", "analysis", "integrations"].includes(activeView)) return;
+        if (!["studiesManagement", "studiesResults", "preview", "integrations"].includes(activeView)) return;
         loadStudies();
       }, 15000);
     }
@@ -1359,14 +1361,14 @@
     }
 
     window.addEventListener("focus", () => {
-      if (currentUser && ["studiesManagement", "studiesResults", "preview", "analysis", "integrations"].includes(activeView)) {
+      if (currentUser && ["studiesManagement", "studiesResults", "preview", "integrations"].includes(activeView)) {
         loadStudies();
       }
     });
 
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) return;
-      if (currentUser && ["studiesManagement", "studiesResults", "preview", "analysis", "integrations"].includes(activeView)) {
+      if (currentUser && ["studiesManagement", "studiesResults", "preview", "integrations"].includes(activeView)) {
         loadStudies();
       }
     });
