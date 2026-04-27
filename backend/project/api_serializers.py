@@ -60,6 +60,11 @@ class AuthRegisterRequestSerializer(serializers.Serializer):
     username = serializers.CharField(max_length=150)
     email = serializers.EmailField()
     password = serializers.CharField(max_length=128)
+    requested_role = serializers.ChoiceField(
+        choices=[UserProfile.ROLE_RESEARCHER, UserProfile.ROLE_ANALYST],
+        required=False,
+        default=UserProfile.ROLE_RESEARCHER,
+    )
 
 
 class TotpSetupRequestSerializer(serializers.Serializer):
@@ -98,6 +103,31 @@ class AssignStudyOwnerRequestSerializer(serializers.Serializer):
 class ShareStudyRequestSerializer(serializers.Serializer):
     username = serializers.CharField(max_length=150)
     can_remove_users = serializers.BooleanField(required=False, default=False)
+    can_run_analysis = serializers.BooleanField(required=False, default=True)
+    can_download_aggregate = serializers.BooleanField(required=False, default=True)
+    can_view_run_rows = serializers.BooleanField(required=False, default=False)
+    can_view_pseudonyms = serializers.BooleanField(required=False, default=False)
+    can_view_full_payload = serializers.BooleanField(required=False, default=False)
+    can_manage_sharing = serializers.BooleanField(required=False, default=False)
+
+    def validate(self, attrs):
+        if attrs.get("can_view_full_payload") and not attrs.get("can_view_run_rows"):
+            raise serializers.ValidationError(
+                "can_view_full_payload requires can_view_run_rows"
+            )
+        if attrs.get("can_view_pseudonyms") and not attrs.get("can_view_run_rows"):
+            raise serializers.ValidationError(
+                "can_view_pseudonyms requires can_view_run_rows"
+            )
+        if not attrs.get("can_run_analysis", True) and attrs.get("can_download_aggregate", True):
+            raise serializers.ValidationError(
+                "can_download_aggregate requires can_run_analysis"
+            )
+        return attrs
+
+
+class ShareStudyValidateUserRequestSerializer(serializers.Serializer):
+    username = serializers.CharField(max_length=150)
 
 
 class RevokeStudyAccessRequestSerializer(serializers.Serializer):
@@ -159,3 +189,46 @@ class CreditsEntrySerializer(serializers.Serializer):
 
 class CreditsBulkUpdateRequestSerializer(serializers.Serializer):
     entries = CreditsEntrySerializer(many=True, required=False, default=list)
+
+
+class StudyAnalysisReportRequestSerializer(serializers.Serializer):
+    study_slug = serializers.SlugField()
+    engine = serializers.ChoiceField(choices=["python", "r"], default="python")
+    include_completed_only = serializers.BooleanField(required=False, default=True)
+    options = serializers.JSONField(required=False, default=dict)
+
+    def validate_options(self, value):
+        opts = value if isinstance(value, dict) else {}
+        fields_of_interest = opts.get("fields_of_interest", [])
+        if isinstance(fields_of_interest, str):
+            fields_of_interest = [x.strip() for x in fields_of_interest.split(",") if x.strip()]
+        if not isinstance(fields_of_interest, list):
+            fields_of_interest = []
+        fields_of_interest = [str(x).strip().lower() for x in fields_of_interest if str(x).strip()]
+
+        normalized = {
+            "include_overview": bool(opts.get("include_overview", True)),
+            "include_numeric_summary": bool(opts.get("include_numeric_summary", True)),
+            "include_field_coverage": bool(opts.get("include_field_coverage", True)),
+            "include_config_fields": bool(opts.get("include_config_fields", False)),
+            "fields_of_interest": fields_of_interest,
+            "max_variables": int(opts.get("max_variables", 20) or 20),
+        }
+        normalized["max_variables"] = max(1, min(200, normalized["max_variables"]))
+        return normalized
+
+
+class StudyAnalysisReportJobCreateRequestSerializer(StudyAnalysisReportRequestSerializer):
+    requested_formats = serializers.ListField(
+        child=serializers.ChoiceField(choices=["markdown", "html", "pdf", "rmd", "snapshot"]),
+        required=False,
+        default=lambda: ["markdown", "html", "pdf", "snapshot"],
+    )
+
+    def validate_requested_formats(self, value):
+        ordered = []
+        for item in value or []:
+            fmt = str(item or "").strip().lower()
+            if fmt and fmt not in ordered:
+                ordered.append(fmt)
+        return ordered or ["markdown", "html", "pdf", "snapshot"]

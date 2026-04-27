@@ -21,6 +21,24 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  report_worker:
+    build:
+      context: ./backend
+    container_name: cogflow-platform-report-worker
+    env_file:
+      - .env
+    command: >
+      sh -c "python manage.py migrate && python manage.py process_report_jobs --poll --sleep 2"
+    volumes:
+      - ./backend:/app
+      - ./frontend:/app/frontend
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
   db:
     image: postgres:16
     container_name: cogflow-platform-db

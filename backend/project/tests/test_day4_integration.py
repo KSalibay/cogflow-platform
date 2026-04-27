@@ -12,6 +12,7 @@ Verifies that:
 
 import pyotp
 from django.contrib.auth.models import User
+from django.core.management import call_command
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -866,3 +867,109 @@ class Day8PlatformAdminUserManagementTests(APITestCase):
         self.client.force_authenticate(user=None)
 
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class Day8AnalysisReportJobTests(APITestCase):
+    """Phase 2 smoke tests for queued analysis report jobs and artifacts."""
+
+    def setUp(self):
+        super().setUp()
+        self.researcher = User.objects.create_user(username="report_owner", password="pass-1234")
+        profile = get_or_create_profile(self.researcher)
+        profile.role = profile.ROLE_RESEARCHER
+        profile.save(update_fields=["role"])
+
+    def _publish_owned_study(self, slug="day8-report-study"):
+        self.client.force_authenticate(user=self.researcher)
+        resp = self.client.post(
+            reverse("configs-publish"),
+            data={
+                "study_slug": slug,
+                "study_name": "Day 8 Report Study",
+                "config_version_label": "v1",
+                "builder_version": "test",
+                "runtime_mode": "django",
+                "config": {"task_type": "rdm", "experiment_type": "trial-based"},
+            },
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        return slug
+
+    def test_report_job_renders_markdown_html_and_pdf_artifacts(self):
+        slug = self._publish_owned_study()
+
+        create_resp = self.client.post(
+            reverse("studies-analysis-jobs"),
+            data={
+                "study_slug": slug,
+                "engine": "python",
+                "requested_formats": ["markdown", "html", "pdf", "snapshot"],
+                "include_completed_only": True,
+                "options": {"include_overview": True, "include_numeric_summary": True},
+            },
+            format="json",
+        )
+        self.assertEqual(create_resp.status_code, status.HTTP_202_ACCEPTED)
+        job_id = create_resp.data["job"]["id"]
+
+        call_command("process_report_jobs")
+
+        detail_resp = self.client.get(reverse("studies-analysis-job-detail", kwargs={"job_id": job_id}))
+        self.assertEqual(detail_resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(detail_resp.data["job"]["status"], "succeeded")
+        artifact_formats = {artifact["format"] for artifact in detail_resp.data["job"]["artifacts"]}
+        self.assertTrue({"markdown", "html", "pdf", "snapshot"}.issubset(artifact_formats))
+
+        markdown_resp = self.client.get(
+            reverse("studies-analysis-job-artifact", kwargs={"job_id": job_id, "artifact_format": "markdown"})
+        )
+        self.assertEqual(markdown_resp.status_code, status.HTTP_200_OK)
+        self.assertIn("Study Analysis Report", markdown_resp.content.decode("utf-8"))
+
+        pdf_resp = self.client.get(
+            reverse("studies-analysis-job-artifact", kwargs={"job_id": job_id, "artifact_format": "pdf"})
+        )
+        self.assertEqual(pdf_resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(pdf_resp["Content-Type"], "application/pdf")
+        self.assertGreater(len(pdf_resp.content), 100)
+
+    def test_queued_job_can_be_cancelled(self):
+        slug = self._publish_owned_study(slug="day9-cancel-study")
+        create_resp = self.client.post(
+            reverse("studies-analysis-jobs"),
+            data={"study_slug": slug, "engine": "python"},
+            format="json",
+        )
+        self.assertEqual(create_resp.status_code, status.HTTP_202_ACCEPTED)
+        job_id = create_resp.data["job"]["id"]
+
+        cancel_resp = self.client.post(
+            reverse("studies-analysis-job-cancel", kwargs={"job_id": job_id})
+        )
+        self.assertEqual(cancel_resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(cancel_resp.data["job"]["status"], "failed")
+        self.assertIn("Cancelled", cancel_resp.data["job"]["error_message"])
+
+    def test_rate_limit_blocks_excess_jobs(self):
+        slug = self._publish_owned_study(slug="day9-ratelimit-study")
+        for _ in range(5):
+            self.client.post(
+                reverse("studies-analysis-jobs"),
+                data={"study_slug": slug, "engine": "python"},
+                format="json",
+            )
+        sixth_resp = self.client.post(
+            reverse("studies-analysis-jobs"),
+            data={"study_slug": slug, "engine": "python"},
+            format="json",
+        )
+        self.assertEqual(sixth_resp.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+
+    def test_task_family_detected_from_slug(self):
+        from project.study_report_jobs import _detect_task_family
+        self.assertEqual(_detect_task_family("KAMI135-rdm-01", []), "rdm")
+        self.assertEqual(_detect_task_family("ABC1234-flanker-01", []), "flanker")
+        self.assertEqual(_detect_task_family("AAA1111-sart-01", []), "sart")
+        self.assertEqual(_detect_task_family("AMI1111-gabor-01", []), "gabor")
+        self.assertEqual(_detect_task_family("something-unknown-01", []), "generic")
