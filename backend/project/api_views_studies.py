@@ -377,6 +377,41 @@ class StudyAnalysisReportJobCancelView(APIView):
         return Response({"ok": True, "job": _serialize_report_job(job)}, status=status.HTTP_200_OK)
 
 
+class StudyAnalysisReportJobDeleteView(APIView):
+    """Delete a completed or failed report job and all its artifacts."""
+
+    def delete(self, request, job_id: int):
+        if not request.user.is_authenticated:
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        job = StudyAnalysisReportJob.objects.select_related("study").filter(id=job_id).first()
+        if not job:
+            return Response({"error": "Report job not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        _study, _profile, _perms, error = _require_study_analysis_access(request, job.study.slug)
+        if error:
+            return error
+
+        if job.requested_by_id and job.requested_by_id != request.user.id:
+            return Response({"error": "You can only delete your own jobs"}, status=status.HTTP_403_FORBIDDEN)
+
+        if job.status in (StudyAnalysisReportJob.STATUS_QUEUED, StudyAnalysisReportJob.STATUS_RUNNING):
+            return Response(
+                {"error": "Cannot delete an active job. Cancel it first."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        record_audit(
+            action="analysis_report_job_deleted",
+            resource_type="study_report_job",
+            resource_id=job.id,
+            actor=request.user.username,
+            metadata={"study_slug": job.study.slug, "status": job.status},
+        )
+        job.delete()
+        return Response({"ok": True}, status=status.HTTP_200_OK)
+
+
 class StudyLatestConfigView(APIView):
     """Return the latest published config JSON for a study the researcher can access."""
 

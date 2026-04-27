@@ -786,6 +786,12 @@
         }
         const selectedStudy = String(document.getElementById("analysisStudySelect")?.value || "").trim();
         if (selectedStudy) loadAnalysisJobs(selectedStudy);
+      } else {
+        // Navigating away from analysis — stop the background poll.
+        if (analysisJobsRefreshTimer) {
+          clearTimeout(analysisJobsRefreshTimer);
+          analysisJobsRefreshTimer = null;
+        }
       }
 
       // Keep study-dependent views fresh without requiring full-page reload.
@@ -844,6 +850,9 @@
         const cancelBtn = job.status === "queued"
           ? `<button class="btn btn-ghost btn-xs" style="color:var(--warn);" onclick="cancelAnalysisJob(${Number(job.id)})">Cancel</button>`
           : "";
+        const deleteBtn = ["succeeded", "failed"].includes(job.status)
+          ? `<button class="btn btn-ghost btn-xs" style="color:var(--muted);" title="Delete job" onclick="deleteAnalysisJob(${Number(job.id)})">✕ Delete</button>`
+          : "";
         const workerLogId = `workerLog_${Number(job.id)}`;
         const workerLogSection = job.worker_log
           ? `<details style="margin-top:6px;font-size:.78rem;">
@@ -859,7 +868,7 @@
                 <div class="job-status-badge" style="font-size:.82rem;color:${statusTone};text-transform:capitalize;">${esc(job.status || "unknown")}</div>
                 <div style="font-size:.78rem;color:var(--muted);">${esc((job.engine || "python").toUpperCase())} · created ${esc(fmt(job.created_at))}</div>
               </div>
-              <div class="job-artifacts" style="display:flex;gap:6px;flex-wrap:wrap;">${artifactLinks}${cancelBtn}</div>
+              <div class="job-artifacts" style="display:flex;gap:6px;flex-wrap:wrap;">${artifactLinks}${cancelBtn}${deleteBtn}</div>
             </div>
             <div class="job-error-message" style="margin-top:${job.error_message ? "8" : "0"}px;color:var(--warn);font-size:.82rem;">${esc(job.error_message || "")}</div>
             ${workerLogSection}
@@ -883,6 +892,33 @@
         if (statusEl) {
           statusEl.className = "status-bar error";
           statusEl.textContent = `Cancel failed: ${err?.message || err}`;
+        }
+      }
+    }
+
+    async function deleteAnalysisJob(jobId) {
+      const studySlug = String(document.getElementById("analysisStudySelect")?.value || "").trim();
+      try {
+        const r = await fetch(`${API}/api/v1/studies/analysis/jobs/${jobId}/delete`, {
+          method: "DELETE",
+          credentials: "include",
+          headers: { "X-CSRFToken": getCsrf() },
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+        // Remove the card immediately without a full reload.
+        const card = document.querySelector(`[data-analysis-job-id="${Number(jobId)}"]`);
+        if (card) card.remove();
+        // If no cards remain, show the empty state message.
+        const listEl = document.getElementById("analysisJobsList");
+        if (listEl && !listEl.querySelector("[data-analysis-job-id]")) {
+          listEl.innerHTML = '<div style="color:var(--muted);">No report jobs yet for this study.</div>';
+        }
+      } catch (err) {
+        const statusEl = document.getElementById("analysisStatus");
+        if (statusEl) {
+          statusEl.className = "status-bar error";
+          statusEl.textContent = `Delete failed: ${err?.message || err}`;
         }
       }
     }
@@ -960,9 +996,12 @@
           const cancelBtn = job.status === "queued"
             ? `<button class="btn btn-ghost btn-xs" style="color:var(--warn);" onclick="cancelAnalysisJob(${Number(job.id)})">Cancel</button>`
             : "";
+          const deleteBtn = ["succeeded", "failed"].includes(job.status)
+            ? `<button class="btn btn-ghost btn-xs" style="color:var(--muted);" title="Delete job" onclick="deleteAnalysisJob(${Number(job.id)})">✕ Delete</button>`
+            : "";
           artifactsEl.innerHTML = artifacts.length
-            ? artifacts.map((a) => `<a class="btn btn-ghost btn-xs" href="${esc(a.download_url || "")}" target="_blank" rel="noopener">${esc((a.format || "file").toUpperCase())}</a>`).join(" ") + cancelBtn
-            : `<span style="color:var(--muted);">No artifacts yet</span>${cancelBtn}`;
+            ? artifacts.map((a) => `<a class="btn btn-ghost btn-xs" href="${esc(a.download_url || "")}" target="_blank" rel="noopener">${esc((a.format || "file").toUpperCase())}</a>`).join(" ") + cancelBtn + deleteBtn
+            : `<span style="color:var(--muted);">No artifacts yet</span>${cancelBtn}${deleteBtn}`;
         }
         const errEl = card.querySelector(".job-error-message");
         if (errEl) errEl.textContent = job.error_message || "";
