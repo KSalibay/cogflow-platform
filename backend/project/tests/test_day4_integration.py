@@ -562,6 +562,28 @@ class Day7PortalMvpLinkPipelineTests(APITestCase):
 
         self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_researcher_can_generate_links_for_legacy_public_study(self):
+        # Legacy public study: no owner_user and no collaborator share rows.
+        legacy_study = Study.objects.create(slug="legacy-public-links", name="Legacy Public", runtime_mode="django")
+        ConfigVersion.objects.create(
+            study=legacy_study,
+            version_label="v1",
+            config_json={"task_type": "rdm", "experiment_type": "trial-based"},
+            builder_version="test",
+        )
+
+        self.client.force_authenticate(user=self.researcher)
+        resp = self.client.post(
+            reverse("studies-participant-links", kwargs={"study_slug": "legacy-public-links"}),
+            data={"participant_external_id": "P-LEGACY-001"},
+            format="json",
+        )
+        self.client.force_authenticate(user=None)
+
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        self.assertIn("launch_token", resp.data)
+        self.assertIn("launch_options", resp.data)
+
     def test_start_run_accepts_launch_token_and_persists_owner_association(self):
         self._publish_as(self.researcher, slug="pipeline-study")
 
