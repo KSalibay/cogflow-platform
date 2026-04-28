@@ -86,31 +86,82 @@ class StudiesListView(APIView):
         studies_qs = studies_qs.annotate(
             run_count_agg=Count("run_sessions", distinct=True),
             last_result_at_agg=Max("run_sessions__result_envelope__created_at"),
-        )
+        ).select_related("owner_user").prefetch_related("config_versions", "researcher_access__user")
+
+        # Materialize once so we can batch-load current-user access records.
+        studies_page = list(studies_qs[:100])
+        study_ids = [s.id for s in studies_page]
+
+        access_by_study_id = {}
+        if request.user.is_authenticated and study_ids:
+            for access in StudyResearcherAccess.objects.filter(study_id__in=study_ids, user=request.user):
+                access_by_study_id[access.study_id] = access
+
         studies = []
-        for study in studies_qs[:100]:
-            last_config = study.config_versions.first()
+        for study in studies_page:
+            cfgs = list(study.config_versions.all())
+            last_config = cfgs[0] if cfgs else None
+
+            owner_usernames = []
+            if study.owner_user_id and getattr(study, "owner_user", None):
+                owner_usernames.append(study.owner_user.username)
+
+            for access in study.researcher_access.all():
+                username = getattr(access.user, "username", None)
+                if username and username not in owner_usernames:
+                    owner_usernames.append(username)
+
+            # Fallback for legacy studies with no owner/share rows.
+            owner_username = owner_usernames[0] if owner_usernames else _get_study_owner_username(study)
+            if owner_username and owner_username not in owner_usernames:
+                owner_usernames.append(owner_username)
+
+            if request.user.is_authenticated:
+                if study.owner_user_id == request.user.id:
+                    permissions = {
+                        "can_run_analysis": True,
+                        "can_download_aggregate": True,
+                        "can_view_run_rows": True,
+                        "can_view_pseudonyms": True,
+                        "can_view_full_payload": True,
+                        "can_manage_sharing": True,
+                        "can_remove_users": True,
+                    }
+                else:
+                    access = access_by_study_id.get(study.id)
+                    permissions = {
+                        "can_run_analysis": bool(getattr(access, "can_run_analysis", False)),
+                        "can_download_aggregate": bool(getattr(access, "can_download_aggregate", False)),
+                        "can_view_run_rows": bool(getattr(access, "can_view_run_rows", False)),
+                        "can_view_pseudonyms": bool(getattr(access, "can_view_pseudonyms", False)),
+                        "can_view_full_payload": bool(getattr(access, "can_view_full_payload", False)),
+                        "can_manage_sharing": bool(getattr(access, "can_manage_sharing", False)),
+                        "can_remove_users": bool(getattr(access, "can_remove_users", False)),
+                    }
+            else:
+                permissions = {
+                    "can_run_analysis": False,
+                    "can_download_aggregate": False,
+                    "can_view_run_rows": False,
+                    "can_view_pseudonyms": False,
+                    "can_view_full_payload": False,
+                    "can_manage_sharing": False,
+                    "can_remove_users": False,
+                }
+
             studies.append(
                 {
                     "study_slug": study.slug,
                     "study_name": study.name,
                     "runtime_mode": study.runtime_mode,
-                    "owner_username": _get_study_owner_username(study),
-                    "owner_usernames": _get_study_owner_usernames(study),
+                    "owner_username": owner_username,
+                    "owner_usernames": owner_usernames,
                     "latest_config_version": last_config.version_label if last_config else None,
                     "dashboard_url": f"/portal/studies/{study.slug}",
                     "run_count": study.run_count_agg,
                     "last_result_at": study.last_result_at_agg,
                     "last_activity_at": study.last_result_at_agg or study.updated_at,
-                    "permissions": _study_access_permissions(study, request.user, profile) if request.user.is_authenticated else {
-                        "can_run_analysis": False,
-                        "can_download_aggregate": False,
-                        "can_view_run_rows": False,
-                        "can_view_pseudonyms": False,
-                        "can_view_full_payload": False,
-                        "can_manage_sharing": False,
-                        "can_remove_users": False,
-                    },
+                    "permissions": permissions,
                 }
             )
         return Response({"studies": studies})
