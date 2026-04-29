@@ -478,7 +478,11 @@ class StudyLatestConfigView(APIView):
         if not study:
             return Response({"error": "Study not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        if not _has_study_access(study, request.user, profile) and not _is_legacy_public_study(study):
+        if (
+            not _has_study_access(study, request.user, profile)
+            and not _is_legacy_public_study(study)
+            and not _is_study_publish_actor(study, request.user)
+        ):
             return Response({"error": "Study is not owned by the current researcher"}, status=status.HTTP_403_FORBIDDEN)
 
         versions = list(study.config_versions.all())
@@ -772,7 +776,11 @@ class CreateParticipantLinkView(APIView):
             return Response({"error": "Study not found"}, status=status.HTTP_404_NOT_FOUND)
 
         owner_username = _get_study_owner_username(study)
-        if not _has_study_access(study, request.user, profile) and not _is_legacy_public_study(study):
+        if (
+            not _has_study_access(study, request.user, profile)
+            and not _is_legacy_public_study(study)
+            and not _is_study_publish_actor(study, request.user)
+        ):
             return Response({"error": "Study is not owned by the current researcher"}, status=status.HTTP_403_FORBIDDEN)
 
         serializer = CreateParticipantLinkRequestSerializer(data=request.data)

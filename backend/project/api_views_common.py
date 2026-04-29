@@ -202,6 +202,22 @@ def _has_study_access(study: Study, user, profile) -> bool:
     return StudyResearcherAccess.objects.filter(study=study, user=user).exists()
 
 
+def _is_study_publish_actor(study: Study, user) -> bool:
+    """Back-compat fallback: treat original publish actor as study owner-like access.
+
+    This covers older studies where owner/share metadata may be incomplete but
+    audit history has the correct publisher identity.
+    """
+    if not study or not user or not getattr(user, "is_authenticated", False):
+        return False
+    return AuditEvent.objects.filter(
+        action="publish_config",
+        resource_type="study",
+        resource_id=str(study.id),
+        actor=user.username,
+    ).exists()
+
+
 def _is_legacy_public_study(study: Study) -> bool:
     """Legacy studies created before ownership rollout: no owner and no explicit shares."""
     if not study:

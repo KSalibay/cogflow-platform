@@ -584,6 +584,40 @@ class Day7PortalMvpLinkPipelineTests(APITestCase):
         self.assertIn("launch_token", resp.data)
         self.assertIn("launch_options", resp.data)
 
+    def test_researcher_can_generate_links_if_they_are_publish_actor(self):
+        # Ownership drift case: owner is another account, no explicit share row,
+        # but audit history shows this researcher published the study.
+        drift_study = Study.objects.create(
+            slug="publish-actor-links",
+            name="Publish Actor Study",
+            runtime_mode="django",
+            owner_user=self.admin,
+        )
+        ConfigVersion.objects.create(
+            study=drift_study,
+            version_label="v1",
+            config_json={"task_type": "rdm", "experiment_type": "trial-based"},
+            builder_version="test",
+        )
+        AuditEvent.objects.create(
+            actor=self.researcher.username,
+            action="publish_config",
+            resource_type="study",
+            resource_id=str(drift_study.id),
+            metadata_json={"study_slug": drift_study.slug},
+        )
+
+        self.client.force_authenticate(user=self.researcher)
+        resp = self.client.post(
+            reverse("studies-participant-links", kwargs={"study_slug": "publish-actor-links"}),
+            data={"participant_external_id": "P-PUBLISH-ACTOR-001"},
+            format="json",
+        )
+        self.client.force_authenticate(user=None)
+
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        self.assertIn("launch_token", resp.data)
+
     def test_start_run_accepts_launch_token_and_persists_owner_association(self):
         self._publish_as(self.researcher, slug="pipeline-study")
 
