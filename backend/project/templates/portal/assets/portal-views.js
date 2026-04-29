@@ -39,6 +39,11 @@
       }
       try {
         const r = await fetch(`${API}/api/v1/studies`, { credentials: "include" });
+        if (r.status === 401) {
+          currentUser = null;
+          showLogin("Your session expired. Please sign in again.");
+          return;
+        }
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const d = await r.json();
         studiesList = d.studies || [];
@@ -87,6 +92,11 @@
       if (latestConfigCache[key]) return latestConfigCache[key];
       const r = await fetch(`${API}/api/v1/studies/${encodeURIComponent(key)}/latest-config?_ts=${Date.now()}`, { credentials: "include" });
       const d = await r.json().catch(() => ({}));
+      if (r.status === 401) {
+        await checkSession();
+        showLogin("Your session expired. Please sign in again.");
+        throw new Error("Authentication required");
+      }
       if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
       latestConfigCache[key] = d;
       return d;
@@ -516,6 +526,11 @@
             abort_redirect_url: abortRedirect || null,
           }));
         const d = await r.json().catch(() => ({}));
+        if (r.status === 401) {
+          await checkSession();
+          showLogin("Your session expired. Please sign in again.");
+          throw new Error("Authentication required");
+        }
         if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
         st.rollout = d;
         sb.className = "status-bar ok"; sb.textContent = `Links generated for ${slug}.`;
@@ -645,6 +660,11 @@
           abort_redirect_url: abortUrl || null,
         }));
         const d = await r.json().catch(() => ({}));
+        if (r.status === 401) {
+          await checkSession();
+          showLogin("Your session expired. Please sign in again.");
+          throw new Error("Authentication required");
+        }
         if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
 
         integrationsRollout = d;
@@ -700,6 +720,11 @@
           prolific_completion_code: completionCode,
         }));
         const d = await r.json().catch(() => ({}));
+        if (r.status === 401) {
+          await checkSession();
+          showLogin("Your session expired. Please sign in again.");
+          throw new Error("Authentication required");
+        }
         if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
 
         const multi = d.launch_options?.multi_use || {};

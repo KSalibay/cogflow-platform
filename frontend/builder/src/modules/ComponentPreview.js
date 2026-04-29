@@ -3859,6 +3859,8 @@ class ComponentPreview {
             sampled.probe_mode       = (src.mot_probe_mode  || 'click').toString();
             sampled.recognition_probe_count = Number.isFinite(Number(src.mot_recognition_probe_count)) ? Math.max(1, Number(src.mot_recognition_probe_count)) : 1;
             sampled.show_feedback    = !!src.mot_show_feedback;
+            sampled.feedback_show_count_message = src.mot_feedback_show_count_message !== false;
+            sampled.feedback_duration_ms = Number.isFinite(Number(src.mot_feedback_duration_ms)) ? Math.max(0, Number(src.mot_feedback_duration_ms)) : 1500;
             sampled.object_color     = src.object_color     || '#FFFFFF';
             sampled.target_cue_color = src.target_cue_color || '#FF9900';
             sampled.background_color = src.background_color || '#111111';

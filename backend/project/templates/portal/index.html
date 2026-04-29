@@ -1158,7 +1158,7 @@
         <div id="loginError" class="login-error hidden"></div>
 
         <!-- Step 1: credentials -->
-        <div id="loginStep1">
+        <form id="loginStep1" onsubmit="return false;">
           <h2>Sign in</h2>
           <div class="field-group">
             <div>
@@ -1177,10 +1177,10 @@
           <div style="margin-top:12px;text-align:center;">
             <button class="btn btn-ghost btn-sm" id="showRegisterBtn" type="button">Create an account</button>
           </div>
-        </div>
+        </form>
 
         <!-- Step 1b: registration -->
-        <div id="loginStepRegister" style="display:none;">
+        <form id="loginStepRegister" style="display:none;" onsubmit="return false;">
           <h2>Create account</h2>
           <p class="mfa-hint" style="margin-top:0;">New accounts are activated by email verification.</p>
           <div class="field-group">
@@ -1212,7 +1212,7 @@
           <div style="margin-top:12px;text-align:center;">
             <button class="btn btn-ghost btn-sm" id="showSignInBtn" type="button">Back to sign in</button>
           </div>
-        </div>
+        </form>
 
         <div id="loginStepResetRequest" style="display:none;">
           <h2>Reset password</h2>
@@ -1229,7 +1229,7 @@
           </div>
         </div>
 
-        <div id="loginStepResetConfirm" style="display:none;">
+        <form id="loginStepResetConfirm" style="display:none;" onsubmit="return false;">
           <h2>Set new password</h2>
           <p class="mfa-hint" style="margin-top:0;">Choose a new password for your account.</p>
           <input type="hidden" id="resetToken" />
@@ -1247,7 +1247,7 @@
           <div style="margin-top:12px;text-align:center;">
             <button class="btn btn-ghost btn-sm" id="showSignInFromResetConfirmBtn" type="button">Back to sign in</button>
           </div>
-        </div>
+        </form>
 
         <!-- Step 2: MFA code -->
         <div id="loginStep2" style="display:none;">
@@ -1781,7 +1781,7 @@
               </div>
             </div>
             <div class="view-scroll" style="padding-top:16px;">
-              <div class="panel panel-pad" style="margin-bottom:14px;">
+              <form class="panel panel-pad" style="margin-bottom:14px;" onsubmit="return false;">
                 <h3 style="margin:0 0 10px;">Create New User</h3>
                 <div id="adminMsg" class="inline-note" style="display:none;margin-bottom:10px;"></div>
                 <div class="account-field">
@@ -1808,7 +1808,7 @@
                 <div class="account-actions">
                   <button class="btn btn-primary btn-sm" id="adminCreateUserBtn">Create User</button>
                 </div>
-              </div>
+              </form>
 
               <div class="panel">
                 <div id="adminStatus" class="status-bar">Loading users…</div>
@@ -1839,7 +1839,7 @@
               <h1 class="view-title" style="margin:0 0 4px;">Account Settings</h1>
               <p class="view-subtitle" style="margin:0 0 20px;">Manage your credentials, MFA, and profile.</p>
 
-              <div class="account-section">
+              <form class="account-section" onsubmit="return false;">
                 <h3>Change Password</h3>
                 <div id="pwdMsg" class="inline-note" style="display:none;margin-bottom:12px;"></div>
                 <div class="account-field">
@@ -1857,7 +1857,7 @@
                 <div class="account-actions">
                   <button class="btn btn-primary btn-sm" id="changePwdBtn">Update Password</button>
                 </div>
-              </div>
+              </form>
 
               <div class="account-section" id="mfaSection">
                 <h3>Two-Factor Authentication (TOTP)</h3>
@@ -1874,7 +1874,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-    <script src="/portal/assets/portal-core.js?v=20260427-2"></script>
-    <script src="/portal/assets/portal-views.js?v=20260427-2"></script>
+    <script src="/portal/assets/portal-core.js?v=20260429-2"></script>
+    <script src="/portal/assets/portal-views.js?v=20260429-2"></script>
   </body>
 </html>

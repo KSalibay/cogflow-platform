@@ -2125,6 +2125,11 @@ class JSPsychSchemas {
                         default: false,
                         description: 'Show correct/incorrect feedback after probe response'
                     },
+                    feedback_show_count_message: {
+                        type: this.parameterTypes.BOOL,
+                        default: true,
+                        description: 'Show a feedback message with the number of correctly identified targets/probes'
+                    },
                     feedback_duration_ms: {
                         type: this.parameterTypes.INT,
                         default: 1500,
@@ -3789,6 +3794,20 @@ class JSPsychSchemas {
                         default: false,
                         blockTarget: 'mot-trial',
                         description: 'MOT: whether to show feedback for all trials in this block'
+                    },
+                    mot_feedback_show_count_message: {
+                        type: this.parameterTypes.BOOL,
+                        default: true,
+                        blockTarget: 'mot-trial',
+                        description: 'MOT: whether to show a count message for correct identifications during feedback'
+                    },
+                    mot_feedback_duration_ms: {
+                        type: this.parameterTypes.INT,
+                        default: 1500,
+                        min: 0,
+                        max: 10000,
+                        blockTarget: 'mot-trial',
+                        description: 'MOT: feedback display duration in ms for all trials in this block'
                     }
                 },
                 data: {}

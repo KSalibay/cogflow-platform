@@ -49,6 +49,7 @@
       recognition_probe_count: { type: PT.INT, default: 1 },
       probe_timeout_ms:     { type: PT.INT,    default: 0 },
       show_feedback:        { type: PT.BOOL,   default: false },
+      feedback_show_count_message: { type: PT.BOOL, default: true },
       feedback_duration_ms: { type: PT.INT,    default: 1500 }
     },
     data: {
@@ -102,7 +103,7 @@
         boundary_behavior, min_separation_px,
         speed_px_per_s, speed_variability, motion_type, curve_strength, direction_jitter_deg_per_frame,
         cue_duration_ms, cue_flash_rate_hz, tracking_duration_ms, iti_ms,
-        probe_mode, yes_key, no_key, recognition_probe_count, probe_timeout_ms, show_feedback, feedback_duration_ms
+        probe_mode, yes_key, no_key, recognition_probe_count, probe_timeout_ms, show_feedback, feedback_show_count_message, feedback_duration_ms
       } = trial;
 
       const radiusFromDotSize = Number.isFinite(Number(dot_size_px)) && Number(dot_size_px) > 0
@@ -208,6 +209,7 @@
       let recognitionProbeIndices = [];
       let recognitionProbeCursor = 0;
       let recognitionTrials = [];
+      let feedbackSummaryText = '';
 
       const requestedRecognitionProbeCount = (() => {
         const n = Number.parseInt(recognition_probe_count, 10);
@@ -674,6 +676,21 @@
         drtResumeConfig = null;
 
         if (show_feedback) {
+          feedbackSummaryText = '';
+          if (feedback_show_count_message !== false) {
+            if (probe_mode === 'yes_no_recognition') {
+              const respondedTrials = recognitionTrials.filter(t => t && (t.recognition_is_yes === true || t.recognition_is_yes === false));
+              const correctCount = respondedTrials.filter(t => t.recognition_correct === true).length;
+              const totalCount = respondedTrials.length;
+              feedbackSummaryText = `Correct identifications: ${correctCount}/${totalCount}`;
+            } else {
+              let correctCount = 0;
+              for (const idx of selectedObjects) {
+                if (targetSet.has(idx)) correctCount++;
+              }
+              feedbackSummaryText = `Correctly identified targets: ${correctCount}/${num_targets}`;
+            }
+          }
           phase      = 'feedback';
           phaseStart = performance.now();
         } else {
@@ -714,6 +731,7 @@
 
         } else if (phase === 'feedback') {
           drawObjects(false);      // rings drawn inside drawObjects
+          instrEl.textContent = feedbackSummaryText || '';
           if (elapsed >= feedback_duration_ms) {
             phase      = 'iti';
             phaseStart = performance.now();

@@ -67,21 +67,20 @@ def _serialize_report_job(job: StudyAnalysisReportJob):
 
 class StudiesListView(APIView):
     def get(self, request):
-        profile = get_or_create_profile(request.user) if request.user.is_authenticated else None
-        if request.user.is_authenticated and not _can_access_analysis_resources(request, profile):
+        if not request.user.is_authenticated:
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        profile = get_or_create_profile(request.user)
+        if not _can_access_analysis_resources(request, profile):
             return Response({"error": "Insufficient role permissions"}, status=status.HTTP_403_FORBIDDEN)
 
         studies_qs = Study.objects.filter(is_active=True)
-        if request.user.is_authenticated:
-            # Keep legacy, unowned studies visible while enforcing owner/share RBAC on new studies.
-            studies_qs = studies_qs.filter(
-                Q(owner_user=request.user)
-                | Q(researcher_access__user=request.user)
-                | Q(owner_user__isnull=True, researcher_access__isnull=True)
-            ).distinct()
-        else:
-            # Backward-compatible dashboard visibility for legacy studies created pre-auth ownership.
-            studies_qs = studies_qs.filter(owner_user__isnull=True, researcher_access__isnull=True).distinct()
+        # Keep legacy, unowned studies visible while enforcing owner/share RBAC on new studies.
+        studies_qs = studies_qs.filter(
+            Q(owner_user=request.user)
+            | Q(researcher_access__user=request.user)
+            | Q(owner_user__isnull=True, researcher_access__isnull=True)
+        ).distinct()
 
         studies_qs = studies_qs.annotate(
             run_count_agg=Count("run_sessions", distinct=True),
@@ -93,7 +92,7 @@ class StudiesListView(APIView):
         study_ids = [s.id for s in studies_page]
 
         access_by_study_id = {}
-        if request.user.is_authenticated and study_ids:
+        if study_ids:
             for access in StudyResearcherAccess.objects.filter(study_id__in=study_ids, user=request.user):
                 access_by_study_id[access.study_id] = access
 
@@ -116,8 +115,30 @@ class StudiesListView(APIView):
             if owner_username and owner_username not in owner_usernames:
                 owner_usernames.append(owner_username)
 
-            if request.user.is_authenticated:
-                if study.owner_user_id == request.user.id:
+            if study.owner_user_id == request.user.id:
+                permissions = {
+                    "can_run_analysis": True,
+                    "can_download_aggregate": True,
+                    "can_view_run_rows": True,
+                    "can_view_pseudonyms": True,
+                    "can_view_full_payload": True,
+                    "can_manage_sharing": True,
+                    "can_remove_users": True,
+                }
+            else:
+                access = access_by_study_id.get(study.id)
+                if access:
+                    permissions = {
+                        "can_run_analysis": access.can_run_analysis,
+                        "can_download_aggregate": access.can_download_aggregate,
+                        "can_view_run_rows": access.can_view_run_rows,
+                        "can_view_pseudonyms": access.can_view_pseudonyms,
+                        "can_view_full_payload": access.can_view_full_payload,
+                        "can_manage_sharing": access.can_manage_sharing,
+                        "can_remove_users": access.can_remove_users,
+                    }
+                else:
+                    # Legacy fallback: permit full access to ownerless studies.
                     permissions = {
                         "can_run_analysis": True,
                         "can_download_aggregate": True,
@@ -127,27 +148,6 @@ class StudiesListView(APIView):
                         "can_manage_sharing": True,
                         "can_remove_users": True,
                     }
-                else:
-                    access = access_by_study_id.get(study.id)
-                    permissions = {
-                        "can_run_analysis": bool(getattr(access, "can_run_analysis", False)),
-                        "can_download_aggregate": bool(getattr(access, "can_download_aggregate", False)),
-                        "can_view_run_rows": bool(getattr(access, "can_view_run_rows", False)),
-                        "can_view_pseudonyms": bool(getattr(access, "can_view_pseudonyms", False)),
-                        "can_view_full_payload": bool(getattr(access, "can_view_full_payload", False)),
-                        "can_manage_sharing": bool(getattr(access, "can_manage_sharing", False)),
-                        "can_remove_users": bool(getattr(access, "can_remove_users", False)),
-                    }
-            else:
-                permissions = {
-                    "can_run_analysis": False,
-                    "can_download_aggregate": False,
-                    "can_view_run_rows": False,
-                    "can_view_pseudonyms": False,
-                    "can_view_full_payload": False,
-                    "can_manage_sharing": False,
-                    "can_remove_users": False,
-                }
 
             studies.append(
                 {

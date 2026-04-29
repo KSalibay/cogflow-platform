@@ -2404,6 +2404,8 @@ class JsonBuilder {
                 if (values.target_cue_color !== undefined) out.mot_target_cue_color = values.target_cue_color;
                 if (values.background_color !== undefined) out.mot_background_color = values.background_color;
                 if (values.show_feedback !== undefined) out.mot_show_feedback = !!values.show_feedback;
+                if (values.feedback_show_count_message !== undefined) out.mot_feedback_show_count_message = !!values.feedback_show_count_message;
+                if (values.feedback_duration_ms !== undefined) out.mot_feedback_duration_ms = values.feedback_duration_ms;
             } else if (innerType === 'stroop-trial') {
                 if (Array.isArray(values.word)) out.stroop_word_options = csv(values.word);
                 if (Array.isArray(values.ink_color_name)) out.stroop_ink_color_options = csv(values.ink_color_name);
@@ -4512,6 +4514,19 @@ class JsonBuilder {
                         <div class="form-check form-switch">
                             <input class="form-check-input" type="checkbox" id="motShowFeedbackDefault">
                             <label class="form-check-label" for="motShowFeedbackDefault">Highlight correct/incorrect picks</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="parameter-row">
+                    <label class="parameter-label">Feedback Duration (ms):</label>
+                    <input type="number" class="form-control parameter-input" id="motFeedbackDurationMsDefault" value="1500" min="0" max="10000">
+                </div>
+                <div class="parameter-row">
+                    <label class="parameter-label">Show Count Message:</label>
+                    <div class="parameter-input">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="motFeedbackShowCountMessageDefault" checked>
+                            <label class="form-check-label" for="motFeedbackShowCountMessageDefault">Display correct identifications summary text during feedback</label>
                         </div>
                     </div>
                 </div>
@@ -6902,6 +6917,8 @@ class JsonBuilder {
                 mot_target_cue_color: { type: 'COLOR', default: (document.getElementById('motTargetCueColorDefault')?.value || '#FF9900').toString() },
                 mot_background_color: { type: 'COLOR', default: (document.getElementById('motBackgroundColorDefault')?.value || '#111111').toString() },
                 mot_show_feedback: { type: 'boolean', default: !!document.getElementById('motShowFeedbackDefault')?.checked },
+                mot_feedback_show_count_message: { type: 'boolean', default: !!document.getElementById('motFeedbackShowCountMessageDefault')?.checked },
+                mot_feedback_duration_ms: { type: 'number', default: Number.parseInt(document.getElementById('motFeedbackDurationMsDefault')?.value || '1500', 10), min: 0, max: 10000 },
                 mot_speed_px_per_s_min: { type: 'number', default: Number.parseFloat(document.getElementById('motSpeedDefault')?.value || '150'), min: 20, max: 600 },
                 mot_speed_px_per_s_max: { type: 'number', default: Number.parseFloat(document.getElementById('motSpeedDefault')?.value || '150'), min: 20, max: 600 },
                 mot_tracking_duration_ms_min: { type: 'number', default: Number.parseInt(document.getElementById('motTrackingDurationMsDefault')?.value || '8000', 10), min: 0, max: 60000 },
@@ -8857,6 +8874,8 @@ class JsonBuilder {
             const backgroundColor = (document.getElementById('motBackgroundColorDefault')?.value || '#111111').toString();
             const apertureBorderWidth = Number.parseInt(document.getElementById('motApertureBorderWidthPxDefault')?.value || '2', 10);
             const showFeedback = !!document.getElementById('motShowFeedbackDefault')?.checked;
+            const feedbackShowCountMessage = !!document.getElementById('motFeedbackShowCountMessageDefault')?.checked;
+            const feedbackDurationMs = Number.parseInt(document.getElementById('motFeedbackDurationMsDefault')?.value || '1500', 10);
 
             config.mot_settings = {
                 num_objects: Number.isFinite(numObjects) ? numObjects : 8,
@@ -8879,7 +8898,9 @@ class JsonBuilder {
                 target_cue_color: targetCueColor,
                 background_color: backgroundColor,
                 aperture_border_width_px: Number.isFinite(apertureBorderWidth) ? apertureBorderWidth : 2,
-                show_feedback: showFeedback
+                show_feedback: showFeedback,
+                feedback_show_count_message: feedbackShowCountMessage,
+                feedback_duration_ms: Number.isFinite(feedbackDurationMs) ? Math.max(0, feedbackDurationMs) : 1500
             };
         }
 
@@ -9595,7 +9616,9 @@ class JsonBuilder {
             target_cue_color: (document.getElementById('motTargetCueColorDefault')?.value || '#FF9900').toString(),
             background_color: (document.getElementById('motBackgroundColorDefault')?.value || '#111111').toString(),
             aperture_border_width_px: Number.parseInt(document.getElementById('motApertureBorderWidthPxDefault')?.value || '2', 10),
-            show_feedback: !!document.getElementById('motShowFeedbackDefault')?.checked
+            show_feedback: !!document.getElementById('motShowFeedbackDefault')?.checked,
+            feedback_show_count_message: !!document.getElementById('motFeedbackShowCountMessageDefault')?.checked,
+            feedback_duration_ms: Number.parseInt(document.getElementById('motFeedbackDurationMsDefault')?.value || '1500', 10)
         };
     }
 
@@ -9630,6 +9653,8 @@ class JsonBuilder {
             mot_target_cue_color: (d.target_cue_color || '#FF9900').toString(),
             mot_background_color: (d.background_color || '#111111').toString(),
             mot_show_feedback: !!d.show_feedback,
+            mot_feedback_show_count_message: d.feedback_show_count_message !== false,
+            mot_feedback_duration_ms: Number.isFinite(Number(d.feedback_duration_ms)) ? Math.max(0, Number(d.feedback_duration_ms)) : 1500,
             mot_speed_px_per_s_min: speed,
             mot_speed_px_per_s_max: speed,
             mot_tracking_duration_ms_min: tracking,
@@ -11714,6 +11739,13 @@ class JsonBuilder {
             if (backgroundColor) values.background_color = backgroundColor;
             if (blockComponent.mot_show_feedback !== undefined) {
                 values.show_feedback = !!blockComponent.mot_show_feedback;
+            }
+            if (blockComponent.mot_feedback_show_count_message !== undefined) {
+                values.feedback_show_count_message = !!blockComponent.mot_feedback_show_count_message;
+            }
+            if (blockComponent.mot_feedback_duration_ms !== undefined && blockComponent.mot_feedback_duration_ms !== null && blockComponent.mot_feedback_duration_ms !== '') {
+                const feedbackDurationMs = Number.parseInt(blockComponent.mot_feedback_duration_ms, 10);
+                if (Number.isFinite(feedbackDurationMs)) values.feedback_duration_ms = Math.max(0, feedbackDurationMs);
             }
             addWindow('speed_px_per_s', blockComponent.mot_speed_px_per_s_min, blockComponent.mot_speed_px_per_s_max);
             addWindow('tracking_duration_ms', blockComponent.mot_tracking_duration_ms_min, blockComponent.mot_tracking_duration_ms_max);
