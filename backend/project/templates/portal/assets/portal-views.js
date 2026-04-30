@@ -255,9 +255,6 @@
       const tbody = document.getElementById("studyManagementRows");
       if (!tbody) return;
       tbody.innerHTML = "";
-      const isAnalyst = String(currentUser?.role || "").trim().toLowerCase() === "analyst";
-      const analystLockAttrs = isAnalyst ? 'disabled class="btn btn-ghost btn-xs btn-locked" title="Unavailable for analyst role."' : 'class="btn btn-ghost btn-xs"';
-      const analystDeleteAttrs = isAnalyst ? 'disabled class="btn btn-danger btn-xs btn-locked" title="Unavailable for analyst role."' : 'class="btn btn-danger btn-xs"';
 
       if (!studies.length) {
         tbody.innerHTML = '<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:32px;">No studies yet. Use the Builder to create and publish a study.</td></tr>';
@@ -271,6 +268,13 @@
         const reassignBtn = currentUser?.role === "platform_admin"
           ? `<button class="btn btn-ghost btn-xs" data-action="reassign" data-slug="${esc(s.study_slug)}">Reassign</button>`
           : "";
+        const canManageStudy = !!(s?.permissions?.can_manage_sharing || s?.permissions?.can_remove_users);
+        const lockAttrs = canManageStudy
+          ? 'class="btn btn-ghost btn-xs"'
+          : 'disabled class="btn btn-ghost btn-xs btn-locked" title="Unavailable for your study permissions."';
+        const lockDeleteAttrs = canManageStudy
+          ? 'class="btn btn-danger btn-xs"'
+          : 'disabled class="btn btn-danger btn-xs btn-locked" title="Unavailable for your study permissions."';
         const tr = document.createElement("tr");
         tr.innerHTML = `
           <td>
@@ -284,13 +288,13 @@
           <td style="font-size:.82rem;color:var(--muted);">${fmt(s.last_result_at)}</td>
           <td>
             <div style="display:flex;gap:5px;flex-wrap:wrap;">
-              <button ${analystLockAttrs} data-action="gen-link"       data-slug="${esc(s.study_slug)}">Generate Links</button>
-              <button ${analystLockAttrs} data-action="study-properties" data-slug="${esc(s.study_slug)}">Properties</button>
-              <button ${analystLockAttrs} data-action="share-study"    data-slug="${esc(s.study_slug)}">Share</button>
-              <button ${analystLockAttrs} data-action="duplicate-study" data-slug="${esc(s.study_slug)}" data-study-name="${esc(s.study_name || s.study_slug)}">Duplicate</button>
-              <button ${analystLockAttrs} data-action="remove-study-user" data-slug="${esc(s.study_slug)}">Remove User</button>
-              <button ${analystLockAttrs} data-action="open-preview"   data-slug="${esc(s.study_slug)}">Preview ▶</button>
-              <button ${analystDeleteAttrs} data-action="delete-study"  data-slug="${esc(s.study_slug)}">Delete</button>
+              <button ${lockAttrs} data-action="gen-link"       data-slug="${esc(s.study_slug)}">Generate Links</button>
+              <button ${lockAttrs} data-action="study-properties" data-slug="${esc(s.study_slug)}">Properties</button>
+              <button ${lockAttrs} data-action="share-study"    data-slug="${esc(s.study_slug)}">Share</button>
+              <button ${lockAttrs} data-action="duplicate-study" data-slug="${esc(s.study_slug)}" data-study-name="${esc(s.study_name || s.study_slug)}">Duplicate</button>
+              <button ${lockAttrs} data-action="remove-study-user" data-slug="${esc(s.study_slug)}">Remove User</button>
+              <button ${lockAttrs} data-action="open-preview"   data-slug="${esc(s.study_slug)}">Preview ▶</button>
+              <button ${lockDeleteAttrs} data-action="delete-study"  data-slug="${esc(s.study_slug)}">Delete</button>
               ${reassignBtn}
             </div>
           </td>`;
@@ -526,11 +530,7 @@
             abort_redirect_url: abortRedirect || null,
           }));
         const d = await r.json().catch(() => ({}));
-        if (r.status === 401) {
-          await checkSession();
-          showLogin("Your session expired. Please sign in again.");
-          throw new Error("Authentication required");
-        }
+        await handleParticipantLinkAuthErrors(r, d);
         if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
         st.rollout = d;
         sb.className = "status-bar ok"; sb.textContent = `Links generated for ${slug}.`;
@@ -539,6 +539,18 @@
       } catch (err) {
         sb.className = "status-bar error"; sb.textContent = `Link generation failed: ${err?.message || err}`;
         loadStudies();
+      }
+    }
+
+    async function handleParticipantLinkAuthErrors(response, payload) {
+      if (response.status === 401) {
+        await checkSession();
+        showLogin("Your session expired. Please sign in again.");
+        throw new Error("Authentication required");
+      }
+      if (response.status === 403) {
+        const role = (payload && payload.current_role) ? ` (${payload.current_role})` : "";
+        throw new Error(payload?.error || `Insufficient permissions${role}`);
       }
     }
 
@@ -660,11 +672,7 @@
           abort_redirect_url: abortUrl || null,
         }));
         const d = await r.json().catch(() => ({}));
-        if (r.status === 401) {
-          await checkSession();
-          showLogin("Your session expired. Please sign in again.");
-          throw new Error("Authentication required");
-        }
+        await handleParticipantLinkAuthErrors(r, d);
         if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
 
         integrationsRollout = d;
@@ -720,11 +728,7 @@
           prolific_completion_code: completionCode,
         }));
         const d = await r.json().catch(() => ({}));
-        if (r.status === 401) {
-          await checkSession();
-          showLogin("Your session expired. Please sign in again.");
-          throw new Error("Authentication required");
-        }
+        await handleParticipantLinkAuthErrors(r, d);
         if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
 
         const multi = d.launch_options?.multi_use || {};
@@ -1479,6 +1483,7 @@
         const r = await fetch(`${API}/api/v1/studies/${encodeURIComponent(slug)}/participant-links`,
           postOpts(launchPayload));
         const d = await r.json().catch(() => ({}));
+        await handleParticipantLinkAuthErrors(r, d);
         if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
         const token = d.launch_options?.single_use?.launch_token || d.launch_token || "";
         if (!token) {

@@ -133,6 +133,62 @@ def _can_manage_researcher_resources(request, profile) -> bool:
     return profile.role in {profile.ROLE_ADMIN, profile.ROLE_RESEARCHER}
 
 
+def _owner_study_permissions() -> dict:
+    return {
+        "can_run_analysis": True,
+        "can_download_aggregate": True,
+        "can_view_run_rows": True,
+        "can_view_pseudonyms": True,
+        "can_view_full_payload": True,
+        "can_manage_sharing": True,
+        "can_remove_users": True,
+    }
+
+
+def _can_manage_study_scope(request, profile, study: Study | None) -> bool:
+    if not request.user.is_authenticated:
+        return False
+    if study and study.owner_user_id == request.user.id:
+        return True
+    return _can_manage_researcher_resources(request, profile)
+
+
+def _ensure_owner_access_record(study: Study | None, owner_user, granted_by=None):
+    """Ensure owner has a full-permission StudyResearcherAccess row.
+
+    Owner authorization checks do not depend on this row, but maintaining it keeps
+    persisted collaborator permissions consistent for legacy/backfilled data paths.
+    """
+    if not study or not owner_user:
+        return None
+
+    owner_perms = _owner_study_permissions()
+    defaults = {
+        "granted_by": granted_by or owner_user,
+        **owner_perms,
+    }
+    access, _created = StudyResearcherAccess.objects.get_or_create(
+        study=study,
+        user=owner_user,
+        defaults=defaults,
+    )
+
+    changed = []
+    for key, value in owner_perms.items():
+        if getattr(access, key) != value:
+            setattr(access, key, value)
+            changed.append(key)
+
+    if not access.granted_by_id:
+        access.granted_by = granted_by or owner_user
+        changed.append("granted_by")
+
+    if changed:
+        access.save(update_fields=changed)
+
+    return access
+
+
 def _can_access_analysis_resources(request, profile) -> bool:
     if not request.user.is_authenticated:
         return False
@@ -248,15 +304,7 @@ def _study_access_permissions(study: Study, user, profile) -> dict:
         }
 
     if study.owner_user_id == user.id:
-        return {
-            "can_run_analysis": True,
-            "can_download_aggregate": True,
-            "can_view_run_rows": True,
-            "can_view_pseudonyms": True,
-            "can_view_full_payload": True,
-            "can_manage_sharing": True,
-            "can_remove_users": True,
-        }
+        return _owner_study_permissions()
 
     access = _get_study_access_record(study, user)
     if not access:

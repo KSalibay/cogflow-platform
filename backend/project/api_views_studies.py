@@ -470,13 +470,19 @@ class StudyLatestConfigView(APIView):
         if not request.user.is_authenticated:
             return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
 
-        profile = get_or_create_profile(request.user)
-        if not _can_manage_researcher_resources(request, profile):
-            return Response({"error": "Insufficient role permissions"}, status=status.HTTP_403_FORBIDDEN)
-
         study = Study.objects.filter(slug=study_slug, is_active=True).first()
         if not study:
             return Response({"error": "Study not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        profile = get_or_create_profile(request.user)
+        if not _can_manage_study_scope(request, profile, study):
+            return Response(
+                {
+                    "error": "Study configuration access requires researcher or platform_admin role",
+                    "current_role": profile.role,
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         if (
             not _has_study_access(study, request.user, profile)
@@ -538,7 +544,7 @@ class PublishConfigView(APIView):
             profile = get_or_create_profile(request.user)
 
         existing_study = Study.objects.filter(slug=data["study_slug"]).first()
-        if existing_study and request.user.is_authenticated and _can_manage_researcher_resources(request, profile):
+        if existing_study and request.user.is_authenticated:
             if existing_study.owner_user_id and not _has_study_access(existing_study, request.user, profile):
                 return Response(
                     {"error": "Study is not shared with the current researcher"},
@@ -558,21 +564,23 @@ class PublishConfigView(APIView):
             )
 
         if request.user.is_authenticated:
-            if _can_manage_researcher_resources(request, profile):
-                if study.owner_user_id and not _has_study_access(study, request.user, profile):
-                    return Response(
-                        {"error": "Study is not shared with the current researcher"},
-                        status=status.HTTP_403_FORBIDDEN,
-                    )
-                if not study.owner_user_id or study.owner_user_id == request.user.id:
+            if study.owner_user_id and not _has_study_access(study, request.user, profile):
+                return Response(
+                    {"error": "Study is not shared with the current researcher"},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
+            if not study.owner_user_id or study.owner_user_id == request.user.id:
+                if study.owner_user_id != request.user.id:
                     study.owner_user = request.user
                     study.save(update_fields=["owner_user"])
-                elif study.owner_user_id != request.user.id:
-                    StudyResearcherAccess.objects.get_or_create(
-                        study=study,
-                        user=request.user,
-                        defaults={"granted_by": request.user},
-                    )
+                _ensure_owner_access_record(study, request.user, granted_by=request.user)
+            elif study.owner_user_id != request.user.id:
+                StudyResearcherAccess.objects.get_or_create(
+                    study=study,
+                    user=request.user,
+                    defaults={"granted_by": request.user},
+                )
 
         requested_version_label = data["config_version_label"]
         incoming_task_type = _extract_config_task_type(data.get("config"))
@@ -767,13 +775,19 @@ class CreateParticipantLinkView(APIView):
         if not request.user.is_authenticated:
             return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
 
-        profile = get_or_create_profile(request.user)
-        if not _can_manage_researcher_resources(request, profile):
-            return Response({"error": "Insufficient role permissions"}, status=status.HTTP_403_FORBIDDEN)
-
         study = Study.objects.filter(slug=study_slug, is_active=True).first()
         if not study:
             return Response({"error": "Study not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        profile = get_or_create_profile(request.user)
+        if not _can_manage_study_scope(request, profile, study):
+            return Response(
+                {
+                    "error": "Generate Links requires researcher or platform_admin role",
+                    "current_role": profile.role,
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         owner_username = _get_study_owner_username(study)
         if (
@@ -925,6 +939,7 @@ class AssignStudyOwnerView(APIView):
 
         study.owner_user = new_owner
         study.save(update_fields=["owner_user"])
+        _ensure_owner_access_record(study, new_owner, granted_by=request.user)
 
         record_audit(
             action="assign_study_owner",
@@ -955,13 +970,13 @@ class ShareStudyView(APIView):
         if not request.user.is_authenticated:
             return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
 
-        profile = get_or_create_profile(request.user)
-        if not _can_manage_researcher_resources(request, profile):
-            return Response({"error": "Insufficient role permissions"}, status=status.HTTP_403_FORBIDDEN)
-
         study = Study.objects.filter(slug=study_slug, is_active=True).first()
         if not study:
             return Response({"error": "Study not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        profile = get_or_create_profile(request.user)
+        if not _can_manage_study_scope(request, profile, study):
+            return Response({"error": "Insufficient role permissions"}, status=status.HTTP_403_FORBIDDEN)
 
         if not _has_study_access(study, request.user, profile):
             return Response({"error": "Study is not shared with the current user"}, status=status.HTTP_403_FORBIDDEN)
@@ -1102,13 +1117,13 @@ class RevokeStudyAccessView(APIView):
         if not request.user.is_authenticated:
             return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
 
-        profile = get_or_create_profile(request.user)
-        if not _can_manage_researcher_resources(request, profile):
-            return Response({"error": "Insufficient role permissions"}, status=status.HTTP_403_FORBIDDEN)
-
         study = Study.objects.filter(slug=study_slug, is_active=True).first()
         if not study:
             return Response({"error": "Study not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        profile = get_or_create_profile(request.user)
+        if not _can_manage_study_scope(request, profile, study):
+            return Response({"error": "Insufficient role permissions"}, status=status.HTTP_403_FORBIDDEN)
 
         if not _has_study_access(study, request.user, profile):
             return Response({"error": "Study is not shared with the current user"}, status=status.HTTP_403_FORBIDDEN)
