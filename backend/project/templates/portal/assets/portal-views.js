@@ -270,6 +270,7 @@
       }
 
       for (const s of studies) {
+        const state = getStudyState(s.study_slug);
         const ownersText = Array.isArray(s.owner_usernames) && s.owner_usernames.length
           ? s.owner_usernames.join(", ")
           : (s.owner_username || "—");
@@ -296,6 +297,7 @@
           <td style="font-size:.82rem;color:var(--muted);">${fmt(s.last_result_at)}</td>
           <td>
             <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <button class="btn btn-ghost btn-xs" data-action="toggle-details" data-slug="${esc(s.study_slug)}">${state.expanded ? "Hide Links" : "View Links"}</button>
               <button ${lockAttrs} data-action="gen-link"       data-slug="${esc(s.study_slug)}">Generate Links</button>
               <button ${lockAttrs} data-action="study-properties" data-slug="${esc(s.study_slug)}">Properties</button>
               <button ${lockAttrs} data-action="share-study"    data-slug="${esc(s.study_slug)}">Share</button>
@@ -307,6 +309,12 @@
             </div>
           </td>`;
         tbody.appendChild(tr);
+
+        if (state.expanded) {
+          const w = document.createElement("tbody");
+          w.innerHTML = buildDetailRow(s);
+          tbody.appendChild(w.firstElementChild);
+        }
       }
 
       bindStudyTableActions(tbody);
