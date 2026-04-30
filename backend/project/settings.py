@@ -107,6 +107,12 @@ CSRF_COOKIE_SECURE = os.getenv("DJANGO_CSRF_COOKIE_SECURE", _secure_default) == 
 SESSION_COOKIE_SECURE = os.getenv("DJANGO_SESSION_COOKIE_SECURE", _secure_default) == "1"
 SESSION_COOKIE_SAMESITE = os.getenv("DJANGO_SESSION_COOKIE_SAMESITE", "Lax")
 CSRF_COOKIE_SAMESITE = os.getenv("DJANGO_CSRF_COOKIE_SAMESITE", "Lax")
+# Optional shared cookie domain for apex/www deployments.
+# Example: DJANGO_SESSION_COOKIE_DOMAIN=.cogflow.app
+# This avoids losing session cookie when users bounce between
+# https://cogflow.app and https://www.cogflow.app.
+SESSION_COOKIE_DOMAIN = os.getenv("DJANGO_SESSION_COOKIE_DOMAIN", "").strip() or None
+CSRF_COOKIE_DOMAIN = os.getenv("DJANGO_CSRF_COOKIE_DOMAIN", "").strip() or None
 
 REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
