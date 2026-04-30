@@ -40,6 +40,14 @@
       try {
         const r = await fetch(`${API}/api/v1/studies`, { credentials: "include" });
         if (r.status === 401) {
+          const cookie = document.cookie || "";
+          console.warn("[portal-auth] /studies returned 401", {
+            hasSessionCookie: /(?:^|;\s*)sessionid=/.test(cookie),
+            hasCsrfCookie: /(?:^|;\s*)csrftoken=/.test(cookie),
+            isHttps: window.location.protocol === "https:",
+            currentUser: currentUser?.username || null,
+            activeView: typeof activeView === "string" ? activeView : null,
+          });
           currentUser = null;
           showLogin("Your session expired. Please sign in again.");
           return;

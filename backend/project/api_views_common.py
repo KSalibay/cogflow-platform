@@ -134,6 +134,7 @@ def _record_auth_rejection(request, endpoint: str, reason: str, metadata: dict |
         cookie_header = request.META.get("HTTP_COOKIE", "") or ""
         session_cookie_name = settings.SESSION_COOKIE_NAME
         csrf_cookie_name = settings.CSRF_COOKIE_NAME
+        secret_fingerprint = hashlib.sha256((settings.SECRET_KEY or "").encode("utf-8")).hexdigest()[:12]
         record_audit(
             action="auth_rejected",
             resource_type="auth",
@@ -148,6 +149,8 @@ def _record_auth_rejection(request, endpoint: str, reason: str, metadata: dict |
                 "has_csrf_cookie": f"{csrf_cookie_name}=" in cookie_header,
                 "secure_request": bool(request.is_secure()),
                 "x_forwarded_proto": request.META.get("HTTP_X_FORWARDED_PROTO", ""),
+                "server_hostname": os.getenv("HOSTNAME", ""),
+                "secret_fingerprint": secret_fingerprint,
                 "origin": request.META.get("HTTP_ORIGIN", ""),
                 "referer": request.META.get("HTTP_REFERER", ""),
                 "user_agent": (request.META.get("HTTP_USER_AGENT", "") or "")[:180],
