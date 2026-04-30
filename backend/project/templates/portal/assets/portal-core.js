@@ -20,9 +20,16 @@
       try {
         await fetch(`${API}/api/v1/auth/csrf`, { credentials: "include" });
       } catch {
+        console.warn("[portal-auth] Failed to reach /auth/csrf while preparing CSRF token.");
         return false;
       }
-      return !!getCsrf();
+      const ready = !!getCsrf();
+      if (!ready) {
+        console.warn("[portal-auth] CSRF cookie missing after /auth/csrf.", {
+          isHttps: window.location.protocol === "https:",
+        });
+      }
+      return ready;
     }
 
     // ── State ─────────────────────────────────────────────────
@@ -398,6 +405,23 @@
 
     async function openGenerateLinksModal(slug) {
       const modalEl = ensureGenerateLinksModal();
+
+      // Pre-flight: verify the session is still alive before showing the modal.
+      // If auth/me returns 401 here the user sees a clean "session expired" login
+      // prompt rather than a confusing mid-flow error after clicking Generate.
+      try {
+        const _sessionCheck = await fetch(`${API}/api/v1/auth/me`, { credentials: "include" });
+        if (!_sessionCheck.ok) {
+          currentUser = null;
+          showLogin("Your session expired. Please sign in again.");
+          return;
+        }
+      } catch {
+        currentUser = null;
+        showLogin("Could not reach the server. Please check your connection and sign in again.");
+        return;
+      }
+
       const errEl = document.getElementById("generateLinksError");
       const pidEl = document.getElementById("generateLinksParticipantId");
       const cbEl = document.getElementById("generateLinksCounterbalance");
@@ -1559,6 +1583,14 @@
                           mfa_verified_at: d.mfa_verified_at || null };
           showApp();
         } else {
+          if (r.status === 401) {
+            const cookie = document.cookie || "";
+            console.warn("[portal-auth] /auth/me returned 401", {
+              hasSessionCookie: /(?:^|;\s*)sessionid=/.test(cookie),
+              hasCsrfCookie: /(?:^|;\s*)csrftoken=/.test(cookie),
+              isHttps: window.location.protocol === "https:",
+            });
+          }
           currentUser = null; showLogin();
         }
       } catch { currentUser = null; showLogin(); }

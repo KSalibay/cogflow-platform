@@ -98,8 +98,15 @@ if os.getenv("DJANGO_USE_X_FORWARDED_PROTO", "1") == "1":
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 USE_X_FORWARDED_HOST = os.getenv("DJANGO_USE_X_FORWARDED_HOST", "1") == "1"
-CSRF_COOKIE_SECURE = os.getenv("DJANGO_CSRF_COOKIE_SECURE", "1") == "1"
-SESSION_COOKIE_SECURE = os.getenv("DJANGO_SESSION_COOKIE_SECURE", "1") == "1"
+# In DEBUG mode (HTTP-only dev) cookies must NOT require Secure flag or the browser
+# will silently discard them and every request appears unauthenticated.
+# On a real HTTPS deployment set DJANGO_SESSION_COOKIE_SECURE=1 / DJANGO_CSRF_COOKIE_SECURE=1
+# in the production .env.
+_secure_default = "0" if DEBUG else "1"
+CSRF_COOKIE_SECURE = os.getenv("DJANGO_CSRF_COOKIE_SECURE", _secure_default) == "1"
+SESSION_COOKIE_SECURE = os.getenv("DJANGO_SESSION_COOKIE_SECURE", _secure_default) == "1"
+SESSION_COOKIE_SAMESITE = os.getenv("DJANGO_SESSION_COOKIE_SAMESITE", "Lax")
+CSRF_COOKIE_SAMESITE = os.getenv("DJANGO_CSRF_COOKIE_SAMESITE", "Lax")
 
 REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
