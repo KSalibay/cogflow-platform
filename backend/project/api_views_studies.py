@@ -68,6 +68,7 @@ def _serialize_report_job(job: StudyAnalysisReportJob):
 class StudiesListView(APIView):
     def get(self, request):
         if not request.user.is_authenticated:
+            _record_auth_rejection(request, endpoint="studies/list", reason="unauthenticated")
             return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
 
         profile = get_or_create_profile(request.user)
@@ -468,6 +469,12 @@ class StudyLatestConfigView(APIView):
 
     def get(self, request, study_slug: str):
         if not request.user.is_authenticated:
+            _record_auth_rejection(
+                request,
+                endpoint="studies/latest-config",
+                reason="unauthenticated",
+                metadata={"study_slug": study_slug},
+            )
             return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
 
         study = Study.objects.filter(slug=study_slug, is_active=True).first()
@@ -773,6 +780,12 @@ class CreateParticipantLinkView(APIView):
     @transaction.atomic
     def post(self, request, study_slug: str):
         if not request.user.is_authenticated:
+            _record_auth_rejection(
+                request,
+                endpoint="studies/participant-links",
+                reason="unauthenticated",
+                metadata={"study_slug": study_slug},
+            )
             return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
 
         study = Study.objects.filter(slug=study_slug, is_active=True).first()

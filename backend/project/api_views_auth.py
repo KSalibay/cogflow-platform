@@ -481,6 +481,7 @@ class AuthMeView(APIView):
 
     def get(self, request):
         if not request.user.is_authenticated:
+            _record_auth_rejection(request, endpoint="auth/me", reason="unauthenticated")
             return Response({"authenticated": False}, status=status.HTTP_401_UNAUTHORIZED)
         profile = get_or_create_profile(request.user)
         mfa_verified_at = request.session.get("mfa_verified_at")

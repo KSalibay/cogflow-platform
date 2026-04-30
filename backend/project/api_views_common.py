@@ -127,6 +127,37 @@ def _is_mfa_session_fresh(request) -> bool:
     return timezone.now() - ts <= timedelta(seconds=max_age_seconds)
 
 
+def _record_auth_rejection(request, endpoint: str, reason: str, metadata: dict | None = None):
+    """Record lightweight diagnostics for unauthenticated request rejections."""
+    try:
+        extra = metadata.copy() if isinstance(metadata, dict) else {}
+        cookie_header = request.META.get("HTTP_COOKIE", "") or ""
+        session_cookie_name = settings.SESSION_COOKIE_NAME
+        csrf_cookie_name = settings.CSRF_COOKIE_NAME
+        record_audit(
+            action="auth_rejected",
+            resource_type="auth",
+            resource_id=endpoint,
+            actor="anonymous",
+            metadata={
+                "endpoint": endpoint,
+                "reason": reason,
+                "method": request.method,
+                "path": request.path,
+                "has_session_cookie": f"{session_cookie_name}=" in cookie_header,
+                "has_csrf_cookie": f"{csrf_cookie_name}=" in cookie_header,
+                "secure_request": bool(request.is_secure()),
+                "x_forwarded_proto": request.META.get("HTTP_X_FORWARDED_PROTO", ""),
+                "origin": request.META.get("HTTP_ORIGIN", ""),
+                "referer": request.META.get("HTTP_REFERER", ""),
+                "user_agent": (request.META.get("HTTP_USER_AGENT", "") or "")[:180],
+                **extra,
+            },
+        )
+    except Exception:
+        pass
+
+
 def _can_manage_researcher_resources(request, profile) -> bool:
     if not request.user.is_authenticated:
         return False
