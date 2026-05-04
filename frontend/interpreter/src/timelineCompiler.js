@@ -2819,6 +2819,7 @@
     // Rewards (optional): configured by a reward-settings timeline component.
     let rewardsPolicy = null;
     let rewardsStoreKey = '__psy_rewards';
+    let gaborRewardDefaultsFromPolicy = {};
 
     const normBoolFromData = (v) => {
       if (typeof v === 'boolean') return v;
@@ -3850,6 +3851,23 @@
           summary_template_html: (itemCopy.summary_template_html || summaryScreen.template_html || '').toString()
         };
 
+        const nextGaborRewardDefaults = {};
+        if (itemCopy.gabor_reward_feedback_enabled === true) nextGaborRewardDefaults.reward_feedback_enabled = true;
+        if (itemCopy.gabor_reward_scoring_mode !== undefined) nextGaborRewardDefaults.reward_scoring_mode = (itemCopy.gabor_reward_scoring_mode || 'tiered').toString();
+        if (Number.isFinite(Number(itemCopy.gabor_reward_fast_rt_threshold_ms))) nextGaborRewardDefaults.reward_fast_rt_threshold_ms = Number(itemCopy.gabor_reward_fast_rt_threshold_ms);
+        if (Number.isFinite(Number(itemCopy.gabor_reward_medium_rt_threshold_ms))) nextGaborRewardDefaults.reward_medium_rt_threshold_ms = Number(itemCopy.gabor_reward_medium_rt_threshold_ms);
+        if (Number.isFinite(Number(itemCopy.gabor_reward_points_fast))) nextGaborRewardDefaults.reward_points_fast = Number(itemCopy.gabor_reward_points_fast);
+        if (Number.isFinite(Number(itemCopy.gabor_reward_points_medium))) nextGaborRewardDefaults.reward_points_medium = Number(itemCopy.gabor_reward_points_medium);
+        if (Number.isFinite(Number(itemCopy.gabor_reward_points_slow))) nextGaborRewardDefaults.reward_points_slow = Number(itemCopy.gabor_reward_points_slow);
+        if (Number.isFinite(Number(itemCopy.gabor_reward_bonus_rt_fast_ms))) nextGaborRewardDefaults.reward_bonus_rt_fast_ms = Number(itemCopy.gabor_reward_bonus_rt_fast_ms);
+        if (Number.isFinite(Number(itemCopy.gabor_reward_bonus_rt_slow_ms))) nextGaborRewardDefaults.reward_bonus_rt_slow_ms = Number(itemCopy.gabor_reward_bonus_rt_slow_ms);
+        if (Number.isFinite(Number(itemCopy.gabor_reward_base_points_high))) nextGaborRewardDefaults.reward_base_points_high = Number(itemCopy.gabor_reward_base_points_high);
+        if (Number.isFinite(Number(itemCopy.gabor_reward_base_points_low))) nextGaborRewardDefaults.reward_base_points_low = Number(itemCopy.gabor_reward_base_points_low);
+        if (Number.isFinite(Number(itemCopy.gabor_reward_bonus_max_high))) nextGaborRewardDefaults.reward_bonus_max_high = Number(itemCopy.gabor_reward_bonus_max_high);
+        if (Number.isFinite(Number(itemCopy.gabor_reward_bonus_max_low))) nextGaborRewardDefaults.reward_bonus_max_low = Number(itemCopy.gabor_reward_bonus_max_low);
+        if (itemCopy.gabor_reward_feedback_text_template !== undefined) nextGaborRewardDefaults.reward_feedback_text_template = (itemCopy.gabor_reward_feedback_text_template || '+{{points}} points').toString();
+        gaborRewardDefaultsFromPolicy = nextGaborRewardDefaults;
+
         const basisLabel = scoringBasisLabel(rewardsPolicy.scoring_basis);
         const contLabel = continueKeyLabel(rewardsPolicy.continue_key);
         const contChoices = rewardsPolicy.continue_key === 'ALL_KEYS'
@@ -4538,6 +4556,7 @@
         const trialTemplate = {
           type: Gabor,
           ...gaborDefaults,
+          ...gaborRewardDefaultsFromPolicy,
 
           on_start: (trial) => {
             // Apply all block param values at runtime; allow fall-through to gaborDefaults above.
@@ -4625,6 +4644,7 @@
 
           // Inherit experiment-wide gabor settings by default.
           ...gaborDefaults,
+          ...gaborRewardDefaultsFromPolicy,
 
           // Allow per-trial overrides.
           ...itemCopy,

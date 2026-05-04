@@ -894,6 +894,7 @@ class JsonBuilder {
 
         try {
             this.timelineBuilder = new TimelineBuilder(this);
+            window._cogflowTimelineBuilder = this.timelineBuilder;
         } catch (error) {
             console.error('Error initializing TimelineBuilder:', error);
         }
@@ -2487,11 +2488,18 @@ class JsonBuilder {
                 if (values.too_slow_feedback_enabled !== undefined) out.gabor_too_slow_feedback_enabled = !!values.too_slow_feedback_enabled;
                 if (values.feedback_text_no_response !== undefined) out.gabor_feedback_text_no_response = values.feedback_text_no_response;
                 if (values.reward_feedback_enabled !== undefined) out.gabor_reward_feedback_enabled = !!values.reward_feedback_enabled;
+                if (values.reward_scoring_mode !== undefined) out.gabor_reward_scoring_mode = values.reward_scoring_mode;
                 if (values.reward_fast_rt_threshold_ms !== undefined) out.gabor_reward_fast_rt_threshold_ms = values.reward_fast_rt_threshold_ms;
                 if (values.reward_medium_rt_threshold_ms !== undefined) out.gabor_reward_medium_rt_threshold_ms = values.reward_medium_rt_threshold_ms;
                 if (values.reward_points_fast !== undefined) out.gabor_reward_points_fast = values.reward_points_fast;
                 if (values.reward_points_medium !== undefined) out.gabor_reward_points_medium = values.reward_points_medium;
                 if (values.reward_points_slow !== undefined) out.gabor_reward_points_slow = values.reward_points_slow;
+                if (values.reward_bonus_rt_fast_ms !== undefined) out.gabor_reward_bonus_rt_fast_ms = values.reward_bonus_rt_fast_ms;
+                if (values.reward_bonus_rt_slow_ms !== undefined) out.gabor_reward_bonus_rt_slow_ms = values.reward_bonus_rt_slow_ms;
+                if (values.reward_base_points_high !== undefined) out.gabor_reward_base_points_high = values.reward_base_points_high;
+                if (values.reward_base_points_low !== undefined) out.gabor_reward_base_points_low = values.reward_base_points_low;
+                if (values.reward_bonus_max_high !== undefined) out.gabor_reward_bonus_max_high = values.reward_bonus_max_high;
+                if (values.reward_bonus_max_low !== undefined) out.gabor_reward_bonus_max_low = values.reward_bonus_max_low;
                 if (values.reward_feedback_text_template !== undefined) out.gabor_reward_feedback_text_template = values.reward_feedback_text_template;
                 if (values.adaptive && typeof values.adaptive === 'object' && (values.adaptive.mode || '').toString() === 'quest') {
                     const adaptive = values.adaptive;
@@ -6746,12 +6754,19 @@ class JsonBuilder {
                 gabor_too_slow_feedback_enabled: { type: 'boolean', default: false, description: 'Show no-response feedback when the response window expires (suppressed during QUEST-adaptive trials).' },
                 gabor_feedback_text_no_response: { type: 'string', default: 'Too slow', description: 'Feedback text shown when there is no response.' },
                 gabor_reward_feedback_enabled: { type: 'boolean', default: false, description: 'Show reward feedback based on RT tiers.' },
+                gabor_reward_scoring_mode: { type: 'select', default: 'tiered', options: ['tiered', 'proportional_linear'], description: 'Reward scoring model: tiered or proportional linear bonus.' },
                 gabor_reward_fast_rt_threshold_ms: { type: 'number', default: 450, min: 0, max: 60000, step: 1, description: 'RT threshold (ms) for fast reward tier.' },
                 gabor_reward_medium_rt_threshold_ms: { type: 'number', default: 800, min: 0, max: 60000, step: 1, description: 'RT threshold (ms) for medium reward tier.' },
                 gabor_reward_points_fast: { type: 'number', default: 2, min: -9999, max: 9999, step: 0.1, description: 'Points shown for fast RT responses.' },
                 gabor_reward_points_medium: { type: 'number', default: 1, min: -9999, max: 9999, step: 0.1, description: 'Points shown for medium RT responses.' },
                 gabor_reward_points_slow: { type: 'number', default: 0, min: -9999, max: 9999, step: 0.1, description: 'Points shown for slow RT responses.' },
-                gabor_reward_feedback_text_template: { type: 'string', default: '+{{points}} points', description: 'Template for reward feedback text. Use {{points}} placeholder.' },
+                gabor_reward_bonus_rt_fast_ms: { type: 'number', default: 350, min: 0, max: 60000, step: 1, description: 'RT <= this gets max proportional bonus.' },
+                gabor_reward_bonus_rt_slow_ms: { type: 'number', default: 850, min: 0, max: 60000, step: 1, description: 'RT >= this gets zero proportional bonus.' },
+                gabor_reward_base_points_high: { type: 'number', default: 50, min: -9999, max: 9999, step: 0.1, description: 'Base points for high-value targets in proportional mode.' },
+                gabor_reward_base_points_low: { type: 'number', default: 5, min: -9999, max: 9999, step: 0.1, description: 'Base points for low-value targets in proportional mode.' },
+                gabor_reward_bonus_max_high: { type: 'number', default: 50, min: -9999, max: 9999, step: 0.1, description: 'Max RT bonus for high-value targets in proportional mode.' },
+                gabor_reward_bonus_max_low: { type: 'number', default: 5, min: -9999, max: 9999, step: 0.1, description: 'Max RT bonus for low-value targets in proportional mode.' },
+                gabor_reward_feedback_text_template: { type: 'string', default: '+{{points}} points', description: 'Template for reward feedback text. Supports {{points}}, {{base}}, {{bonus}}.' },
 
                 gabor_stimulus_duration_min: { type: 'number', default: 67, min: 0, max: 10000 },
                 gabor_stimulus_duration_max: { type: 'number', default: 67, min: 0, max: 10000 },
@@ -7307,6 +7322,20 @@ class JsonBuilder {
                     scoring_basis: { type: 'select', default: 'both', options: ['accuracy', 'reaction_time', 'both'] },
                     rt_threshold_ms: { type: 'number', default: 600, min: 0, max: 60000, step: 1 },
                     points_per_success: { type: 'number', default: 1, min: 0, max: 1000, step: 0.1 },
+                    gabor_reward_feedback_enabled: { type: 'boolean', default: false },
+                    gabor_reward_scoring_mode: { type: 'select', default: 'tiered', options: ['tiered', 'proportional_linear'] },
+                    gabor_reward_fast_rt_threshold_ms: { type: 'number', default: 450, min: 0, max: 60000, step: 1 },
+                    gabor_reward_medium_rt_threshold_ms: { type: 'number', default: 800, min: 0, max: 60000, step: 1 },
+                    gabor_reward_points_fast: { type: 'number', default: 2, min: -9999, max: 9999, step: 0.1 },
+                    gabor_reward_points_medium: { type: 'number', default: 1, min: -9999, max: 9999, step: 0.1 },
+                    gabor_reward_points_slow: { type: 'number', default: 0, min: -9999, max: 9999, step: 0.1 },
+                    gabor_reward_bonus_rt_fast_ms: { type: 'number', default: 350, min: 0, max: 60000, step: 1 },
+                    gabor_reward_bonus_rt_slow_ms: { type: 'number', default: 850, min: 0, max: 60000, step: 1 },
+                    gabor_reward_base_points_high: { type: 'number', default: 50, min: -9999, max: 9999, step: 0.1 },
+                    gabor_reward_base_points_low: { type: 'number', default: 5, min: -9999, max: 9999, step: 0.1 },
+                    gabor_reward_bonus_max_high: { type: 'number', default: 50, min: -9999, max: 9999, step: 0.1 },
+                    gabor_reward_bonus_max_low: { type: 'number', default: 5, min: -9999, max: 9999, step: 0.1 },
+                    gabor_reward_feedback_text_template: { type: 'string', default: '+{{points}} points' },
                     require_correct_for_rt: { type: 'boolean', default: false },
 
                     calculate_on_the_fly: { type: 'boolean', default: true },
@@ -11449,6 +11478,9 @@ class JsonBuilder {
             if (blockComponent.gabor_reward_feedback_enabled !== undefined) {
                 values.reward_feedback_enabled = !!blockComponent.gabor_reward_feedback_enabled;
             }
+            if (blockComponent.gabor_reward_scoring_mode !== undefined) {
+                values.reward_scoring_mode = (blockComponent.gabor_reward_scoring_mode ?? 'tiered').toString();
+            }
             const rewardFast = Number(blockComponent.gabor_reward_fast_rt_threshold_ms);
             if (Number.isFinite(rewardFast)) values.reward_fast_rt_threshold_ms = Math.max(0, Math.round(rewardFast));
             const rewardMedium = Number(blockComponent.gabor_reward_medium_rt_threshold_ms);
@@ -11459,6 +11491,18 @@ class JsonBuilder {
             if (Number.isFinite(pointsMedium)) values.reward_points_medium = pointsMedium;
             const pointsSlow = Number(blockComponent.gabor_reward_points_slow);
             if (Number.isFinite(pointsSlow)) values.reward_points_slow = pointsSlow;
+            const bonusFast = Number(blockComponent.gabor_reward_bonus_rt_fast_ms);
+            if (Number.isFinite(bonusFast)) values.reward_bonus_rt_fast_ms = Math.max(0, Math.round(bonusFast));
+            const bonusSlow = Number(blockComponent.gabor_reward_bonus_rt_slow_ms);
+            if (Number.isFinite(bonusSlow)) values.reward_bonus_rt_slow_ms = Math.max(0, Math.round(bonusSlow));
+            const baseHigh = Number(blockComponent.gabor_reward_base_points_high);
+            if (Number.isFinite(baseHigh)) values.reward_base_points_high = baseHigh;
+            const baseLow = Number(blockComponent.gabor_reward_base_points_low);
+            if (Number.isFinite(baseLow)) values.reward_base_points_low = baseLow;
+            const bonusHigh = Number(blockComponent.gabor_reward_bonus_max_high);
+            if (Number.isFinite(bonusHigh)) values.reward_bonus_max_high = bonusHigh;
+            const bonusLow = Number(blockComponent.gabor_reward_bonus_max_low);
+            if (Number.isFinite(bonusLow)) values.reward_bonus_max_low = bonusLow;
             if (blockComponent.gabor_reward_feedback_text_template !== undefined) {
                 values.reward_feedback_text_template = (blockComponent.gabor_reward_feedback_text_template ?? '').toString();
             }
@@ -11879,6 +11923,11 @@ class JsonBuilder {
 
         if (hasSeed) {
             out.seed = seed;
+        }
+
+        // Carry forward miniblock_structure when set
+        if (blockComponent.miniblock_structure && typeof blockComponent.miniblock_structure === 'object') {
+            out.miniblock_structure = blockComponent.miniblock_structure;
         }
 
         return out;

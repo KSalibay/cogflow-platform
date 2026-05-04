@@ -476,6 +476,104 @@
                 </div>
             </div>
         </div>
+
+        <!-- Miniblock Structure Modal -->
+        <div class="modal fade" id="miniblockModal" tabindex="-1" aria-labelledby="miniblockModalTitle" aria-hidden="true">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="miniblockModalTitle">
+                            <i class="fas fa-chart-pie"></i> Miniblock Structure
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body" id="miniblockModalBody">
+
+                        <!-- Enable toggle -->
+                        <div class="mb-3 d-flex align-items-center gap-3 mb-field-row ps-3">
+                            <div class="form-check form-switch mb-0">
+                                <input class="form-check-input" type="checkbox" id="mb_enabled" role="switch">
+                                <label class="form-check-label fw-semibold" for="mb_enabled">Enable miniblock splitting</label>
+                            </div>
+                            <small class="text-muted">Split this block's trials into multiple mini-blocks with optional breaks.</small>
+                        </div>
+
+                        <hr>
+
+                        <!-- Block count + trials per block -->
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-6 mb-field-row">
+                                <label for="mb_num_blocks" class="form-label">Number of mini-blocks</label>
+                                <input type="number" class="form-control mb-requires-enabled" id="mb_num_blocks" min="2" max="1000" placeholder="e.g. 20">
+                                <div class="form-text">Total number of mini-blocks to split the trial pool into.</div>
+                            </div>
+                            <div class="col-md-6 mb-field-row">
+                                <label for="mb_trials_per_block" class="form-label">Trials per mini-block</label>
+                                <input type="number" class="form-control mb-requires-enabled" id="mb_trials_per_block" min="1" max="100000" placeholder="e.g. 20">
+                                <div class="form-text">Overrides block count when set; total trials ÷ this number = number of blocks.</div>
+                            </div>
+                        </div>
+
+                        <!-- Counterbalancing -->
+                        <div class="mb-3 mb-field-row">
+                            <div class="form-check">
+                                <input class="form-check-input mb-requires-enabled" type="checkbox" id="mb_counterbalance">
+                                <label class="form-check-label" for="mb_counterbalance">Counterbalance trial conditions across mini-blocks</label>
+                            </div>
+                            <div class="form-text ps-4">Ensures each condition appears approximately equally across all blocks before random assignment of remaining trials.</div>
+                        </div>
+
+                        <hr>
+
+                        <!-- Break settings heading -->
+                        <h6 class="fw-semibold mb-2"><i class="fas fa-coffee me-1"></i> Break Settings</h6>
+
+                        <!-- Break every N trials -->
+                        <div class="mb-3 mb-field-row">
+                            <label for="mb_break_every_n" class="form-label">Insert break every <em>N</em> trials</label>
+                            <input type="number" class="form-control mb-requires-enabled" id="mb_break_every_n" min="1" max="100000" placeholder="e.g. 20 (leave blank to break only at block boundaries)">
+                            <div class="form-text">Leave blank to insert breaks only at mini-block boundaries.</div>
+                        </div>
+
+                        <!-- Break message -->
+                        <div class="mb-3 mb-field-row">
+                            <label for="mb_break_message" class="form-label">Break message</label>
+                            <textarea class="form-control mb-requires-enabled" id="mb_break_message" rows="3" placeholder="Take a short break.&#10;&#10;Press the key below when you are ready to continue."></textarea>
+                            <div class="form-text">Supports plain text. Shown on screen during the break.</div>
+                        </div>
+
+                        <!-- Force wait -->
+                        <div class="mb-3 mb-field-row">
+                            <div class="form-check">
+                                <input class="form-check-input mb-requires-enabled" type="checkbox" id="mb_force_wait">
+                                <label class="form-check-label" for="mb_force_wait">Prevent early exit from break (force wait)</label>
+                            </div>
+                            <div class="form-text ps-4">When enabled, participants cannot skip the break. A minimum duration must be set below.</div>
+                        </div>
+
+                        <!-- Break duration (only shown when force_wait is on) -->
+                        <div class="mb-3 mb-field-row" id="mb_break_duration_row" style="display:none;">
+                            <label for="mb_break_duration_sec" class="form-label">Minimum break duration (seconds)</label>
+                            <input type="number" class="form-control mb-requires-enabled" id="mb_break_duration_sec" min="1" max="3600" step="1" placeholder="e.g. 30">
+                        </div>
+
+                        <!-- Escape keys (only active when force_wait is off) -->
+                        <div class="mb-3 mb-field-row" id="mb_escape_keys_row">
+                            <label for="mb_break_escape_keys" class="form-label">Key(s) to end break early</label>
+                            <input type="text" class="form-control mb-requires-enabled" id="mb_break_escape_keys" placeholder="e.g. space, enter">
+                            <div class="form-text">Comma-separated key names. Ignored when "force wait" is on.</div>
+                        </div>
+
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-primary" id="saveMiniblockBtn">
+                            <i class="fas fa-save me-1"></i> Save Miniblock Structure
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <footer class="cf-footer">

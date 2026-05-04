@@ -72,11 +72,18 @@
       too_slow_feedback_enabled: { type: PT.BOOL, default: false },
       feedback_text_no_response: { type: PT.STRING, default: 'Too slow' },
       reward_feedback_enabled: { type: PT.BOOL, default: false },
+      reward_scoring_mode: { type: PT.STRING, default: 'tiered' },
       reward_fast_rt_threshold_ms: { type: PT.INT, default: 450 },
       reward_medium_rt_threshold_ms: { type: PT.INT, default: 800 },
       reward_points_fast: { type: PT.FLOAT, default: 2 },
       reward_points_medium: { type: PT.FLOAT, default: 1 },
       reward_points_slow: { type: PT.FLOAT, default: 0 },
+      reward_bonus_rt_fast_ms: { type: PT.INT, default: 350 },
+      reward_bonus_rt_slow_ms: { type: PT.INT, default: 850 },
+      reward_base_points_high: { type: PT.FLOAT, default: 50 },
+      reward_base_points_low: { type: PT.FLOAT, default: 5 },
+      reward_bonus_max_high: { type: PT.FLOAT, default: 50 },
+      reward_bonus_max_low: { type: PT.FLOAT, default: 5 },
       reward_feedback_text_template: { type: PT.STRING, default: '+{{points}} points' },
 
       detection_response_task_enabled: { type: PT.BOOL, default: false }
@@ -124,6 +131,12 @@
     const x = Number(n);
     if (!Number.isFinite(x)) return lo;
     return Math.max(lo, Math.min(hi, x));
+  }
+
+  function formatPointsLabel(points) {
+    const n = Number(points);
+    if (!Number.isFinite(n)) return '0';
+    return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
   }
 
   function toFiniteNumberOrNull(v) {
@@ -657,11 +670,19 @@
       const tooSlowFeedbackEnabled = trial.too_slow_feedback_enabled === true;
       const fbTextNoResponse = (trial.feedback_text_no_response ?? 'Too slow').toString();
       const rewardFeedbackEnabled = trial.reward_feedback_enabled === true;
+      const rewardScoringMode = (trial.reward_scoring_mode ?? 'tiered').toString().trim().toLowerCase();
       const rewardFastThresholdMs = Math.max(0, Number(trial.reward_fast_rt_threshold_ms ?? 450) || 0);
       const rewardMediumThresholdMs = Math.max(rewardFastThresholdMs, Number(trial.reward_medium_rt_threshold_ms ?? 800) || rewardFastThresholdMs);
       const rewardPointsFast = Number.isFinite(Number(trial.reward_points_fast)) ? Number(trial.reward_points_fast) : 2;
       const rewardPointsMedium = Number.isFinite(Number(trial.reward_points_medium)) ? Number(trial.reward_points_medium) : 1;
       const rewardPointsSlow = Number.isFinite(Number(trial.reward_points_slow)) ? Number(trial.reward_points_slow) : 0;
+      const rewardBonusRtFastMs = Math.max(0, Number(trial.reward_bonus_rt_fast_ms ?? 350) || 0);
+      const rewardBonusRtSlowMsRaw = Math.max(0, Number(trial.reward_bonus_rt_slow_ms ?? 850) || 0);
+      const rewardBonusRtSlowMs = Math.max(rewardBonusRtFastMs + 1, rewardBonusRtSlowMsRaw);
+      const rewardBasePointsHigh = Number.isFinite(Number(trial.reward_base_points_high)) ? Number(trial.reward_base_points_high) : 50;
+      const rewardBasePointsLow = Number.isFinite(Number(trial.reward_base_points_low)) ? Number(trial.reward_base_points_low) : 5;
+      const rewardBonusMaxHigh = Number.isFinite(Number(trial.reward_bonus_max_high)) ? Number(trial.reward_bonus_max_high) : 50;
+      const rewardBonusMaxLow = Number.isFinite(Number(trial.reward_bonus_max_low)) ? Number(trial.reward_bonus_max_low) : 5;
       const rewardTemplate = (trial.reward_feedback_text_template ?? '+{{points}} points').toString();
 
       // Optional researcher-controlled patch diameter.
@@ -725,6 +746,10 @@
 
       let stimulusOnsetTs = null;
       let responseListenerStarted = false;
+      let trialFinished = false;
+      let watchdogTriggered = false;
+      let renderErrorMessage = null;
+      let watchdogTimeoutId = null;
 
       let currentPhase = 'fixation';
       let currentRenderOpts = { showCue: false, showStimulus: false, showMask: false };
@@ -738,7 +763,30 @@
 
       let resizeHandler = null;
 
+      const clearWatchdog = () => {
+        if (watchdogTimeoutId !== null) {
+          try { clearTimeout(watchdogTimeoutId); } catch { /* ignore */ }
+          watchdogTimeoutId = null;
+        }
+      };
+
+      const finishTrialSafely = (trialData) => {
+        if (trialFinished) return;
+        trialFinished = true;
+        clearWatchdog();
+        this.jsPsych.finishTrial(trialData);
+      };
+
+      const computeRewardTargetValue = () => {
+        const explicit = (typeof trial.value_target_value === 'string') ? trial.value_target_value.trim().toLowerCase() : '';
+        if (explicit === 'high' || explicit === 'low' || explicit === 'neutral') return explicit;
+        if (targetLocation === 'left') return (leftValue || 'neutral').toString().trim().toLowerCase();
+        if (targetLocation === 'right') return (rightValue || 'neutral').toString().trim().toLowerCase();
+        return 'neutral';
+      };
+
       const endTrial = (reason) => {
+        if (trialFinished) return;
         this.jsPsych.pluginAPI.cancelAllKeyboardResponses();
 
         if (resizeHandler) {
@@ -822,6 +870,10 @@
 
         let rewardRtTier = null;
         let rewardPointsAwarded = null;
+        let rewardBasePoints = null;
+        let rewardBonusPoints = null;
+        let rewardTargetValue = computeRewardTargetValue();
+        const rewardScoringModeApplied = (rewardScoringMode === 'proportional_linear') ? 'proportional_linear' : 'tiered';
         if (
           rewardFeedbackEnabled
           && !noResponse
@@ -829,21 +881,47 @@
           && hasValueCueContext
           && trialData.reward_available !== false
         ) {
-          if (rt <= rewardFastThresholdMs) {
-            rewardRtTier = 'fast';
-            rewardPointsAwarded = rewardPointsFast;
-          } else if (rt <= rewardMediumThresholdMs) {
-            rewardRtTier = 'medium';
-            rewardPointsAwarded = rewardPointsMedium;
+          if (rewardScoringModeApplied === 'proportional_linear') {
+            if (rewardTargetValue === 'high' || rewardTargetValue === 'low') {
+              const rtNum = Number(rt);
+              const bonusRatio = clamp((rewardBonusRtSlowMs - rtNum) / Math.max(1, rewardBonusRtSlowMs - rewardBonusRtFastMs), 0, 1);
+              rewardBasePoints = (rewardTargetValue === 'high') ? rewardBasePointsHigh : rewardBasePointsLow;
+              const rewardBonusMax = (rewardTargetValue === 'high') ? rewardBonusMaxHigh : rewardBonusMaxLow;
+              rewardBonusPoints = rewardBonusMax * bonusRatio;
+              rewardPointsAwarded = rewardBasePoints + rewardBonusPoints;
+              if (rt <= rewardFastThresholdMs) {
+                rewardRtTier = 'fast';
+              } else if (rt <= rewardMediumThresholdMs) {
+                rewardRtTier = 'medium';
+              } else {
+                rewardRtTier = 'slow';
+              }
+            }
           } else {
-            rewardRtTier = 'slow';
-            rewardPointsAwarded = rewardPointsSlow;
+            if (rt <= rewardFastThresholdMs) {
+              rewardRtTier = 'fast';
+              rewardPointsAwarded = rewardPointsFast;
+            } else if (rt <= rewardMediumThresholdMs) {
+              rewardRtTier = 'medium';
+              rewardPointsAwarded = rewardPointsMedium;
+            } else {
+              rewardRtTier = 'slow';
+              rewardPointsAwarded = rewardPointsSlow;
+            }
           }
         }
 
         trialData.no_response = noResponse;
+        trialData.response_registered = responded;
         trialData.reward_rt_tier = rewardRtTier;
         trialData.reward_points_awarded = rewardPointsAwarded;
+        trialData.reward_scoring_mode = rewardScoringModeApplied;
+        trialData.reward_target_value = rewardTargetValue;
+        trialData.reward_base_points = rewardBasePoints;
+        trialData.reward_bonus_points = rewardBonusPoints;
+        trialData.watchdog_triggered = watchdogTriggered;
+        trialData.phase_at_watchdog = watchdogTriggered ? currentPhase : null;
+        trialData.render_error_message = renderErrorMessage;
 
         const shouldShowAnyFeedback = showFeedback || tooSlowFeedbackEnabled || rewardFeedbackEnabled;
 
@@ -857,7 +935,10 @@
               fbText = fbTextNoResponse;
               fbColor = '#ffb74d';
             } else if (rewardRtTier !== null && rewardPointsAwarded !== null) {
-              fbText = rewardTemplate.replace(/\{\{\s*points\s*\}\}/gi, String(rewardPointsAwarded));
+              fbText = rewardTemplate
+                .replace(/\{\{\s*points\s*\}\}/gi, formatPointsLabel(rewardPointsAwarded))
+                .replace(/\{\{\s*base\s*\}\}/gi, formatPointsLabel(rewardBasePoints ?? 0))
+                .replace(/\{\{\s*bonus\s*\}\}/gi, formatPointsLabel(rewardBonusPoints ?? 0));
               fbColor = '#ffd54f';
             } else if (showFeedback) {
               fbText = (correctness === true) ? fbTextCorrect : (correctness === false) ? fbTextIncorrect : '';
@@ -878,9 +959,9 @@
               fbCtx.restore();
             }
           }
-          window.setTimeout(() => { this.jsPsych.finishTrial(trialData); }, feedbackDurationMs);
+          window.setTimeout(() => { finishTrialSafely(trialData); }, feedbackDurationMs);
         } else {
-          this.jsPsych.finishTrial(trialData);
+          finishTrialSafely(trialData);
         }
       };
 
@@ -938,23 +1019,28 @@
         currentPhase = phase || currentPhase;
         currentRenderOpts = opts || currentRenderOpts;
 
-        renderGaborScene(canvas, {
-          phase,
-          patchDiameterPx,
-          spatialCue,
-          leftFrameColor,
-          rightFrameColor,
-          leftAngle,
-          rightAngle,
-          spatialFrequency,
-          gratingWaveform,
-          patchBorder,
-          contrast,
-          showCue: !!opts?.showCue,
-          showStimulus: !!opts?.showStimulus,
-          showMask: !!opts?.showMask,
-          debug: debugGabor
-        });
+        try {
+          renderGaborScene(canvas, {
+            phase,
+            patchDiameterPx,
+            spatialCue,
+            leftFrameColor,
+            rightFrameColor,
+            leftAngle,
+            rightAngle,
+            spatialFrequency,
+            gratingWaveform,
+            patchBorder,
+            contrast,
+            showCue: !!opts?.showCue,
+            showStimulus: !!opts?.showStimulus,
+            showMask: !!opts?.showMask,
+            debug: debugGabor
+          });
+        } catch (err) {
+          renderErrorMessage = (err && err.message) ? String(err.message) : 'render_failed';
+          endTrial('render_error');
+        }
       };
 
       // Ensure the canvas fills the viewport nicely and stays centered.
@@ -979,22 +1065,27 @@
 
         this.jsPsych.pluginAPI.getKeyboardResponse({
           callback_function: (info) => {
-            const rawKey = info && info.key !== undefined ? info.key : null;
-            const k = normalizeKeyName(rawKey);
+            try {
+              const rawKey = info && info.key !== undefined ? info.key : null;
+              const k = normalizeKeyName(rawKey);
 
-            // DRT capture should not count as a primary response.
-            if (drtEnabled && k === drtKey) {
-              if (drtShown && drtRt === null && drtOnsetTs) {
-                drtRt = Math.round(nowMs() - drtOnsetTs);
+              // DRT capture should not count as a primary response.
+              if (drtEnabled && k === drtKey) {
+                if (drtShown && drtRt === null && drtOnsetTs) {
+                  drtRt = Math.round(nowMs() - drtOnsetTs);
+                }
+                return;
               }
-              return;
-            }
 
-            if (responded) return;
-            responded = true;
-            responseKey = k;
-            rt = stimulusOnsetTs ? Math.round(nowMs() - stimulusOnsetTs) : (Number.isFinite(info && info.rt) ? Math.round(info.rt) : null);
-            endTrial('response');
+              if (responded) return;
+              responded = true;
+              responseKey = k;
+              rt = stimulusOnsetTs ? Math.round(nowMs() - stimulusOnsetTs) : (Number.isFinite(info && info.rt) ? Math.round(info.rt) : null);
+              endTrial('response');
+            } catch (err) {
+              renderErrorMessage = (err && err.message) ? String(err.message) : 'response_handler_failed';
+              endTrial('response_handler_error');
+            }
           },
           valid_responses: validKeys.concat(drtEnabled ? [drtKey] : []),
           rt_method: 'performance',
@@ -1033,34 +1124,64 @@
 
       // Placeholders
       safeSetTimeout(() => {
-        render('placeholders', { showCue: false, showStimulus: false, showMask: false });
+        try {
+          render('placeholders', { showCue: false, showStimulus: false, showMask: false });
+        } catch (err) {
+          renderErrorMessage = (err && err.message) ? String(err.message) : 'phase_placeholders_failed';
+          endTrial('phase_error');
+        }
       }, fixationMs);
 
       // Cue
       safeSetTimeout(() => {
-        render('cue', { showCue: true, showStimulus: false, showMask: false });
+        try {
+          render('cue', { showCue: true, showStimulus: false, showMask: false });
+        } catch (err) {
+          renderErrorMessage = (err && err.message) ? String(err.message) : 'phase_cue_failed';
+          endTrial('phase_error');
+        }
       }, fixationMs + placeholdersMs);
 
       // Cue delay (cue off)
       safeSetTimeout(() => {
-        render('cue-delay', { showCue: false, showStimulus: false, showMask: false });
+        try {
+          render('cue-delay', { showCue: false, showStimulus: false, showMask: false });
+        } catch (err) {
+          renderErrorMessage = (err && err.message) ? String(err.message) : 'phase_cue_delay_failed';
+          endTrial('phase_error');
+        }
       }, fixationMs + placeholdersMs + cueMs);
 
       // Stimulus
       safeSetTimeout(() => {
-        stimulusOnsetTs = nowMs();
-        render('stimulus', { showCue: false, showStimulus: true, showMask: false });
-        startResponseListener();
+        try {
+          stimulusOnsetTs = nowMs();
+          render('stimulus', { showCue: false, showStimulus: true, showMask: false });
+          startResponseListener();
+        } catch (err) {
+          renderErrorMessage = (err && err.message) ? String(err.message) : 'phase_stimulus_failed';
+          endTrial('phase_error');
+        }
       }, fixationMs + placeholdersMs + cueMs + cueDelay);
 
       // Mask
       safeSetTimeout(() => {
-        render('mask', { showCue: false, showStimulus: false, showMask: true });
+        try {
+          render('mask', { showCue: false, showStimulus: false, showMask: true });
+        } catch (err) {
+          renderErrorMessage = (err && err.message) ? String(err.message) : 'phase_mask_failed';
+          endTrial('phase_error');
+        }
       }, fixationMs + placeholdersMs + cueMs + cueDelay + stimMs);
 
       // Post-mask response window (blank placeholders)
       safeSetTimeout(() => {
-        render('response', { showCue: false, showStimulus: false, showMask: false });
+        try {
+          render('response', { showCue: false, showStimulus: false, showMask: false });
+        } catch (err) {
+          renderErrorMessage = (err && err.message) ? String(err.message) : 'phase_response_failed';
+          endTrial('phase_error');
+        }
       }, fixationMs + placeholdersMs + cueMs + cueDelay + stimMs + maskMs);
 
       // Deadline
@@ -1070,6 +1191,12 @@
           endTrial('deadline');
         }, deadlineMs);
       }
+
+      const watchdogMs = Math.max(10000, deadlineMs + Math.max(feedbackDurationMs, 0) + 3000);
+      watchdogTimeoutId = window.setTimeout(() => {
+        watchdogTriggered = true;
+        endTrial('watchdog_timeout');
+      }, watchdogMs);
     }
   }
 

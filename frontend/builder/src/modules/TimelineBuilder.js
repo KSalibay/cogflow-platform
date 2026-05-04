@@ -59,6 +59,11 @@ class TimelineBuilder {
         timeline.forEach((component, index) => {
             const componentElement = this.createComponentElementNew(component, index);
             this.timelineContainer.appendChild(componentElement);
+            // Restore miniblock badge if already configured
+            if (component.type === 'block' || component.builderComponentId === 'block') {
+                const mb = component.miniblock_structure || component.parameters?.miniblock_structure;
+                if (mb) this._updateMiniblockBadge(componentElement, mb);
+            }
         });
     }
 
@@ -185,6 +190,7 @@ class TimelineBuilder {
                         <button class="btn btn-sm btn-outline-secondary" onclick="editComponent(this)" title="Edit">
                             <i class="fas fa-pencil-alt"></i>
                         </button>
+                        ${component.type === 'block' ? `<button class="btn btn-sm btn-outline-secondary miniblock-btn" onclick="window._cogflowTimelineBuilder && window._cogflowTimelineBuilder.showMiniblockModal(this.closest('.timeline-component'))" title="Miniblock Structure"><i class="fas fa-chart-pie"></i></button>` : ''}
                         <button class="btn btn-sm btn-outline-secondary" onclick="duplicateComponent(this)" title="Duplicate Below">
                             <i class="fas fa-copy"></i>
                         </button>
@@ -323,6 +329,20 @@ class TimelineBuilder {
         const scoringBasis = (component.scoring_basis ?? 'both').toString();
         const rtThreshold = safeNum(component.rt_threshold_ms, 600);
         const ptsPerSuccess = safeNum(component.points_per_success, 1);
+        const gaborRewardFeedbackEnabled = !!component.gabor_reward_feedback_enabled;
+        const gaborRewardScoringMode = (component.gabor_reward_scoring_mode ?? 'tiered').toString();
+        const gaborRewardFastRtThresholdMs = safeNum(component.gabor_reward_fast_rt_threshold_ms, 450);
+        const gaborRewardMediumRtThresholdMs = safeNum(component.gabor_reward_medium_rt_threshold_ms, 800);
+        const gaborRewardPointsFast = safeNum(component.gabor_reward_points_fast, 2);
+        const gaborRewardPointsMedium = safeNum(component.gabor_reward_points_medium, 1);
+        const gaborRewardPointsSlow = safeNum(component.gabor_reward_points_slow, 0);
+        const gaborRewardBonusRtFastMs = safeNum(component.gabor_reward_bonus_rt_fast_ms, 350);
+        const gaborRewardBonusRtSlowMs = safeNum(component.gabor_reward_bonus_rt_slow_ms, 850);
+        const gaborRewardBasePointsHigh = safeNum(component.gabor_reward_base_points_high, 50);
+        const gaborRewardBasePointsLow = safeNum(component.gabor_reward_base_points_low, 5);
+        const gaborRewardBonusMaxHigh = safeNum(component.gabor_reward_bonus_max_high, 50);
+        const gaborRewardBonusMaxLow = safeNum(component.gabor_reward_bonus_max_low, 5);
+        const gaborRewardFeedbackTemplate = (component.gabor_reward_feedback_text_template ?? '+{{points}} points').toString();
         const requireCorrectForRt = !!component.require_correct_for_rt;
         const calcOnFly = (component.calculate_on_the_fly !== false);
         const showSummary = (component.show_summary_at_end !== false);
@@ -655,6 +675,72 @@ class TimelineBuilder {
                 </div>
 
                 <div class="border rounded p-2">
+                    <h6 class="mb-2">Gabor Reward Overrides</h6>
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" id="reward_gabor_reward_feedback_enabled" ${gaborRewardFeedbackEnabled ? 'checked' : ''}>
+                        <label class="form-check-label" for="reward_gabor_reward_feedback_enabled">Enable Gabor reward feedback</label>
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <label class="form-label">Scoring mode</label>
+                            <select class="form-select" id="reward_gabor_reward_scoring_mode">
+                                <option value="tiered">tiered</option>
+                                <option value="proportional_linear">proportional_linear</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Fast RT threshold (ms)</label>
+                            <input type="number" class="form-control" id="reward_gabor_reward_fast_rt_threshold_ms" min="0" max="60000" step="1" value="${escapeAttr(String(gaborRewardFastRtThresholdMs))}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Medium RT threshold (ms)</label>
+                            <input type="number" class="form-control" id="reward_gabor_reward_medium_rt_threshold_ms" min="0" max="60000" step="1" value="${escapeAttr(String(gaborRewardMediumRtThresholdMs))}">
+                        </div>
+                        <div class="col-md-4" data-rw-gabor-tiered="1">
+                            <label class="form-label">Tiered fast points</label>
+                            <input type="number" class="form-control" id="reward_gabor_reward_points_fast" step="0.1" value="${escapeAttr(String(gaborRewardPointsFast))}">
+                        </div>
+                        <div class="col-md-4" data-rw-gabor-tiered="1">
+                            <label class="form-label">Tiered medium points</label>
+                            <input type="number" class="form-control" id="reward_gabor_reward_points_medium" step="0.1" value="${escapeAttr(String(gaborRewardPointsMedium))}">
+                        </div>
+                        <div class="col-md-4" data-rw-gabor-tiered="1">
+                            <label class="form-label">Tiered slow points</label>
+                            <input type="number" class="form-control" id="reward_gabor_reward_points_slow" step="0.1" value="${escapeAttr(String(gaborRewardPointsSlow))}">
+                        </div>
+                        <div class="col-md-4" data-rw-gabor-proportional="1">
+                            <label class="form-label">Bonus fast RT (ms)</label>
+                            <input type="number" class="form-control" id="reward_gabor_reward_bonus_rt_fast_ms" min="0" max="60000" step="1" value="${escapeAttr(String(gaborRewardBonusRtFastMs))}">
+                        </div>
+                        <div class="col-md-4" data-rw-gabor-proportional="1">
+                            <label class="form-label">Bonus slow RT (ms)</label>
+                            <input type="number" class="form-control" id="reward_gabor_reward_bonus_rt_slow_ms" min="0" max="60000" step="1" value="${escapeAttr(String(gaborRewardBonusRtSlowMs))}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Feedback template</label>
+                            <input type="text" class="form-control" id="reward_gabor_reward_feedback_text_template" value="${escapeAttr(gaborRewardFeedbackTemplate)}">
+                        </div>
+                        <div class="col-md-3" data-rw-gabor-proportional="1">
+                            <label class="form-label">High base points</label>
+                            <input type="number" class="form-control" id="reward_gabor_reward_base_points_high" step="0.1" value="${escapeAttr(String(gaborRewardBasePointsHigh))}">
+                        </div>
+                        <div class="col-md-3" data-rw-gabor-proportional="1">
+                            <label class="form-label">Low base points</label>
+                            <input type="number" class="form-control" id="reward_gabor_reward_base_points_low" step="0.1" value="${escapeAttr(String(gaborRewardBasePointsLow))}">
+                        </div>
+                        <div class="col-md-3" data-rw-gabor-proportional="1">
+                            <label class="form-label">High max bonus</label>
+                            <input type="number" class="form-control" id="reward_gabor_reward_bonus_max_high" step="0.1" value="${escapeAttr(String(gaborRewardBonusMaxHigh))}">
+                        </div>
+                        <div class="col-md-3" data-rw-gabor-proportional="1">
+                            <label class="form-label">Low max bonus</label>
+                            <input type="number" class="form-control" id="reward_gabor_reward_bonus_max_low" step="0.1" value="${escapeAttr(String(gaborRewardBonusMaxLow))}">
+                        </div>
+                    </div>
+                    <div class="form-text mt-2">These values are applied as default reward parameters for Gabor trials unless a block overrides them directly.</div>
+                </div>
+
+                <div class="border rounded p-2">
                     <h6 class="mb-2">Instructions Screen</h6>
                     <div id="rw_instructions"></div>
                 </div>
@@ -693,6 +779,22 @@ class TimelineBuilder {
         if (contEl) contEl.value = continueKey;
         const basisEl = modalBody.querySelector('#reward_scoring_basis');
         if (basisEl) basisEl.value = scoringBasis;
+        const gaborModeEl = modalBody.querySelector('#reward_gabor_reward_scoring_mode');
+        if (gaborModeEl) gaborModeEl.value = gaborRewardScoringMode;
+
+        const syncGaborRewardModeVisibility = () => {
+            const mode = (modalBody.querySelector('#reward_gabor_reward_scoring_mode')?.value ?? 'tiered').toString();
+            modalBody.querySelectorAll('[data-rw-gabor-tiered="1"]').forEach((el) => {
+                el.style.display = mode === 'tiered' ? '' : 'none';
+            });
+            modalBody.querySelectorAll('[data-rw-gabor-proportional="1"]').forEach((el) => {
+                el.style.display = mode === 'proportional_linear' ? '' : 'none';
+            });
+        };
+        if (gaborModeEl) {
+            gaborModeEl.addEventListener('change', syncGaborRewardModeVisibility);
+            syncGaborRewardModeVisibility();
+        }
 
         // Render fixed instruction + summary cards
         const instrHost = modalBody.querySelector('#rw_instructions');
@@ -848,6 +950,20 @@ class TimelineBuilder {
         const scoring_basis = getText('#reward_scoring_basis') || 'both';
         const rt_threshold_ms = getNum('#reward_rt_threshold_ms', 600);
         const points_per_success = getNum('#reward_points_per_success', 1);
+        const gabor_reward_feedback_enabled = getBool('#reward_gabor_reward_feedback_enabled');
+        const gabor_reward_scoring_mode = getText('#reward_gabor_reward_scoring_mode') || 'tiered';
+        const gabor_reward_fast_rt_threshold_ms = getNum('#reward_gabor_reward_fast_rt_threshold_ms', 450);
+        const gabor_reward_medium_rt_threshold_ms = getNum('#reward_gabor_reward_medium_rt_threshold_ms', 800);
+        const gabor_reward_points_fast = getNum('#reward_gabor_reward_points_fast', 2);
+        const gabor_reward_points_medium = getNum('#reward_gabor_reward_points_medium', 1);
+        const gabor_reward_points_slow = getNum('#reward_gabor_reward_points_slow', 0);
+        const gabor_reward_bonus_rt_fast_ms = getNum('#reward_gabor_reward_bonus_rt_fast_ms', 350);
+        const gabor_reward_bonus_rt_slow_ms = getNum('#reward_gabor_reward_bonus_rt_slow_ms', 850);
+        const gabor_reward_base_points_high = getNum('#reward_gabor_reward_base_points_high', 50);
+        const gabor_reward_base_points_low = getNum('#reward_gabor_reward_base_points_low', 5);
+        const gabor_reward_bonus_max_high = getNum('#reward_gabor_reward_bonus_max_high', 50);
+        const gabor_reward_bonus_max_low = getNum('#reward_gabor_reward_bonus_max_low', 5);
+        const gabor_reward_feedback_text_template = getText('#reward_gabor_reward_feedback_text_template') || '+{{points}} points';
         const require_correct_for_rt = getBool('#reward_require_correct_for_rt');
         const calculate_on_the_fly = getBool('#reward_calculate_on_the_fly');
         const show_summary_at_end = getBool('#reward_show_summary_at_end');
@@ -904,6 +1020,20 @@ class TimelineBuilder {
             scoring_basis,
             rt_threshold_ms,
             points_per_success,
+            gabor_reward_feedback_enabled,
+            gabor_reward_scoring_mode,
+            gabor_reward_fast_rt_threshold_ms,
+            gabor_reward_medium_rt_threshold_ms,
+            gabor_reward_points_fast,
+            gabor_reward_points_medium,
+            gabor_reward_points_slow,
+            gabor_reward_bonus_rt_fast_ms,
+            gabor_reward_bonus_rt_slow_ms,
+            gabor_reward_base_points_high,
+            gabor_reward_base_points_low,
+            gabor_reward_bonus_max_high,
+            gabor_reward_bonus_max_low,
+            gabor_reward_feedback_text_template,
             require_correct_for_rt,
             calculate_on_the_fly,
             show_summary_at_end,
@@ -2714,11 +2844,18 @@ class TimelineBuilder {
                 'gabor_too_slow_feedback_enabled',
                 'gabor_feedback_text_no_response',
                 'gabor_reward_feedback_enabled',
+                'gabor_reward_scoring_mode',
                 'gabor_reward_fast_rt_threshold_ms',
                 'gabor_reward_medium_rt_threshold_ms',
                 'gabor_reward_points_fast',
                 'gabor_reward_points_medium',
                 'gabor_reward_points_slow',
+                'gabor_reward_bonus_rt_fast_ms',
+                'gabor_reward_bonus_rt_slow_ms',
+                'gabor_reward_base_points_high',
+                'gabor_reward_base_points_low',
+                'gabor_reward_bonus_max_high',
+                'gabor_reward_bonus_max_low',
                 'gabor_reward_feedback_text_template'
             ];
             if (selected !== 'gabor-trial' && selected !== 'gabor-quest' && selected !== 'gabor-learning') {
@@ -5764,6 +5901,162 @@ class TimelineBuilder {
             subtitle.innerHTML = `<i class="fas fa-tag me-1" style="font-size:0.75em;opacity:0.6;"></i>${esc(labelText)}`;
         } else {
             subtitle.textContent = type || '';
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Miniblock Structure Modal
+    // -------------------------------------------------------------------------
+
+    showMiniblockModal(componentElement) {
+        if (!componentElement) return;
+
+        let data = {};
+        try {
+            data = JSON.parse(componentElement.dataset.componentData || '{}');
+        } catch (e) {
+            console.error('Failed to parse component data for miniblock modal:', e);
+        }
+
+        const mb = data.miniblock_structure || {};
+        const ea = (v) => this.escapeHtmlAttr(String(v ?? ''));
+
+        const enabled            = mb.enabled !== false ? mb.enabled ?? false : false;
+        const numBlocks          = mb.num_blocks ?? '';
+        const trialsPerBlock     = mb.trials_per_block ?? '';
+        const counterbalance     = mb.counterbalance_conditions ?? false;
+        const breakEveryN        = mb.break_every_n_trials ?? '';
+        const breakMessage       = mb.break_message ?? 'Take a short break.\n\nPress the key below when you are ready to continue.';
+        const breakEscapeKeys    = mb.break_escape_keys ?? 'space';
+        const forceWait          = mb.force_wait_for_break ?? false;
+        const breakDurationSec   = mb.break_duration_sec ?? '';
+
+        const modal = document.getElementById('miniblockModal');
+        if (!modal) {
+            console.error('Miniblock modal not found in DOM');
+            return;
+        }
+
+        // Populate fields
+        modal.querySelector('#mb_enabled').checked              = !!enabled;
+        modal.querySelector('#mb_num_blocks').value             = numBlocks;
+        modal.querySelector('#mb_trials_per_block').value       = trialsPerBlock;
+        modal.querySelector('#mb_counterbalance').checked       = !!counterbalance;
+        modal.querySelector('#mb_break_every_n').value          = breakEveryN;
+        modal.querySelector('#mb_break_message').value          = breakMessage;
+        modal.querySelector('#mb_break_escape_keys').value      = breakEscapeKeys;
+        modal.querySelector('#mb_force_wait').checked           = !!forceWait;
+        modal.querySelector('#mb_break_duration_sec').value     = breakDurationSec;
+
+        this._miniblockTargetElement = componentElement;
+
+        this._updateMiniblockFieldStates(modal);
+
+        // Wire up the save button
+        const saveBtn = modal.querySelector('#saveMiniblockBtn');
+        if (saveBtn) {
+            saveBtn.onclick = () => this.saveMiniblockParameters();
+        }
+
+        // Wire up force-wait / enabled toggles to show/hide dependent fields
+        modal.querySelector('#mb_enabled').onchange = () => this._updateMiniblockFieldStates(modal);
+        modal.querySelector('#mb_force_wait').onchange = () => this._updateMiniblockFieldStates(modal);
+
+        const bsModal = new bootstrap.Modal(modal);
+        bsModal.show();
+    }
+
+    _updateMiniblockFieldStates(modal) {
+        const enabled    = modal.querySelector('#mb_enabled').checked;
+        const forceWait  = modal.querySelector('#mb_force_wait').checked;
+        const body       = modal.querySelector('#miniblockModalBody');
+
+        body.querySelectorAll('.mb-requires-enabled').forEach(el => {
+            el.closest('.mb-field-row')
+                ? (el.closest('.mb-field-row').style.opacity = enabled ? '' : '0.4')
+                : null;
+            el.disabled = !enabled;
+        });
+
+        const durationRow = modal.querySelector('#mb_break_duration_row');
+        if (durationRow) {
+            durationRow.style.display = (enabled && forceWait) ? '' : 'none';
+        }
+        const escapeKeysRow = modal.querySelector('#mb_escape_keys_row');
+        if (escapeKeysRow) {
+            escapeKeysRow.style.opacity = (enabled && !forceWait) ? '' : '0.4';
+            modal.querySelector('#mb_break_escape_keys').disabled = !(enabled && !forceWait);
+        }
+    }
+
+    saveMiniblockParameters() {
+        const modal = document.getElementById('miniblockModal');
+        const componentElement = this._miniblockTargetElement;
+        if (!modal || !componentElement) return;
+
+        const safeInt = (id) => {
+            const v = parseInt(modal.querySelector(id)?.value, 10);
+            return Number.isFinite(v) && v > 0 ? v : null;
+        };
+        const safeFloat = (id) => {
+            const v = parseFloat(modal.querySelector(id)?.value);
+            return Number.isFinite(v) && v > 0 ? v : null;
+        };
+
+        const enabled          = modal.querySelector('#mb_enabled').checked;
+        const numBlocks        = safeInt('#mb_num_blocks');
+        const trialsPerBlock   = safeInt('#mb_trials_per_block');
+        const counterbalance   = modal.querySelector('#mb_counterbalance').checked;
+        const breakEveryN      = safeInt('#mb_break_every_n');
+        const breakMessage     = modal.querySelector('#mb_break_message').value.trim();
+        const breakEscapeKeys  = modal.querySelector('#mb_break_escape_keys').value.trim();
+        const forceWait        = modal.querySelector('#mb_force_wait').checked;
+        const breakDurationSec = safeFloat('#mb_break_duration_sec');
+
+        const miniblockStructure = {
+            enabled,
+            ...(numBlocks        !== null  && { num_blocks: numBlocks }),
+            ...(trialsPerBlock   !== null  && { trials_per_block: trialsPerBlock }),
+            counterbalance_conditions: counterbalance,
+            ...(breakEveryN      !== null  && { break_every_n_trials: breakEveryN }),
+            break_message:    breakMessage || 'Take a short break.\n\nPress the key below when you are ready to continue.',
+            break_escape_keys: breakEscapeKeys || 'space',
+            force_wait_for_break: forceWait,
+            ...(forceWait && breakDurationSec !== null && { break_duration_sec: breakDurationSec })
+        };
+
+        let data = {};
+        try {
+            data = JSON.parse(componentElement.dataset.componentData || '{}');
+        } catch (e) { /* ignore */ }
+
+        data.miniblock_structure = miniblockStructure;
+        componentElement.dataset.componentData = JSON.stringify(data);
+        this.jsonBuilder.updateJSON();
+
+        // Update badge on the card
+        this._updateMiniblockBadge(componentElement, miniblockStructure);
+
+        const bsModal = bootstrap.Modal.getInstance(modal);
+        if (bsModal) bsModal.hide();
+    }
+
+    _updateMiniblockBadge(componentElement, mb) {
+        // Show a small badge near the pie-chart button when miniblock is active
+        const btn = componentElement.querySelector('.miniblock-btn');
+        if (!btn) return;
+        let badge = btn.querySelector('.miniblock-active-badge');
+        if (mb && mb.enabled) {
+            if (!badge) {
+                badge = document.createElement('span');
+                badge.className = 'miniblock-active-badge position-absolute top-0 start-100 translate-middle badge rounded-pill bg-success';
+                badge.style.cssText = 'font-size:0.55em;padding:2px 4px;';
+                badge.textContent = '✓';
+                btn.style.position = 'relative';
+                btn.appendChild(badge);
+            }
+        } else if (badge) {
+            badge.remove();
         }
     }
 

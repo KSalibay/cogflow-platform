@@ -1741,6 +1741,12 @@ class JSPsychSchemas {
                         default: false,
                         description: 'Show reward feedback based on RT in value-cue context'
                     },
+                    reward_scoring_mode: {
+                        type: this.parameterTypes.SELECT,
+                        default: 'tiered',
+                        options: ['tiered', 'proportional_linear'],
+                        description: 'Reward scoring model: legacy RT tiers or proportional linear bonus'
+                    },
                     reward_fast_rt_threshold_ms: {
                         type: this.parameterTypes.INT,
                         default: 450,
@@ -1766,10 +1772,40 @@ class JSPsychSchemas {
                         default: 0,
                         description: 'Reward points shown for slow RT responses'
                     },
+                    reward_bonus_rt_fast_ms: {
+                        type: this.parameterTypes.INT,
+                        default: 350,
+                        description: 'RT <= this receives max proportional bonus'
+                    },
+                    reward_bonus_rt_slow_ms: {
+                        type: this.parameterTypes.INT,
+                        default: 850,
+                        description: 'RT >= this receives zero proportional bonus'
+                    },
+                    reward_base_points_high: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 50,
+                        description: 'Base points for high-value targets (proportional mode)'
+                    },
+                    reward_base_points_low: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 5,
+                        description: 'Base points for low-value targets (proportional mode)'
+                    },
+                    reward_bonus_max_high: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 50,
+                        description: 'Maximum RT bonus for high-value targets (proportional mode)'
+                    },
+                    reward_bonus_max_low: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 5,
+                        description: 'Maximum RT bonus for low-value targets (proportional mode)'
+                    },
                     reward_feedback_text_template: {
                         type: this.parameterTypes.STRING,
                         default: '+{{points}} points',
-                        description: 'Reward feedback template. Use {{points}} placeholder.'
+                        description: 'Reward feedback template. Supports {{points}}, {{base}}, {{bonus}} placeholders.'
                     }
                 }
             },
@@ -1888,6 +1924,77 @@ class JSPsychSchemas {
                         type: this.parameterTypes.FLOAT,
                         default: 1,
                         description: 'Points awarded for each rewarded trial'
+                    },
+                    gabor_reward_feedback_enabled: {
+                        type: this.parameterTypes.BOOL,
+                        default: false,
+                        description: 'Enable Gabor reward feedback for value-cue tasks'
+                    },
+                    gabor_reward_scoring_mode: {
+                        type: this.parameterTypes.SELECT,
+                        default: 'tiered',
+                        options: ['tiered', 'proportional_linear'],
+                        description: 'Gabor reward scoring model'
+                    },
+                    gabor_reward_fast_rt_threshold_ms: {
+                        type: this.parameterTypes.INT,
+                        default: 450,
+                        description: 'Gabor fast RT threshold (ms) for tier labels / legacy tiered scoring'
+                    },
+                    gabor_reward_medium_rt_threshold_ms: {
+                        type: this.parameterTypes.INT,
+                        default: 800,
+                        description: 'Gabor medium RT threshold (ms) for legacy tiered scoring'
+                    },
+                    gabor_reward_points_fast: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 2,
+                        description: 'Gabor points for fast RTs in tiered mode'
+                    },
+                    gabor_reward_points_medium: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 1,
+                        description: 'Gabor points for medium RTs in tiered mode'
+                    },
+                    gabor_reward_points_slow: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 0,
+                        description: 'Gabor points for slow RTs in tiered mode'
+                    },
+                    gabor_reward_bonus_rt_fast_ms: {
+                        type: this.parameterTypes.INT,
+                        default: 350,
+                        description: 'Gabor RT <= this gets the maximum proportional bonus'
+                    },
+                    gabor_reward_bonus_rt_slow_ms: {
+                        type: this.parameterTypes.INT,
+                        default: 850,
+                        description: 'Gabor RT >= this gets zero proportional bonus'
+                    },
+                    gabor_reward_base_points_high: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 50,
+                        description: 'Gabor base points for high-value targets in proportional mode'
+                    },
+                    gabor_reward_base_points_low: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 5,
+                        description: 'Gabor base points for low-value targets in proportional mode'
+                    },
+                    gabor_reward_bonus_max_high: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 50,
+                        description: 'Gabor max RT bonus for high-value targets in proportional mode'
+                    },
+                    gabor_reward_bonus_max_low: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 5,
+                        description: 'Gabor max RT bonus for low-value targets in proportional mode'
+                    },
+                    gabor_reward_feedback_text_template: {
+                        type: this.parameterTypes.STRING,
+                        default: '+{{points}} points',
+                        description: 'Gabor reward feedback template. Supports {{points}}, {{base}}, {{bonus}}.'
                     },
                     require_correct_for_rt: {
                         type: this.parameterTypes.BOOL,
@@ -3536,6 +3643,13 @@ class JSPsychSchemas {
                         blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
                         description: 'Gabor: show reward feedback based on RT in value-cue context'
                     },
+                    gabor_reward_scoring_mode: {
+                        type: this.parameterTypes.SELECT,
+                        default: 'tiered',
+                        options: ['tiered', 'proportional_linear'],
+                        blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
+                        description: 'Gabor: reward scoring model (legacy tiers or proportional linear bonus)'
+                    },
                     gabor_reward_fast_rt_threshold_ms: {
                         type: this.parameterTypes.INT,
                         default: 450,
@@ -3566,11 +3680,47 @@ class JSPsychSchemas {
                         blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
                         description: 'Gabor: reward points shown for slow RT responses'
                     },
+                    gabor_reward_bonus_rt_fast_ms: {
+                        type: this.parameterTypes.INT,
+                        default: 350,
+                        blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
+                        description: 'Gabor: RT <= this gets max proportional bonus'
+                    },
+                    gabor_reward_bonus_rt_slow_ms: {
+                        type: this.parameterTypes.INT,
+                        default: 850,
+                        blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
+                        description: 'Gabor: RT >= this gets zero proportional bonus'
+                    },
+                    gabor_reward_base_points_high: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 50,
+                        blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
+                        description: 'Gabor: base points for high-value targets in proportional mode'
+                    },
+                    gabor_reward_base_points_low: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 5,
+                        blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
+                        description: 'Gabor: base points for low-value targets in proportional mode'
+                    },
+                    gabor_reward_bonus_max_high: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 50,
+                        blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
+                        description: 'Gabor: max RT bonus for high-value targets in proportional mode'
+                    },
+                    gabor_reward_bonus_max_low: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 5,
+                        blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
+                        description: 'Gabor: max RT bonus for low-value targets in proportional mode'
+                    },
                     gabor_reward_feedback_text_template: {
                         type: this.parameterTypes.STRING,
                         default: '+{{points}} points',
                         blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
-                        description: 'Gabor: reward feedback template. Use {{points}} placeholder.'
+                        description: 'Gabor: reward feedback template. Supports {{points}}, {{base}}, {{bonus}} placeholders.'
                     },
                     gabor_stimulus_duration_min: {
                         type: this.parameterTypes.INT,
