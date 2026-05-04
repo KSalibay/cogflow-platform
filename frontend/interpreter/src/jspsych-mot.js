@@ -50,7 +50,14 @@
       probe_timeout_ms:     { type: PT.INT,    default: 0 },
       show_feedback:        { type: PT.BOOL,   default: false },
       feedback_show_count_message: { type: PT.BOOL, default: true },
-      feedback_duration_ms: { type: PT.INT,    default: 1500 }
+      feedback_duration_ms: { type: PT.INT,    default: 1500 },
+      fixation_cross_enabled: { type: PT.BOOL, default: false },
+      fixation_cross_min_onset_ms: { type: PT.INT, default: 0 },
+      fixation_cross_max_onset_ms: { type: PT.INT, default: 0 },
+      fixation_cross_duration_ms: { type: PT.INT, default: 300 },
+      fixation_cross_symbol: { type: PT.STRING, default: '+' },
+      fixation_cross_color: { type: PT.STRING, default: '#FFFFFF' },
+      fixation_cross_size_px: { type: PT.INT, default: 32 }
     },
     data: {
       num_objects:          { type: PT.INT },
@@ -103,7 +110,9 @@
         boundary_behavior, min_separation_px,
         speed_px_per_s, speed_variability, motion_type, curve_strength, direction_jitter_deg_per_frame,
         cue_duration_ms, cue_flash_rate_hz, tracking_duration_ms, iti_ms,
-        probe_mode, yes_key, no_key, recognition_probe_count, probe_timeout_ms, show_feedback, feedback_show_count_message, feedback_duration_ms
+        probe_mode, yes_key, no_key, recognition_probe_count, probe_timeout_ms, show_feedback, feedback_show_count_message, feedback_duration_ms,
+        fixation_cross_enabled, fixation_cross_min_onset_ms, fixation_cross_max_onset_ms, fixation_cross_duration_ms,
+        fixation_cross_symbol, fixation_cross_color, fixation_cross_size_px
       } = trial;
 
       const radiusFromDotSize = Number.isFinite(Number(dot_size_px)) && Number(dot_size_px) > 0
@@ -210,6 +219,46 @@
       let recognitionProbeCursor = 0;
       let recognitionTrials = [];
       let feedbackSummaryText = '';
+      const trialStartMs = phaseStart;
+
+      const fixationCrossSchedule = (() => {
+        if (fixation_cross_enabled !== true) return null;
+        const minRaw = Number(fixation_cross_min_onset_ms);
+        const maxRaw = Number(fixation_cross_max_onset_ms);
+        const durRaw = Number(fixation_cross_duration_ms);
+
+        const minMs = Number.isFinite(minRaw) ? Math.max(0, minRaw) : 0;
+        const maxMs = Number.isFinite(maxRaw) ? Math.max(0, maxRaw) : minMs;
+        const lo = Math.min(minMs, maxMs);
+        const hi = Math.max(minMs, maxMs);
+        const onsetMs = Math.round(lo + Math.random() * (hi - lo));
+        const durationMs = Number.isFinite(durRaw) ? Math.max(1, Math.round(durRaw)) : 300;
+        return { onsetMs, durationMs };
+      })();
+
+      const drawFixationCrossIfActive = (trialElapsedMs) => {
+        if (!fixationCrossSchedule) return;
+        if (!(phase === 'cue' || phase === 'tracking')) return;
+        const elapsed = Number(trialElapsedMs);
+        if (!Number.isFinite(elapsed)) return;
+        const start = fixationCrossSchedule.onsetMs;
+        const end = start + fixationCrossSchedule.durationMs;
+        if (elapsed < start || elapsed > end) return;
+
+        const symbol = (fixation_cross_symbol ?? '+').toString();
+        const color = (fixation_cross_color ?? '#FFFFFF').toString();
+        const size = Number.isFinite(Number(fixation_cross_size_px))
+          ? Math.max(8, Number(fixation_cross_size_px))
+          : 32;
+
+        ctx.save();
+        ctx.fillStyle = color;
+        ctx.font = `700 ${Math.round(size)}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(symbol, W / 2, H / 2);
+        ctx.restore();
+      };
 
       const requestedRecognitionProbeCount = (() => {
         const n = Number.parseInt(recognition_probe_count, 10);
@@ -362,7 +411,7 @@
           }
 
           // feedback rings
-          if (phase === 'feedback') {
+          if (phase === 'feedback' && show_feedback) {
             if (isRecognitionProbe && (recognitionCorrect === true || recognitionCorrect === false)) {
               ctx.beginPath();
               ctx.arc(o.x, o.y, r + 6, 0, 2 * Math.PI);
@@ -675,22 +724,23 @@
         drtPausedForProbe = false;
         drtResumeConfig = null;
 
-        if (show_feedback) {
-          feedbackSummaryText = '';
-          if (feedback_show_count_message !== false) {
-            if (probe_mode === 'yes_no_recognition') {
-              const respondedTrials = recognitionTrials.filter(t => t && (t.recognition_is_yes === true || t.recognition_is_yes === false));
-              const correctCount = respondedTrials.filter(t => t.recognition_correct === true).length;
-              const totalCount = respondedTrials.length;
-              feedbackSummaryText = `Correct identifications: ${correctCount}/${totalCount}`;
-            } else {
-              let correctCount = 0;
-              for (const idx of selectedObjects) {
-                if (targetSet.has(idx)) correctCount++;
-              }
-              feedbackSummaryText = `Correctly identified targets: ${correctCount}/${num_targets}`;
+        feedbackSummaryText = '';
+        if (feedback_show_count_message !== false) {
+          if (probe_mode === 'yes_no_recognition') {
+            const respondedTrials = recognitionTrials.filter(t => t && (t.recognition_is_yes === true || t.recognition_is_yes === false));
+            const correctCount = respondedTrials.filter(t => t.recognition_correct === true).length;
+            const totalCount = respondedTrials.length;
+            feedbackSummaryText = `Correct identifications: ${correctCount}/${totalCount}`;
+          } else {
+            let correctCount = 0;
+            for (const idx of selectedObjects) {
+              if (targetSet.has(idx)) correctCount++;
             }
+            feedbackSummaryText = `Correctly identified targets: ${correctCount}/${num_targets}`;
           }
+        }
+
+        if (show_feedback || feedbackSummaryText) {
           phase      = 'feedback';
           phaseStart = performance.now();
         } else {
@@ -704,6 +754,7 @@
         const dtSec  = Math.min((t - lastT) / 1000, 0.05);
         lastT        = t;
         const elapsed = t - phaseStart;
+        const trialElapsed = t - trialStartMs;
 
         clearCanvas();
         beginApertureClip();
@@ -712,6 +763,7 @@
           const flashOn = Math.floor(elapsed / (500 / cue_flash_rate_hz)) % 2 === 0;
           updateObjects(dtSec);
           drawObjects(flashOn);
+          drawFixationCrossIfActive(trialElapsed);
           instrEl.textContent = 'Remember the highlighted objects!';
           if (elapsed >= cue_duration_ms) {
             phase      = 'tracking';
@@ -721,6 +773,7 @@
         } else if (phase === 'tracking') {
           updateObjects(dtSec);
           drawObjects(false);
+          drawFixationCrossIfActive(trialElapsed);
           instrEl.textContent = 'Keep tracking...';
           if (elapsed >= tracking_duration_ms) {
             startProbe();          // changes phase → 'probe'

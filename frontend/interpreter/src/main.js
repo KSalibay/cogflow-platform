@@ -2162,19 +2162,6 @@
     }
 
     for (const c of compiledSeq) {
-      timeline.push({
-        type: jsPsychHtmlKeyboardResponse,
-        stimulus: wrapPsyScreenHtml(
-          `
-            <h3>Next task: ${escapeHtml(c.taskType)}</h3>
-            <div class="psy-muted">Code: ${escapeHtml(code)} • Config: ${escapeHtml(c.id || '')}</div>
-          `,
-          'Press any key to begin.'
-        ),
-        choices: 'ALL_KEYS',
-        data: { plugin_type: 'task-break', code, task_type: c.taskType, config_id: c.id || null }
-      });
-
       for (const t of c.timeline) {
         const baseData = (t && typeof t.data === 'object' && t.data) ? t.data : {};
         t.data = { ...baseData, code, task_type: c.taskType, config_id: c.id || null };

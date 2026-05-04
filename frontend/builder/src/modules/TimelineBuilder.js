@@ -30,6 +30,91 @@ class TimelineBuilder {
         });
     }
 
+    _isMiniblockEligible(component) {
+        const type = (component?.type || '').toString().trim().toLowerCase();
+        const builderId = (component?.builderComponentId || '').toString().trim().toLowerCase();
+        const name = (component?.name || '').toString().trim().toLowerCase();
+
+        // Block wrappers should always expose miniblock controls.
+        if (type === 'block' || builderId === 'block') return true;
+
+        // Imported timelines may carry only a human-facing block name.
+        if (name.includes(' block') || name.endsWith('block')) return true;
+
+        // Known task block subtypes can appear directly after imports/rehydration.
+        const knownBlockSubtypes = new Set([
+            'rdm-trial',
+            'gabor-trial',
+            'n-back-trial',
+            'flanker-trial',
+            'sart-trial',
+            'simon-trial',
+            'task-switching-trial',
+            'pvt-trial',
+            'mot-trial',
+            'continuous-image-trial',
+            'stroop-trial',
+            'emotional-stroop-trial'
+        ]);
+        if (knownBlockSubtypes.has(type)) return true;
+
+        // Some timelines store blocks under task aliases instead of *-trial ids.
+        const knownTaskAliases = new Set([
+            'rdm',
+            'gabor',
+            'nback',
+            'n-back',
+            'flanker',
+            'sart',
+            'simon',
+            'taskswitching',
+            'task-switching',
+            'pvt',
+            'mot',
+            'continuousimage',
+            'continuous-image',
+            'stroop',
+            'emotionalstroop',
+            'emotional-stroop'
+        ]);
+        if (knownTaskAliases.has(type)) return true;
+
+        // Some payload shapes carry the inner block type in one of these fields.
+        const directInner = (component?.block_component_type ?? component?.component_type ?? '')
+            .toString()
+            .trim()
+            .toLowerCase();
+        if (directInner) return true;
+
+        const nestedInner = (
+            component?.parameters && typeof component.parameters === 'object'
+                ? (component.parameters.block_component_type ?? component.parameters.component_type ?? '')
+                : ''
+        )
+            .toString()
+            .trim()
+            .toLowerCase();
+        if (nestedInner) return true;
+
+        // Last-resort structural cues for block components.
+        const params = (component?.parameters && typeof component.parameters === 'object') ? component.parameters : null;
+        const hasBlockFields = (
+            component?.length !== undefined
+            || component?.sampling_mode !== undefined
+            || component?.parameter_windows !== undefined
+            || (params && (params.length !== undefined || params.sampling_mode !== undefined || params.parameter_windows !== undefined))
+        );
+        if (hasBlockFields) return true;
+
+        // Defensive fallback for imported/custom block-like task ids.
+        // This catches variants such as "continuous-image-presentation" and future task aliases.
+        const blockLikeToken = /(trial|block|presentation|rdm|gabor|n-?back|flanker|sart|simon|task-?switch|pvt|mot|stroop|emotional)/;
+        if (blockLikeToken.test(type)) return true;
+        if (blockLikeToken.test(builderId)) return true;
+
+        return false;
+    }
+
     renderTimeline() {
         // Use the timelineComponents container instead of timelineContent
         if (!this.timelineContainer) return;
@@ -60,7 +145,9 @@ class TimelineBuilder {
             const componentElement = this.createComponentElementNew(component, index);
             this.timelineContainer.appendChild(componentElement);
             // Restore miniblock badge if already configured
-            if (component.type === 'block' || component.builderComponentId === 'block') {
+            const isMiniblockEligible = this._isMiniblockEligible(component);
+
+            if (isMiniblockEligible) {
                 const mb = component.miniblock_structure || component.parameters?.miniblock_structure;
                 if (mb) this._updateMiniblockBadge(componentElement, mb);
             }
@@ -89,6 +176,7 @@ class TimelineBuilder {
         const componentElement = document.createElement('div');
         componentElement.className = 'timeline-component card mb-2';
         componentElement.dataset.componentType = component.type;
+        const isMiniblockEligible = this._isMiniblockEligible(component);
         if (component && component.builderComponentId) {
             componentElement.dataset.builderComponentId = component.builderComponentId;
         }
@@ -190,7 +278,7 @@ class TimelineBuilder {
                         <button class="btn btn-sm btn-outline-secondary" onclick="editComponent(this)" title="Edit">
                             <i class="fas fa-pencil-alt"></i>
                         </button>
-                        ${component.type === 'block' ? `<button class="btn btn-sm btn-outline-secondary miniblock-btn" onclick="window._cogflowTimelineBuilder && window._cogflowTimelineBuilder.showMiniblockModal(this.closest('.timeline-component'))" title="Miniblock Structure"><i class="fas fa-chart-pie"></i></button>` : ''}
+                        ${isMiniblockEligible ? `<button class="btn btn-sm btn-outline-secondary miniblock-btn" onclick="window._cogflowTimelineBuilder && window._cogflowTimelineBuilder.showMiniblockModal(this.closest('.timeline-component'))" title="Miniblock Structure"><i class="fas fa-chart-pie"></i></button>` : ''}
                         <button class="btn btn-sm btn-outline-secondary" onclick="duplicateComponent(this)" title="Duplicate Below">
                             <i class="fas fa-copy"></i>
                         </button>
@@ -269,7 +357,7 @@ class TimelineBuilder {
         // NOTE: Blocks are *task-scoped* in the Builder and have many task-specific fields.
         // The generic plugin schema for `block` is intentionally minimal and can show the wrong
         // defaults/options (e.g., RDM). Always use Builder component definitions for Blocks.
-        const forceComponentDefs = component.type === 'block';
+        const forceComponentDefs = this._isMiniblockEligible(component);
         const schema = forceComponentDefs ? null : this.jsonBuilder.schemaValidator.getPluginSchema(component.type);
         console.log('Schema found:', schema);
 
@@ -1067,6 +1155,9 @@ class TimelineBuilder {
         const isMwProbe = component.type === 'mw-probe';
         const minIntervalMs = component.min_interval_ms ?? component.parameters?.min_interval_ms ?? 0;
         const maxIntervalMs = component.max_interval_ms ?? component.parameters?.max_interval_ms ?? 0;
+        const globalProbeCountPerBlock = component.global_probe_count_per_block ?? component.parameters?.global_probe_count_per_block ?? 1;
+        const globalIntervalMinMs = component.global_interval_min_ms ?? component.parameters?.global_interval_min_ms ?? minIntervalMs;
+        const globalIntervalMaxMs = component.global_interval_max_ms ?? component.parameters?.global_interval_max_ms ?? maxIntervalMs;
 
         const coerceToHtml = (raw) => {
             const s = (raw === null || raw === undefined) ? '' : String(raw);
@@ -1131,7 +1222,22 @@ class TimelineBuilder {
                         <input type="number" class="form-control" id="mw_max_interval_ms" min="0" value="${this.escapeHtmlAttr(String(maxIntervalMs))}" placeholder="0">
                     </div>
                     <div class="col-md-4 d-flex align-items-end pb-1">
-                        <small class="text-muted">One mw-probe component inserts one probe. Jitter [min,max] is applied only when the probe is adjacent to block-generated trials; otherwise it runs at authored position.</small>
+                        <small class="text-muted">Jitter [min,max] is sampled when the probe is adjacent to block-generated trials; otherwise it runs at authored position.</small>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Probes per adjacent block run</label>
+                        <input type="number" class="form-control" id="mw_global_probe_count_per_block" min="1" max="100" value="${this.escapeHtmlAttr(String(globalProbeCountPerBlock))}">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Global interval min (ms)</label>
+                        <input type="number" class="form-control" id="mw_global_interval_min_ms" min="0" value="${this.escapeHtmlAttr(String(globalIntervalMinMs))}" placeholder="0">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Global interval max (ms)</label>
+                        <input type="number" class="form-control" id="mw_global_interval_max_ms" min="0" value="${this.escapeHtmlAttr(String(globalIntervalMaxMs))}" placeholder="0">
+                    </div>
+                    <div class="col-md-8 d-flex align-items-end pb-1">
+                        <small class="text-muted">When probes-per-run &gt; 1, additional probes are inserted using repeated random gaps sampled from global interval [min,max].</small>
                     </div>
                 </div>
             </div>` : ''}
@@ -1550,6 +1656,18 @@ class TimelineBuilder {
         const maxIntervalRaw = modalBody.querySelector('#mw_max_interval_ms')?.value;
         const min_interval_ms = (minIntervalRaw !== undefined && minIntervalRaw !== null && minIntervalRaw !== '') ? Number(minIntervalRaw) : null;
         const max_interval_ms = (maxIntervalRaw !== undefined && maxIntervalRaw !== null && maxIntervalRaw !== '') ? Number(maxIntervalRaw) : null;
+        const globalProbeCountRaw = modalBody.querySelector('#mw_global_probe_count_per_block')?.value;
+        const globalIntervalMinRaw = modalBody.querySelector('#mw_global_interval_min_ms')?.value;
+        const globalIntervalMaxRaw = modalBody.querySelector('#mw_global_interval_max_ms')?.value;
+        const global_probe_count_per_block = (globalProbeCountRaw !== undefined && globalProbeCountRaw !== null && globalProbeCountRaw !== '')
+            ? Number(globalProbeCountRaw)
+            : null;
+        const global_interval_min_ms = (globalIntervalMinRaw !== undefined && globalIntervalMinRaw !== null && globalIntervalMinRaw !== '')
+            ? Number(globalIntervalMinRaw)
+            : null;
+        const global_interval_max_ms = (globalIntervalMaxRaw !== undefined && globalIntervalMaxRaw !== null && globalIntervalMaxRaw !== '')
+            ? Number(globalIntervalMaxRaw)
+            : null;
 
         return {
             title,
@@ -1559,7 +1677,10 @@ class TimelineBuilder {
             ...(timeout_ms !== undefined ? { timeout_ms } : {}),
             questions,
             min_interval_ms,
-            max_interval_ms
+            max_interval_ms,
+            global_probe_count_per_block,
+            global_interval_min_ms,
+            global_interval_max_ms
         };
     }
 
@@ -2343,7 +2464,7 @@ class TimelineBuilder {
         const blockLenEl = formContainer.querySelector('#param_block_length');
         const blockSizingModeEl = formContainer.querySelector('#param_block_sizing_mode');
         const blockDurationEl = formContainer.querySelector('#param_block_duration_seconds');
-        if (blockLenEl && component && component.type === 'block') {
+        if (blockLenEl && component && this._isMiniblockEligible(component)) {
             const cap = this.jsonBuilder.getExperimentWideLengthCapForBlocks?.();
             if (Number.isFinite(cap) && cap > 0) {
                 try {

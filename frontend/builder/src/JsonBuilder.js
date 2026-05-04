@@ -2407,6 +2407,10 @@ class JsonBuilder {
                 if (values.show_feedback !== undefined) out.mot_show_feedback = !!values.show_feedback;
                 if (values.feedback_show_count_message !== undefined) out.mot_feedback_show_count_message = !!values.feedback_show_count_message;
                 if (values.feedback_duration_ms !== undefined) out.mot_feedback_duration_ms = values.feedback_duration_ms;
+                if (values.fixation_cross_enabled !== undefined) out.mot_fixation_cross_enabled = !!values.fixation_cross_enabled;
+                if (values.fixation_cross_min_onset_ms !== undefined) out.mot_fixation_cross_min_onset_ms = values.fixation_cross_min_onset_ms;
+                if (values.fixation_cross_max_onset_ms !== undefined) out.mot_fixation_cross_max_onset_ms = values.fixation_cross_max_onset_ms;
+                if (values.fixation_cross_duration_ms !== undefined) out.mot_fixation_cross_duration_ms = values.fixation_cross_duration_ms;
             } else if (innerType === 'stroop-trial') {
                 if (Array.isArray(values.word)) out.stroop_word_options = csv(values.word);
                 if (Array.isArray(values.ink_color_name)) out.stroop_ink_color_options = csv(values.ink_color_name);
@@ -2828,8 +2832,307 @@ class JsonBuilder {
             this.setElementValue('defaultTransitionType', config?.transition_settings?.type);
         }
 
+        this.applyTaskDefaultsFromImportedConfig(config, importedTaskType);
+
         this.loadComponentLibrary();
         this.updateConditionalUI();
+    }
+
+    applyTaskDefaultsFromImportedConfig(config, taskType) {
+        const t = (taskType || '').toString().trim().toLowerCase();
+
+        const setFrom = (fieldId, value, kind = 'value') => {
+            if (kind === 'checked') this.setElementChecked(fieldId, !!value);
+            else this.setElementValue(fieldId, value);
+        };
+
+        const csv = (value) => {
+            if (Array.isArray(value)) return value.map(v => `${v}`.trim()).filter(Boolean).join(',');
+            return value;
+        };
+
+        if (t === 'rdm') {
+            const ds = (config?.display_settings && typeof config.display_settings === 'object') ? config.display_settings : {};
+            setFrom('canvasWidth', ds.canvas_width);
+            setFrom('canvasHeight', ds.canvas_height);
+            setFrom('backgroundColor', ds.background_color);
+            setFrom('fixationDuration', config?.fixation_duration);
+            setFrom('defaultResponseDevice', config?.data_collection?.default_response_device);
+            setFrom('responseKeys', csv(config?.response_keys));
+            return;
+        }
+
+        if (t === 'mot') {
+            const s = (config?.mot_settings && typeof config.mot_settings === 'object') ? config.mot_settings : {};
+            setFrom('motNumObjectsDefault', s.num_objects);
+            setFrom('motNumTargetsDefault', s.num_targets);
+            setFrom('motSpeedDefault', s.speed_px_per_s);
+            setFrom('motDotSizePxDefault', s.dot_size_px);
+            setFrom('motMotionTypeDefault', s.motion_type);
+            setFrom('motDirectionJitterDefault', s.direction_jitter_deg_per_frame);
+            setFrom('motProbeModeDefault', s.probe_mode);
+            setFrom('motYesKeyDefault', s.yes_key);
+            setFrom('motNoKeyDefault', s.no_key);
+            setFrom('motRecognitionProbeCountDefault', s.recognition_probe_count);
+            setFrom('motApertureShapeDefault', s.aperture_shape);
+            if (s.aperture_border_enabled !== undefined) setFrom('motApertureBorderEnabledDefault', s.aperture_border_enabled, 'checked');
+            setFrom('motApertureBorderColorDefault', s.aperture_border_color);
+            setFrom('motApertureBorderWidthPxDefault', s.aperture_border_width_px);
+            setFrom('motObjectColorDefault', s.object_color);
+            setFrom('motTargetCueColorDefault', s.target_cue_color);
+            setFrom('motBackgroundColorDefault', s.background_color);
+            if (s.show_feedback !== undefined) setFrom('motShowFeedbackDefault', s.show_feedback, 'checked');
+            if (s.feedback_show_count_message !== undefined) setFrom('motFeedbackShowCountMessageDefault', s.feedback_show_count_message, 'checked');
+            setFrom('motFeedbackDurationMsDefault', s.feedback_duration_ms);
+            if (s.fixation_cross_enabled !== undefined) setFrom('motFixationCrossEnabledDefault', s.fixation_cross_enabled, 'checked');
+            setFrom('motFixationCrossMinOnsetMsDefault', s.fixation_cross_min_onset_ms);
+            setFrom('motFixationCrossMaxOnsetMsDefault', s.fixation_cross_max_onset_ms);
+            setFrom('motFixationCrossDurationMsDefault', s.fixation_cross_duration_ms);
+            return;
+        }
+
+        if (t === 'flanker') {
+            const s = (config?.flanker_settings && typeof config.flanker_settings === 'object') ? config.flanker_settings : {};
+            setFrom('flankerStimulusType', s.stimulus_type);
+            setFrom('flankerTargetStimulus', s.target_stimulus);
+            setFrom('flankerDistractorStimulus', s.distractor_stimulus);
+            setFrom('flankerNeutralStimulus', s.neutral_stimulus);
+            if (s.show_fixation_dot !== undefined) setFrom('flankerShowFixationDot', s.show_fixation_dot, 'checked');
+            if (s.show_fixation_cross_between_trials !== undefined) setFrom('flankerShowFixationCrossBetweenTrials', s.show_fixation_cross_between_trials, 'checked');
+            setFrom('flankerLeftKey', s.left_key);
+            setFrom('flankerRightKey', s.right_key);
+            setFrom('flankerStimulusDurationMs', s.stimulus_duration_ms);
+            setFrom('flankerTrialDurationMs', s.trial_duration_ms);
+            setFrom('flankerItiMs', s.iti_ms);
+            return;
+        }
+
+        if (t === 'sart') {
+            const s = (config?.sart_settings && typeof config.sart_settings === 'object') ? config.sart_settings : {};
+            setFrom('sartGoKey', s.go_key);
+            setFrom('sartNoGoDigit', s.nogo_digit);
+            setFrom('sartStimulusDurationMs', s.stimulus_duration_ms);
+            setFrom('sartMaskDurationMs', s.mask_duration_ms);
+            setFrom('sartItiMs', s.iti_ms);
+            return;
+        }
+
+        if (t === 'gabor') {
+            const s = (config?.gabor_settings && typeof config.gabor_settings === 'object') ? config.gabor_settings : {};
+            setFrom('gaborResponseTask', s.response_task);
+            setFrom('gaborLeftKey', s.left_key);
+            setFrom('gaborRightKey', s.right_key);
+            setFrom('gaborYesKey', s.yes_key);
+            setFrom('gaborNoKey', s.no_key);
+            setFrom('gaborHighValueColor', s.high_value_color);
+            setFrom('gaborLowValueColor', s.low_value_color);
+            setFrom('gaborSpatialFrequency', s.spatial_frequency_cyc_per_px);
+            setFrom('gaborGratingWaveform', s.grating_waveform);
+            setFrom('gaborPatchDiameterDeg', s.patch_diameter_deg);
+            if (s.patch_border_enabled !== undefined) setFrom('gaborPatchBorderEnabled', s.patch_border_enabled, 'checked');
+            setFrom('gaborPatchBorderWidthPx', s.patch_border_width_px);
+            setFrom('gaborPatchBorderColor', s.patch_border_color);
+            setFrom('gaborPatchBorderOpacity', s.patch_border_opacity);
+            setFrom('gaborSpatialCueValidity', s.spatial_cue_validity);
+            if (s.spatial_cue_enabled !== undefined) setFrom('gaborSpatialCueEnabled', s.spatial_cue_enabled, 'checked');
+            setFrom('gaborSpatialCueProbability', s.spatial_cue_probability);
+            setFrom('gaborSpatialCueOptions', csv(s.spatial_cue_options));
+            if (s.value_cue_enabled !== undefined) setFrom('gaborValueCueEnabled', s.value_cue_enabled, 'checked');
+            setFrom('gaborValueCueProbability', s.value_cue_probability);
+            setFrom('gaborLeftValueOptions', csv(s.left_value_options));
+            setFrom('gaborRightValueOptions', csv(s.right_value_options));
+            setFrom('gaborFixationMs', s.fixation_ms);
+            setFrom('gaborPlaceholdersMs', s.placeholders_ms);
+            setFrom('gaborCueMs', s.cue_ms);
+            setFrom('gaborCueDelayMinMs', s.cue_delay_min_ms);
+            setFrom('gaborCueDelayMaxMs', s.cue_delay_max_ms);
+            setFrom('gaborStimulusDurationMs', s.stimulus_duration_ms);
+            setFrom('gaborMaskDurationMs', s.mask_duration_ms);
+
+            this.applyGaborResponseTaskVisibility();
+            this.applyGaborPatchBorderVisibility();
+            this.applyGaborCueVisibility();
+            return;
+        }
+
+        if (t === 'continuous-image') {
+            const s = (config?.continuous_image_settings && typeof config.continuous_image_settings === 'object') ? config.continuous_image_settings : {};
+            setFrom('cipDefaultMaskType', s.mask_type);
+            setFrom('cipDefaultImageDurationMs', s.image_duration_ms);
+            setFrom('cipDefaultTransitionDurationMs', s.transition_duration_ms);
+            setFrom('cipDefaultTransitionFrames', s.transition_frames);
+            setFrom('cipDefaultChoiceKeys', csv(s.choice_keys));
+            if (s.mask_noise_amp !== undefined) setFrom('cipDefaultMaskNoiseAmp', s.mask_noise_amp);
+            if (s.mask_block_size !== undefined) setFrom('cipDefaultMaskBlockSize', s.mask_block_size);
+            return;
+        }
+
+        if (t === 'stroop') {
+            const s = (config?.stroop_settings && typeof config.stroop_settings === 'object') ? config.stroop_settings : {};
+            const stimuli = Array.isArray(s.stimuli) ? s.stimuli : [];
+            const size = Math.max(2, Math.min(7, stimuli.length || 4));
+            setFrom('stroopStimulusSetSize', size);
+            this.renderStroopStimuliRows();
+            for (let i = 0; i < size; i += 1) {
+                const st = stimuli[i] || {};
+                setFrom(`stroopStimulusName_${i + 1}`, st.name);
+                setFrom(`stroopStimulusColor_${i + 1}`, st.color);
+            }
+            setFrom('stroopDefaultResponseMode', s.response_mode);
+            setFrom('stroopDefaultResponseDevice', s.response_device);
+            setFrom('stroopChoiceKeys', csv(s.choice_keys));
+            setFrom('stroopCongruentKey', s.congruent_key);
+            setFrom('stroopIncongruentKey', s.incongruent_key);
+            setFrom('stroopStimulusFontSizePx', s.stimulus_font_size_px);
+            setFrom('stroopStimulusDurationMs', s.stimulus_duration_ms);
+            setFrom('stroopTrialDurationMs', s.trial_duration_ms);
+            setFrom('stroopItiMs', s.iti_ms);
+
+            this.applyStroopResponseVisibility();
+            return;
+        }
+
+        if (t === 'emotional-stroop') {
+            const s = (config?.emotional_stroop_settings && typeof config.emotional_stroop_settings === 'object') ? config.emotional_stroop_settings : {};
+            const stimuli = Array.isArray(s.stimuli) ? s.stimuli : [];
+            const size = Math.max(2, Math.min(7, stimuli.length || 4));
+            setFrom('stroopStimulusSetSize', size);
+            this.renderStroopStimuliRows();
+            for (let i = 0; i < size; i += 1) {
+                const st = stimuli[i] || {};
+                setFrom(`stroopStimulusName_${i + 1}`, st.name);
+                setFrom(`stroopStimulusColor_${i + 1}`, st.color);
+            }
+
+            const wordLists = Array.isArray(s.word_lists) ? s.word_lists : [];
+            const requestedCount = Number.parseInt(s.word_list_count, 10);
+            const listCount = Number.isFinite(requestedCount)
+                ? (requestedCount === 3 ? 3 : 2)
+                : (wordLists.length >= 3 ? 3 : 2);
+            setFrom('emotionalStroopWordListCount', listCount);
+            setFrom('emotionalStroopWordList1Label', wordLists[0]?.label);
+            setFrom('emotionalStroopWordList1Words', csv(wordLists[0]?.words));
+            setFrom('emotionalStroopWordList2Label', wordLists[1]?.label);
+            setFrom('emotionalStroopWordList2Words', csv(wordLists[1]?.words));
+            setFrom('emotionalStroopWordList3Label', wordLists[2]?.label);
+            setFrom('emotionalStroopWordList3Words', csv(wordLists[2]?.words));
+
+            setFrom('stroopDefaultResponseDevice', s.response_device);
+            setFrom('stroopChoiceKeys', csv(s.choice_keys));
+            setFrom('stroopStimulusFontSizePx', s.stimulus_font_size_px);
+            setFrom('stroopStimulusDurationMs', s.stimulus_duration_ms);
+            setFrom('stroopTrialDurationMs', s.trial_duration_ms);
+            setFrom('stroopItiMs', s.iti_ms);
+
+            this.applyStroopResponseVisibility();
+            this.applyEmotionalStroopWordListVisibility();
+            return;
+        }
+
+        if (t === 'simon') {
+            const s = (config?.simon_settings && typeof config.simon_settings === 'object') ? config.simon_settings : {};
+            const stimuli = Array.isArray(s.stimuli) ? s.stimuli : [];
+            setFrom('simonStimulusName_1', stimuli[0]?.name);
+            setFrom('simonStimulusColor_1', stimuli[0]?.color);
+            setFrom('simonStimulusName_2', stimuli[1]?.name);
+            setFrom('simonStimulusColor_2', stimuli[1]?.color);
+            setFrom('simonDefaultResponseDevice', s.response_device);
+            setFrom('simonLeftKey', s.left_key);
+            setFrom('simonRightKey', s.right_key);
+            setFrom('simonCircleDiameterPx', s.circle_diameter_px);
+            setFrom('simonStimulusDurationMs', s.stimulus_duration_ms);
+            setFrom('simonTrialDurationMs', s.trial_duration_ms);
+            setFrom('simonItiMs', s.iti_ms);
+
+            this.applySimonResponseVisibility();
+            return;
+        }
+
+        if (t === 'task-switching') {
+            const s = (config?.task_switching_settings && typeof config.task_switching_settings === 'object') ? config.task_switching_settings : {};
+            setFrom('taskSwitchingStimulusSetMode', s.stimulus_set_mode);
+            setFrom('taskSwitchingStimulusPosition', s.stimulus_position);
+            if (s.border_enabled !== undefined) setFrom('taskSwitchingBorderEnabled', s.border_enabled, 'checked');
+            setFrom('taskSwitchingLeftKey', s.left_key);
+            setFrom('taskSwitchingRightKey', s.right_key);
+            setFrom('taskSwitchingCueType', s.cue_type);
+            setFrom('taskSwitchingTask1CueText', s.task_1_cue_text);
+            setFrom('taskSwitchingTask2CueText', s.task_2_cue_text);
+            setFrom('taskSwitchingCueFontSizePx', s.cue_font_size_px);
+            setFrom('taskSwitchingCueDurationMs', s.cue_duration_ms);
+            setFrom('taskSwitchingCueGapMs', s.cue_gap_ms);
+            setFrom('taskSwitchingCueColorHex', s.cue_color_hex);
+            setFrom('taskSwitchingTask1Position', s.task_1_position);
+            setFrom('taskSwitchingTask2Position', s.task_2_position);
+            setFrom('taskSwitchingTask1ColorHex', s.task_1_color_hex);
+            setFrom('taskSwitchingTask2ColorHex', s.task_2_color_hex);
+
+            const tasks = Array.isArray(s.tasks) ? s.tasks : [];
+            setFrom('taskSwitchingTask1CategoryA', csv(tasks[0]?.category_a_tokens));
+            setFrom('taskSwitchingTask1CategoryB', csv(tasks[0]?.category_b_tokens));
+            setFrom('taskSwitchingTask2CategoryA', csv(tasks[1]?.category_a_tokens));
+            setFrom('taskSwitchingTask2CategoryB', csv(tasks[1]?.category_b_tokens));
+
+            this.applyTaskSwitchingCustomSetVisibility();
+            this.applyTaskSwitchingCueVisibility();
+            return;
+        }
+
+        if (t === 'pvt') {
+            const s = (config?.pvt_settings && typeof config.pvt_settings === 'object') ? config.pvt_settings : {};
+            setFrom('pvtDefaultResponseDevice', s.response_device);
+            setFrom('pvtResponseKey', s.response_key);
+            setFrom('pvtForeperiodMs', s.foreperiod_ms);
+            setFrom('pvtTrialDurationMs', s.trial_duration_ms);
+            setFrom('pvtItiMs', s.iti_ms);
+            if (s.feedback_enabled !== undefined) setFrom('pvtFeedbackEnabled', s.feedback_enabled, 'checked');
+            setFrom('pvtFeedbackMessage', s.feedback_message);
+            if (s.add_trial_per_false_start !== undefined) setFrom('pvtAddTrialPerFalseStart', s.add_trial_per_false_start, 'checked');
+            return;
+        }
+
+        if (t === 'nback') {
+            const s = (config?.nback_settings && typeof config.nback_settings === 'object') ? config.nback_settings : {};
+            setFrom('nbackDefaultN', s.n);
+            setFrom('nbackDefaultSeed', s.seed);
+            setFrom('nbackDefaultStimulusMode', s.stimulus_mode);
+            if (Array.isArray(s.stimulus_pool)) {
+                setFrom('nbackDefaultStimulusPool', s.stimulus_pool.join(','));
+            } else {
+                setFrom('nbackDefaultStimulusPool', s.stimulus_pool);
+            }
+            setFrom('nbackDefaultTargetProb', s.target_probability);
+            setFrom('nbackDefaultRenderMode', s.render_mode);
+            setFrom('nbackDefaultTemplateHtml', s.stimulus_template_html);
+            setFrom('nbackDefaultStimulusMs', s.stimulus_duration_ms);
+            setFrom('nbackDefaultIsiMs', s.isi_duration_ms);
+            setFrom('nbackDefaultTrialMs', s.trial_duration_ms);
+            if (s.show_fixation_cross_between_trials !== undefined) setFrom('nbackDefaultShowFixationCrossBetweenTrials', s.show_fixation_cross_between_trials, 'checked');
+            setFrom('nbackDefaultParadigm', s.response_paradigm);
+            setFrom('nbackDefaultDevice', s.response_device);
+            setFrom('nbackDefaultGoKey', s.go_key);
+            setFrom('nbackDefaultMatchKey', s.match_key);
+            setFrom('nbackDefaultNonmatchKey', s.nonmatch_key);
+            if (s.show_buttons !== undefined) setFrom('nbackDefaultShowButtons', s.show_buttons, 'checked');
+            if (s.show_feedback !== undefined) setFrom('nbackDefaultFeedback', s.show_feedback, 'checked');
+            setFrom('nbackDefaultFeedbackMs', s.feedback_duration_ms);
+            return;
+        }
+
+        if (t === 'soc-dashboard') {
+            const s = (config?.soc_dashboard_settings && typeof config.soc_dashboard_settings === 'object') ? config.soc_dashboard_settings : {};
+            setFrom('socTitle', s.title);
+            setFrom('socWallpaperUrl', s.wallpaper_url);
+            setFrom('socBackgroundColor', s.background_color);
+            setFrom('socDefaultApp', s.default_app);
+            setFrom('socNumTasks', s.num_tasks);
+            setFrom('socSessionDurationMs', s.trial_duration_ms);
+            setFrom('socEndKey', s.end_key);
+            if (s.icons_clickable !== undefined) setFrom('socIconsClickable', s.icons_clickable, 'checked');
+            if (s.log_icon_clicks !== undefined) setFrom('socLogIconClicks', s.log_icon_clicks, 'checked');
+            if (s.icon_clicks_are_distractors !== undefined) setFrom('socIconClicksAreDistractors', s.icon_clicks_are_distractors, 'checked');
+            return;
+        }
     }
 
     async importJsonFileIntoBuilder(file) {
@@ -4513,6 +4816,27 @@ class JsonBuilder {
                     <input type="number" class="form-control parameter-input" id="motTrackingDurationMsDefault" value="8000" min="0" max="60000">
                 </div>
                 <div class="parameter-row">
+                    <label class="parameter-label">Fixation Cross During Trial:</label>
+                    <div class="parameter-input">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="motFixationCrossEnabledDefault">
+                            <label class="form-check-label" for="motFixationCrossEnabledDefault">Show fixation cross at a random time after trial start</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="parameter-row">
+                    <label class="parameter-label">Fixation Onset Min (ms):</label>
+                    <input type="number" class="form-control parameter-input" id="motFixationCrossMinOnsetMsDefault" value="500" min="0" max="120000">
+                </div>
+                <div class="parameter-row">
+                    <label class="parameter-label">Fixation Onset Max (ms):</label>
+                    <input type="number" class="form-control parameter-input" id="motFixationCrossMaxOnsetMsDefault" value="3000" min="0" max="120000">
+                </div>
+                <div class="parameter-row">
+                    <label class="parameter-label">Fixation Duration (ms):</label>
+                    <input type="number" class="form-control parameter-input" id="motFixationCrossDurationMsDefault" value="300" min="1" max="10000">
+                </div>
+                <div class="parameter-row">
                     <label class="parameter-label">ITI (ms):</label>
                     <input type="number" class="form-control parameter-input" id="motItiMsDefault" value="1000" min="0" max="30000">
                 </div>
@@ -5818,6 +6142,27 @@ class JsonBuilder {
                     <input type="number" class="form-control parameter-input" id="motTrackingDurationMsDefault" value="8000" min="0" max="60000">
                 </div>
                 <div class="parameter-row">
+                    <label class="parameter-label">Fixation Cross During Trial:</label>
+                    <div class="parameter-input">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="motFixationCrossEnabledDefault">
+                            <label class="form-check-label" for="motFixationCrossEnabledDefault">Show fixation cross at a random time after trial start</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="parameter-row">
+                    <label class="parameter-label">Fixation Onset Min (ms):</label>
+                    <input type="number" class="form-control parameter-input" id="motFixationCrossMinOnsetMsDefault" value="500" min="0" max="120000">
+                </div>
+                <div class="parameter-row">
+                    <label class="parameter-label">Fixation Onset Max (ms):</label>
+                    <input type="number" class="form-control parameter-input" id="motFixationCrossMaxOnsetMsDefault" value="3000" min="0" max="120000">
+                </div>
+                <div class="parameter-row">
+                    <label class="parameter-label">Fixation Duration (ms):</label>
+                    <input type="number" class="form-control parameter-input" id="motFixationCrossDurationMsDefault" value="300" min="1" max="10000">
+                </div>
+                <div class="parameter-row">
                     <label class="parameter-label">ITI (ms):</label>
                     <input type="number" class="form-control parameter-input" id="motItiMsDefault" value="1000" min="0" max="30000">
                 </div>
@@ -6934,6 +7279,10 @@ class JsonBuilder {
                 mot_show_feedback: { type: 'boolean', default: !!document.getElementById('motShowFeedbackDefault')?.checked },
                 mot_feedback_show_count_message: { type: 'boolean', default: !!document.getElementById('motFeedbackShowCountMessageDefault')?.checked },
                 mot_feedback_duration_ms: { type: 'number', default: Number.parseInt(document.getElementById('motFeedbackDurationMsDefault')?.value || '1500', 10), min: 0, max: 10000 },
+                mot_fixation_cross_enabled: { type: 'boolean', default: !!document.getElementById('motFixationCrossEnabledDefault')?.checked },
+                mot_fixation_cross_min_onset_ms: { type: 'number', default: Number.parseInt(document.getElementById('motFixationCrossMinOnsetMsDefault')?.value || '500', 10), min: 0, max: 120000 },
+                mot_fixation_cross_max_onset_ms: { type: 'number', default: Number.parseInt(document.getElementById('motFixationCrossMaxOnsetMsDefault')?.value || '3000', 10), min: 0, max: 120000 },
+                mot_fixation_cross_duration_ms: { type: 'number', default: Number.parseInt(document.getElementById('motFixationCrossDurationMsDefault')?.value || '300', 10), min: 1, max: 10000 },
                 mot_speed_px_per_s_min: { type: 'number', default: Number.parseFloat(document.getElementById('motSpeedDefault')?.value || '150'), min: 20, max: 600 },
                 mot_speed_px_per_s_max: { type: 'number', default: Number.parseFloat(document.getElementById('motSpeedDefault')?.value || '150'), min: 20, max: 600 },
                 mot_tracking_duration_ms_min: { type: 'number', default: Number.parseInt(document.getElementById('motTrackingDurationMsDefault')?.value || '8000', 10), min: 0, max: 60000 },
@@ -8300,6 +8649,11 @@ class JsonBuilder {
             }
 
             componentElement.dataset.componentData = JSON.stringify(componentData);
+            const showMiniblockButton = Boolean(
+                window._cogflowTimelineBuilder
+                    ? window._cogflowTimelineBuilder._isMiniblockEligible(componentData)
+                    : componentDef.id === 'block'
+            );
             
             componentElement.innerHTML = `
                 <div class="card-body">
@@ -8322,6 +8676,7 @@ class JsonBuilder {
                             <button class="btn btn-sm btn-outline-secondary" onclick="editComponent(this)" title="Edit">
                                 <i class="fas fa-pencil-alt"></i>
                             </button>
+                            ${showMiniblockButton ? `<button class="btn btn-sm btn-outline-secondary miniblock-btn" onclick="window._cogflowTimelineBuilder && window._cogflowTimelineBuilder.showMiniblockModal(this.closest('.timeline-component'))" title="Miniblock Structure"><i class="fas fa-chart-pie"></i></button>` : ''}
                             <button class="btn btn-sm btn-outline-secondary" onclick="duplicateComponent(this)" title="Duplicate Below">
                                 <i class="fas fa-copy"></i>
                             </button>
@@ -8905,6 +9260,10 @@ class JsonBuilder {
             const showFeedback = !!document.getElementById('motShowFeedbackDefault')?.checked;
             const feedbackShowCountMessage = !!document.getElementById('motFeedbackShowCountMessageDefault')?.checked;
             const feedbackDurationMs = Number.parseInt(document.getElementById('motFeedbackDurationMsDefault')?.value || '1500', 10);
+            const fixationCrossEnabled = !!document.getElementById('motFixationCrossEnabledDefault')?.checked;
+            const fixationCrossMinOnsetMs = Number.parseInt(document.getElementById('motFixationCrossMinOnsetMsDefault')?.value || '500', 10);
+            const fixationCrossMaxOnsetMs = Number.parseInt(document.getElementById('motFixationCrossMaxOnsetMsDefault')?.value || '3000', 10);
+            const fixationCrossDurationMs = Number.parseInt(document.getElementById('motFixationCrossDurationMsDefault')?.value || '300', 10);
 
             config.mot_settings = {
                 num_objects: Number.isFinite(numObjects) ? numObjects : 8,
@@ -8929,7 +9288,11 @@ class JsonBuilder {
                 aperture_border_width_px: Number.isFinite(apertureBorderWidth) ? apertureBorderWidth : 2,
                 show_feedback: showFeedback,
                 feedback_show_count_message: feedbackShowCountMessage,
-                feedback_duration_ms: Number.isFinite(feedbackDurationMs) ? Math.max(0, feedbackDurationMs) : 1500
+                feedback_duration_ms: Number.isFinite(feedbackDurationMs) ? Math.max(0, feedbackDurationMs) : 1500,
+                fixation_cross_enabled: fixationCrossEnabled,
+                fixation_cross_min_onset_ms: Number.isFinite(fixationCrossMinOnsetMs) ? Math.max(0, fixationCrossMinOnsetMs) : 500,
+                fixation_cross_max_onset_ms: Number.isFinite(fixationCrossMaxOnsetMs) ? Math.max(0, fixationCrossMaxOnsetMs) : 3000,
+                fixation_cross_duration_ms: Number.isFinite(fixationCrossDurationMs) ? Math.max(1, fixationCrossDurationMs) : 300
             };
         }
 
@@ -9647,7 +10010,11 @@ class JsonBuilder {
             aperture_border_width_px: Number.parseInt(document.getElementById('motApertureBorderWidthPxDefault')?.value || '2', 10),
             show_feedback: !!document.getElementById('motShowFeedbackDefault')?.checked,
             feedback_show_count_message: !!document.getElementById('motFeedbackShowCountMessageDefault')?.checked,
-            feedback_duration_ms: Number.parseInt(document.getElementById('motFeedbackDurationMsDefault')?.value || '1500', 10)
+            feedback_duration_ms: Number.parseInt(document.getElementById('motFeedbackDurationMsDefault')?.value || '1500', 10),
+            fixation_cross_enabled: !!document.getElementById('motFixationCrossEnabledDefault')?.checked,
+            fixation_cross_min_onset_ms: Number.parseInt(document.getElementById('motFixationCrossMinOnsetMsDefault')?.value || '500', 10),
+            fixation_cross_max_onset_ms: Number.parseInt(document.getElementById('motFixationCrossMaxOnsetMsDefault')?.value || '3000', 10),
+            fixation_cross_duration_ms: Number.parseInt(document.getElementById('motFixationCrossDurationMsDefault')?.value || '300', 10)
         };
     }
 
@@ -9684,6 +10051,10 @@ class JsonBuilder {
             mot_show_feedback: !!d.show_feedback,
             mot_feedback_show_count_message: d.feedback_show_count_message !== false,
             mot_feedback_duration_ms: Number.isFinite(Number(d.feedback_duration_ms)) ? Math.max(0, Number(d.feedback_duration_ms)) : 1500,
+            mot_fixation_cross_enabled: !!d.fixation_cross_enabled,
+            mot_fixation_cross_min_onset_ms: Number.isFinite(Number(d.fixation_cross_min_onset_ms)) ? Math.max(0, Number(d.fixation_cross_min_onset_ms)) : 500,
+            mot_fixation_cross_max_onset_ms: Number.isFinite(Number(d.fixation_cross_max_onset_ms)) ? Math.max(0, Number(d.fixation_cross_max_onset_ms)) : 3000,
+            mot_fixation_cross_duration_ms: Number.isFinite(Number(d.fixation_cross_duration_ms)) ? Math.max(1, Number(d.fixation_cross_duration_ms)) : 300,
             mot_speed_px_per_s_min: speed,
             mot_speed_px_per_s_max: speed,
             mot_tracking_duration_ms_min: tracking,
@@ -11790,6 +12161,21 @@ class JsonBuilder {
             if (blockComponent.mot_feedback_duration_ms !== undefined && blockComponent.mot_feedback_duration_ms !== null && blockComponent.mot_feedback_duration_ms !== '') {
                 const feedbackDurationMs = Number.parseInt(blockComponent.mot_feedback_duration_ms, 10);
                 if (Number.isFinite(feedbackDurationMs)) values.feedback_duration_ms = Math.max(0, feedbackDurationMs);
+            }
+            if (blockComponent.mot_fixation_cross_enabled !== undefined) {
+                values.fixation_cross_enabled = !!blockComponent.mot_fixation_cross_enabled;
+            }
+            if (blockComponent.mot_fixation_cross_min_onset_ms !== undefined && blockComponent.mot_fixation_cross_min_onset_ms !== null && blockComponent.mot_fixation_cross_min_onset_ms !== '') {
+                const fixationMinOnset = Number.parseInt(blockComponent.mot_fixation_cross_min_onset_ms, 10);
+                if (Number.isFinite(fixationMinOnset)) values.fixation_cross_min_onset_ms = Math.max(0, fixationMinOnset);
+            }
+            if (blockComponent.mot_fixation_cross_max_onset_ms !== undefined && blockComponent.mot_fixation_cross_max_onset_ms !== null && blockComponent.mot_fixation_cross_max_onset_ms !== '') {
+                const fixationMaxOnset = Number.parseInt(blockComponent.mot_fixation_cross_max_onset_ms, 10);
+                if (Number.isFinite(fixationMaxOnset)) values.fixation_cross_max_onset_ms = Math.max(0, fixationMaxOnset);
+            }
+            if (blockComponent.mot_fixation_cross_duration_ms !== undefined && blockComponent.mot_fixation_cross_duration_ms !== null && blockComponent.mot_fixation_cross_duration_ms !== '') {
+                const fixationDuration = Number.parseInt(blockComponent.mot_fixation_cross_duration_ms, 10);
+                if (Number.isFinite(fixationDuration)) values.fixation_cross_duration_ms = Math.max(1, fixationDuration);
             }
             addWindow('speed_px_per_s', blockComponent.mot_speed_px_per_s_min, blockComponent.mot_speed_px_per_s_max);
             addWindow('tracking_duration_ms', blockComponent.mot_tracking_duration_ms_min, blockComponent.mot_tracking_duration_ms_max);

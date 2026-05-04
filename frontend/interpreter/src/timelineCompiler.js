@@ -2083,8 +2083,35 @@
       return Math.round(lo + Math.random() * (hi - lo));
     };
 
+    const sampleMwProbeGapMs = (probeItem) => {
+      const minRaw = Number(probeItem && (probeItem.global_interval_min_ms ?? probeItem.min_interval_ms));
+      const maxRaw = Number(probeItem && (probeItem.global_interval_max_ms ?? probeItem.max_interval_ms));
+      const minMs = Number.isFinite(minRaw) ? Math.max(0, minRaw) : 0;
+      const maxMs = Number.isFinite(maxRaw) ? Math.max(0, maxRaw) : minMs;
+      const lo = Math.min(minMs, maxMs);
+      const hi = Math.max(minMs, maxMs);
+      return Math.round(lo + Math.random() * (hi - lo));
+    };
+
     const estimateTrialDurationMs = (trial) => {
       if (!isObject(trial)) return 0;
+
+      if ((trial.type ?? '').toString() === 'mot-trial') {
+        const cueMs = Number(trial.cue_duration_ms);
+        const trackingMs = Number(trial.tracking_duration_ms);
+        const probeTimeoutMs = Number(trial.probe_timeout_ms);
+        const feedbackMs = Number(trial.feedback_duration_ms);
+        const itiMs = Number(trial.iti_ms);
+
+        const cue = Number.isFinite(cueMs) && cueMs > 0 ? cueMs : 2000;
+        const tracking = Number.isFinite(trackingMs) && trackingMs > 0 ? trackingMs : 8000;
+        const probe = Number.isFinite(probeTimeoutMs) && probeTimeoutMs > 0 ? probeTimeoutMs : 2000;
+        const feedback = (trial.show_feedback === true || trial.feedback_show_count_message !== false)
+          ? (Number.isFinite(feedbackMs) && feedbackMs >= 0 ? feedbackMs : 1500)
+          : 0;
+        const iti = Number.isFinite(itiMs) && itiMs >= 0 ? itiMs : 1000;
+        return cue + tracking + probe + feedback + iti;
+      }
 
       const candidates = [
         trial.trial_duration_ms,
@@ -2357,40 +2384,84 @@
         continue;
       }
 
-      let targetMs;
-      if (maxMs > 0) {
-        targetMs = sampleMwProbeIntervalMs(probe);
-      } else if (totalDurationMs > 0) {
-        // Default behavior when min/max are 0: sample around the middle half
-        // of the surrounding generated run to avoid edge-biased probe placement.
-        const lo = totalDurationMs * 0.25;
-        const hi = totalDurationMs * 0.75;
-        targetMs = Math.round(lo + Math.random() * Math.max(0, hi - lo));
+      const requestedProbeCountRaw = Number(
+        probe.global_probe_count_per_block
+        ?? probe.probe_count_per_block
+        ?? 1
+      );
+      const requestedProbeCount = Number.isFinite(requestedProbeCountRaw)
+        ? Math.max(1, Math.min(100, Math.round(requestedProbeCountRaw)))
+        : 1;
+
+      const targetOffsetsMs = [];
+      if (requestedProbeCount <= 1) {
+        let targetMs;
+        if (maxMs > 0) {
+          targetMs = sampleMwProbeIntervalMs(probe);
+        } else if (totalDurationMs > 0) {
+          // Default behavior when min/max are 0: sample around the middle half
+          // of the surrounding generated run to avoid edge-biased probe placement.
+          const lo = totalDurationMs * 0.25;
+          const hi = totalDurationMs * 0.75;
+          targetMs = Math.round(lo + Math.random() * Math.max(0, hi - lo));
+        } else {
+          targetMs = null;
+        }
+        if (targetMs !== null) targetOffsetsMs.push(targetMs);
       } else {
-        targetMs = null;
+        // Multi-probe scheduling: repeatedly sample interval gaps within this generated run.
+        let nextMs = sampleMwProbeGapMs(probe);
+        for (let p = 0; p < requestedProbeCount; p++) {
+          if (!(totalDurationMs > 0) || nextMs > totalDurationMs) break;
+          targetOffsetsMs.push(nextMs);
+          nextMs += sampleMwProbeGapMs(probe);
+        }
+
+        if (targetOffsetsMs.length === 0 && totalDurationMs > 0) {
+          targetOffsetsMs.push(Math.round(totalDurationMs * 0.5));
+        }
       }
 
-      let insertAt;
-      if (targetMs === null) {
+      const targetIndices = [];
+      if (targetOffsetsMs.length === 0) {
         const pick = generatedIdx[Math.floor(Math.random() * generatedIdx.length)];
-        insertAt = Number.isFinite(pick) ? pick : generatedIdx[generatedIdx.length - 1];
+        targetIndices.push(Number.isFinite(pick) ? pick : generatedIdx[generatedIdx.length - 1]);
       } else {
-        let accMs = 0;
-        insertAt = generatedIdx[generatedIdx.length - 1];
-        for (const k of generatedIdx) {
-          accMs += estimateTrialDurationMs(out[k]);
-          if (accMs >= targetMs) {
-            insertAt = k;
-            break;
+        for (const targetMs of targetOffsetsMs) {
+          let accMs = 0;
+          let insertAt = generatedIdx[generatedIdx.length - 1];
+          for (const k of generatedIdx) {
+            accMs += estimateTrialDurationMs(out[k]);
+            if (accMs >= targetMs) {
+              insertAt = k;
+              break;
+            }
           }
+          targetIndices.push(insertAt);
         }
       }
 
       out.splice(i, 1);
-      if (insertAt > i) insertAt -= 1;
-      out.splice(insertAt, 0, probe);
 
-      i = insertAt;
+      const normalizedInsertIndices = targetIndices
+        .map((idx) => (idx > i ? idx - 1 : idx))
+        .filter((idx) => Number.isFinite(idx))
+        .sort((a, b) => a - b);
+
+      const probesToInsert = normalizedInsertIndices.length;
+      for (let p = 0; p < probesToInsert; p++) {
+        const insertAt = normalizedInsertIndices[p] + p;
+        const probeClone = (p === 0)
+          ? probe
+          : {
+              ...probe,
+              _mw_probe_instance_index: p + 1,
+              _mw_probe_instances_total: probesToInsert
+            };
+        out.splice(insertAt, 0, probeClone);
+      }
+
+      i = normalizedInsertIndices[normalizedInsertIndices.length - 1] + Math.max(0, probesToInsert - 1);
     }
 
     // If an MW probe lands inside an active DRT segment, auto-bracket it with
