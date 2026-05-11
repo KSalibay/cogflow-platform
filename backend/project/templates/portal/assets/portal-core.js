@@ -315,6 +315,22 @@
       return { items };
     }
 
+    async function deleteStudyConfigVersion(slug, configVersionId) {
+      const studySlug = String(slug || "").trim();
+      const configId = String(configVersionId || "").trim();
+      if (!studySlug || !configId) throw new Error("Missing study or config version.");
+
+      const r = await fetch(
+        `${API}/api/v1/studies/${encodeURIComponent(studySlug)}/configs/${encodeURIComponent(configId)}/delete`,
+        postOpts({})
+      );
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+
+      if (typeof invalidateLatestConfigCache === "function") invalidateLatestConfigCache();
+      return d;
+    }
+
     async function openStudyPropertiesModal(slug) {
       const modalEl = ensureStudyPropertiesModal();
       const errEl = document.getElementById("studyPropertiesError");
@@ -334,15 +350,19 @@
       try {
         const payload = await fetchStudyLatestConfig(slug);
         const cfgs = Array.isArray(payload?.configs) ? payload.configs : [];
+        const cfgById = new Map(cfgs.map((c) => [String(c?.config_version_id || "").trim(), c]));
         const stored = st.taskProfile || loadStudyTaskProfile(slug);
         const profile = normalizeTaskProfileForConfigs(stored, cfgs);
         st.taskProfile = profile;
 
         profile.items.forEach((item) => {
+          const cfg = cfgById.get(String(item.config_version_id || "").trim()) || {};
+          const versionLabel = (cfg?.config_version_label || item.config_version_id || "").toString();
           const li = document.createElement("li");
           li.className = "list-group-item";
           li.dataset.configId = item.config_version_id;
           li.dataset.taskType = item.task_type || "";
+          li.dataset.versionLabel = versionLabel;
           li.innerHTML = `
             <div class="study-prop-row">
               <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;">
@@ -350,12 +370,44 @@
                 <span style="font-size:.82rem;color:var(--muted);">Include</span>
               </label>
               <input type="text" data-role="task-label" value="${esc(item.label || item.task_type || "task")}" />
+              <span style="font-size:.75rem;color:var(--muted);white-space:nowrap;">${esc(versionLabel)}</span>
+              <button type="button" class="btn btn-danger btn-xs" data-role="delete-config">Delete</button>
               <span class="task-order-grip" aria-hidden="true">⋮⋮</span>
             </div>
           `;
           listEl.appendChild(li);
         });
         setupDragList(listEl);
+
+        listEl.querySelectorAll("button[data-role='delete-config']").forEach((btn) => {
+          btn.addEventListener("click", async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const li = btn.closest("li");
+            if (!li) return;
+            const configId = String(li.dataset.configId || "").trim();
+            const versionLabel = String(li.dataset.versionLabel || configId).trim();
+            if (!configId) return;
+
+            const confirmed = window.confirm(
+              `Delete config version "${versionLabel}" from this study?\n\nThis is permanent and cannot be undone.`
+            );
+            if (!confirmed) return;
+
+            btn.disabled = true;
+            setErr("");
+            try {
+              await deleteStudyConfigVersion(slug, configId);
+              await loadStudies();
+              await openStudyPropertiesModal(slug);
+            } catch (err) {
+              setErr(err?.message || String(err));
+            } finally {
+              btn.disabled = false;
+            }
+          });
+        });
       } catch (err) {
         setErr(err?.message || String(err));
       }

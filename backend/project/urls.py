@@ -38,6 +38,7 @@ from project.api_views import (
     ShareStudyValidateUserView,
     StartRunView,
     StudyLatestConfigView,
+    DeleteStudyConfigVersionView,
     StudyAnalysisReportView,
     StudyAnalysisReportJobsView,
     StudyAnalysisReportJobDetailView,
@@ -143,6 +144,11 @@ urlpatterns = [
         "api/v1/studies/<slug:study_slug>/delete",
         DeleteStudyView.as_view(),
         name="studies-delete",
+    ),
+    path(
+        "api/v1/studies/<slug:study_slug>/configs/<int:config_version_id>/delete",
+        DeleteStudyConfigVersionView.as_view(),
+        name="studies-config-delete",
     ),
     path(
         "api/v1/studies/<slug:study_slug>/runs",

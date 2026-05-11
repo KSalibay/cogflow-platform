@@ -87,7 +87,7 @@
     <link href="vendor/quill.snow.css" rel="stylesheet">
 
     <!-- App theme + Bootstrap overrides (must load AFTER Bootstrap) -->
-    <link rel="stylesheet" href="css/style.css?v=20260415-2">
+    <link rel="stylesheet" href="css/style.css?v=20260511-1">
 
     <!-- Prevent aggressive caching when opened via file:// or a simple static server -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
@@ -335,20 +335,21 @@
                         <div id="publishMetaError" class="alert alert-danger py-2 d-none" role="alert"></div>
 
                         <div class="mb-3">
-                            <label for="publishStudyName" class="form-label">Study Name</label>
+                            <label for="publishStudyName" class="form-label">Study Name (Human-readable title)</label>
                             <input type="text" class="form-control" id="publishStudyName" placeholder="e.g. RDM Attention Pilot" />
+                            <div class="form-text">Visible title in the Portal. You can rename it later without changing links.</div>
                         </div>
 
                         <div class="mb-3">
-                            <label for="publishStudySlug" class="form-label">Study Slug</label>
+                            <label for="publishStudySlug" class="form-label">Study Slug (Stable ID in links/API)</label>
                             <input type="text" class="form-control" id="publishStudySlug" placeholder="e.g. rdm-attention-pilot" />
-                            <div class="form-text">Lowercase letters, numbers, and hyphens only.</div>
+                            <div class="form-text">Lowercase letters, numbers, and hyphens only. Keep this stable once participants start using links.</div>
                         </div>
 
                         <div class="mb-1">
-                            <label for="publishConfigVersion" class="form-label">Task Name (Saved Config Label)</label>
+                            <label for="publishConfigVersion" class="form-label">Config Version Label (Task/variant name)</label>
                             <input type="text" class="form-control" id="publishConfigVersion" placeholder="e.g. Block 1 - RDM High Coherence" />
-                            <div class="form-text">Use the same Study Name/Slug to keep variants under one study, and change this field to save a separate task/config entry.</div>
+                            <div class="form-text">Use the same Study Name + Slug to keep versions under one study. Change this field when saving a new task variant (for example: Practice, Main, v2).</div>
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -603,7 +604,7 @@
     </script>
 
     <!-- Cache-bust local scripts -->
-    <script src="src/JsonBuilder.js?v=20260504-6"></script>
+    <script src="src/JsonBuilder.js?v=20260511-1"></script>
     <script src="src/modules/DataCollectionModules.js?v=20260114-1"></script>
     <script src="src/modules/TrialManager.js?v=20260113-10"></script>
     <script src="src/modules/TimelineBuilder.js?v=20260504-6"></script>

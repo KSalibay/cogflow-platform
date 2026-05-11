@@ -2059,12 +2059,17 @@ class JsonBuilder {
             taskSelect.disabled = true;
         };
 
+        let taskOptionsRequestToken = 0;
+
         const populateTaskOptions = async (studySlug) => {
             resetTaskOptions();
             const slug = (studySlug || '').toString().trim();
             if (!slug) return;
 
+            const requestToken = ++taskOptionsRequestToken;
+
             const payload = await this.fetchLatestStudyConfig(slug);
+            if (requestToken !== taskOptionsRequestToken) return;
             const configs = Array.isArray(payload?.configs) ? payload.configs : [];
             if (!configs.length) return;
 
@@ -2136,6 +2141,7 @@ class JsonBuilder {
                 listEl.querySelectorAll('.list-group-item').forEach((el) => el.classList.remove('active'));
                 btn.classList.add('active');
                 populateTaskOptions(slug).catch(() => {
+                    if (slug !== (modalEl.dataset.selectedStudySlug || '').toString().trim()) return;
                     resetTaskOptions();
                 });
                 updateConfirmState();
@@ -2181,8 +2187,10 @@ class JsonBuilder {
             confirmBtn.disabled = true;
             setError('');
             try {
-                await this.loadStudyIntoBuilder(selectedSlug, { configVersionId: selectedConfigVersionId });
-                modal.hide();
+                const loaded = await this.loadStudyIntoBuilder(selectedSlug, { configVersionId: selectedConfigVersionId });
+                if (loaded !== false) {
+                    modal.hide();
+                }
             } catch (e) {
                 setError(e?.message || 'Failed to load selected study.');
             } finally {
@@ -2210,11 +2218,30 @@ class JsonBuilder {
         const builderComponents = this.convertImportedTimelineToBuilderComponents(importedTimeline, taskType);
         const rebuiltCount = this.rebuildTimelineDOMFromImportedComponents(builderComponents);
 
+        // Re-sync task-scoped affordances against the rebuilt timeline and loaded task.
+        this.loadComponentLibrary();
+        this.updateConditionalUI();
+
         this.updateJSON();
         this.showValidationResult('success', `Loaded ${sourceLabel}. Rebuilt ${rebuiltCount} timeline component(s).`);
     }
 
     async loadStudyIntoBuilder(studySlug, options = {}) {
+        const slug = (studySlug || '').toString().trim();
+        if (!slug) {
+            throw new Error('Missing study slug');
+        }
+
+        const skipReplaceConfirm = options?.skipReplaceConfirm === true;
+        if (!skipReplaceConfirm) {
+            const proceed = window.confirm(
+                'Load selected study now?\n\nThis replaces the current Builder workspace.\nIf you want a backup, use Save JSON or Publish first.\n\nContinue without saving current study?'
+            );
+            if (!proceed) {
+                return false;
+            }
+        }
+
         const payload = await this.fetchLatestStudyConfig(studySlug);
         const studyName = (payload?.study_name || payload?.study_slug || studySlug || 'study').toString();
         const requestedVersionId = (options?.configVersionId || '').toString().trim();
@@ -2237,6 +2264,7 @@ class JsonBuilder {
         const label = taskType ? `${studyName} (${taskType} · ${version})` : `${studyName} (${version})`;
 
         this.rehydrateBuilderFromConfig(config, label);
+        return true;
     }
 
     extractEnabledFlag(raw, fallback = false) {
@@ -2783,8 +2811,18 @@ class JsonBuilder {
         const rawTaskType = (config?.task_type || config?.taskType || '').toString().trim();
         const importedTaskType = rawTaskType || this.currentTaskType || 'rdm';
 
-        let nextExperimentType = (config?.experiment_type || config?.experimentType || this.experimentType || 'trial-based').toString();
-        nextExperimentType = (nextExperimentType === 'continuous') ? 'continuous' : 'trial-based';
+        const hasExplicitExperimentType = (config?.experiment_type !== undefined || config?.experimentType !== undefined);
+        let nextExperimentTypeRaw = hasExplicitExperimentType
+            ? (config?.experiment_type || config?.experimentType || '').toString().trim().toLowerCase()
+            : '';
+
+        if (nextExperimentTypeRaw !== 'continuous' && nextExperimentTypeRaw !== 'trial-based') {
+            nextExperimentTypeRaw = (importedTaskType === 'soc-dashboard' || importedTaskType === 'continuous-image')
+                ? 'continuous'
+                : 'trial-based';
+        }
+
+        let nextExperimentType = (nextExperimentTypeRaw === 'continuous') ? 'continuous' : 'trial-based';
 
         if ((importedTaskType === 'soc-dashboard' || importedTaskType === 'continuous-image') && nextExperimentType !== 'continuous') {
             nextExperimentType = 'continuous';
@@ -3653,14 +3691,24 @@ class JsonBuilder {
         const nextTaskType = event?.target?.value || 'rdm';
         const prevTaskType = this.currentTaskType || 'rdm';
 
-        // Continuous Image Presentation is a continuous-mode task (by design).
-        // If the user selects it while in trial-based mode, auto-switch to continuous.
-        if (nextTaskType === 'continuous-image' && this.experimentType !== 'continuous') {
+        const isContinuousOnlyTask = (taskType) => (taskType === 'continuous-image' || taskType === 'soc-dashboard');
+
+        // Continuous-only tasks should automatically flip the experiment mode.
+        if (isContinuousOnlyTask(nextTaskType) && this.experimentType !== 'continuous') {
             const continuousRadio = document.getElementById('continuous');
             if (continuousRadio) continuousRadio.checked = true;
             this.experimentType = 'continuous';
 
             // Re-render task-scoped panels so availability + defaults match.
+            this.enforceTaskTypeAvailability();
+            this.updateExperimentTypeUI();
+            this.updateConditionalUI();
+        } else if (!isContinuousOnlyTask(nextTaskType) && this.experimentType === 'continuous') {
+            // Switching away from SOC/continuous-only tasks should snap back to trial-based
+            // for classic tasks like SART/Flanker.
+            const trialRadio = document.getElementById('trialBased');
+            if (trialRadio) trialRadio.checked = true;
+            this.experimentType = 'trial-based';
             this.enforceTaskTypeAvailability();
             this.updateExperimentTypeUI();
             this.updateConditionalUI();

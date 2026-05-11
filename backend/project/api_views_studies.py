@@ -1,5 +1,6 @@
 from django.http import HttpResponse
 from django.utils import timezone
+from django.db.models.deletion import ProtectedError
 
 from .api_views_common import *
 from .study_report_jobs import build_study_analysis_outputs
@@ -1319,6 +1320,84 @@ class DeleteStudyView(APIView):
                     "run_sessions": run_count,
                     "result_envelopes": result_count,
                 },
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class DeleteStudyConfigVersionView(APIView):
+    """Delete one config version from a study when it is safe to remove."""
+
+    @transaction.atomic
+    def post(self, request, study_slug: str, config_version_id: int):
+        if not request.user.is_authenticated:
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        profile = get_or_create_profile(request.user)
+        if not _can_manage_researcher_resources(request, profile):
+            return Response({"error": "Insufficient role permissions"}, status=status.HTTP_403_FORBIDDEN)
+
+        study = Study.objects.filter(slug=study_slug, is_active=True).first()
+        if not study:
+            return Response({"error": "Study not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if not _has_study_access(study, request.user, profile):
+            return Response({"error": "Study is not owned by the current researcher"}, status=status.HTTP_403_FORBIDDEN)
+
+        if not _can_remove_study_users(study, request.user, profile):
+            return Response({"error": "You do not have permission to manage config versions for this study"}, status=status.HTTP_403_FORBIDDEN)
+
+        config_version = ConfigVersion.objects.filter(study=study, id=config_version_id).first()
+        if not config_version:
+            return Response({"error": "Config version not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        remaining_count = study.config_versions.exclude(id=config_version.id).count()
+        if remaining_count < 1:
+            return Response(
+                {"error": "At least one config version must remain in the study"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        run_count = RunSession.objects.filter(config_version=config_version).count()
+        if run_count > 0:
+            return Response(
+                {"error": "This config version has run history and cannot be deleted"},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        version_label = config_version.version_label
+
+        try:
+            config_version.delete()
+        except ProtectedError:
+            return Response(
+                {"error": "This config version is referenced by other records and cannot be deleted"},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        study.updated_at = timezone.now()
+        study.save(update_fields=["updated_at"])
+
+        record_audit(
+            action="delete_config_version",
+            resource_type="study",
+            resource_id=study.id,
+            actor=request.user.username,
+            metadata={
+                "study_slug": study.slug,
+                "deleted_config_version_id": config_version_id,
+                "deleted_config_version_label": version_label,
+                "remaining_config_versions": remaining_count,
+            },
+        )
+
+        return Response(
+            {
+                "ok": True,
+                "study_slug": study.slug,
+                "deleted_config_version_id": config_version_id,
+                "deleted_config_version_label": version_label,
+                "remaining_config_versions": remaining_count,
             },
             status=status.HTTP_200_OK,
         )

@@ -735,7 +735,7 @@ html[data-cf-theme="dark"] .timeline-corner-icon {
     margin: 8px;
     padding: 12px;
     position: relative;
-    cursor: move;
+    cursor: default;
     transition: all 0.2s ease;
 }
 

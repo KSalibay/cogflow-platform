@@ -47,6 +47,7 @@ from .api_views_studies import (
     RevokeStudyAccessView,
     DuplicateStudyView,
     DeleteStudyView,
+    DeleteStudyConfigVersionView,
 )
 from .api_views_runs import (
     StartRunView,
