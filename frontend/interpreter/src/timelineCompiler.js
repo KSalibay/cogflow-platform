@@ -2229,6 +2229,22 @@
       return node.randomizable_across_markers !== false;
     };
 
+    const getBlockBaseType = (node) => {
+      if (!isObject(node) || node.type !== 'block') return '';
+      const baseType = (typeof node.component_type === 'string' && node.component_type.trim())
+        ? node.component_type.trim()
+        : (typeof node.block_component_type === 'string' && node.block_component_type.trim())
+          ? node.block_component_type.trim()
+          : 'rdm-trial';
+      return baseType;
+    };
+
+    const isExpandableBlockItem = (node) => {
+      const baseType = getBlockBaseType(node);
+      if (!baseType) return false;
+      return !preserveFor.has(baseType);
+    };
+
     const expandSingleItem = (item) => {
       if (!isObject(item)) return;
 
@@ -2300,6 +2316,30 @@
     for (let i = 0; i < orderedSiblingItems.length; i++) {
       const item = orderedSiblingItems[i];
       if (!isPoolableSiblingRandomizeGroup(item)) {
+        if (isObject(item) && item.type === 'mw-probe') {
+          const prevSibling = (i > 0) ? orderedSiblingItems[i - 1] : null;
+          const nextSibling = (i + 1 < orderedSiblingItems.length) ? orderedSiblingItems[i + 1] : null;
+
+          const prevExpandable = isExpandableBlockItem(prevSibling);
+          const nextExpandable = isExpandableBlockItem(nextSibling);
+
+          // Preserve authored chronology for block/probe loop patterns:
+          // - block -> probe anchors to previous generated block run
+          // - probe -> block anchors to following generated block run
+          // - otherwise keep auto behavior
+          let anchorHint = 'auto';
+          if (prevExpandable && !nextExpandable) anchorHint = 'prev';
+          else if (!prevExpandable && nextExpandable) anchorHint = 'next';
+          else if (prevExpandable && nextExpandable) anchorHint = 'prev';
+
+          const probeWithHint = (anchorHint === 'auto')
+            ? item
+            : { ...item, _mw_anchor_hint: anchorHint };
+
+          expandSingleItem(probeWithHint);
+          continue;
+        }
+
         expandSingleItem(item);
         continue;
       }
@@ -2355,10 +2395,16 @@
         nextIdx.push(k);
       }
 
-      // When a probe marker sits between two generated runs (common with looped
-      // "probe -> block" patterns), prefer anchoring to the following run so
-      // each iteration keeps its own probe instead of drifting into the previous loop.
-      const generatedIdx = nextIdx.length > 0 ? nextIdx : prevIdx;
+      const anchorHint = String(probe._mw_anchor_hint || '').trim().toLowerCase();
+      let generatedIdx;
+      if (anchorHint === 'prev' && prevIdx.length > 0) {
+        generatedIdx = prevIdx;
+      } else if (anchorHint === 'next' && nextIdx.length > 0) {
+        generatedIdx = nextIdx;
+      } else {
+        // Legacy fallback when no authored hint is available.
+        generatedIdx = nextIdx.length > 0 ? nextIdx : prevIdx;
+      }
       let totalDurationMs = 0;
       for (const k of generatedIdx) {
         const trial = out[k];

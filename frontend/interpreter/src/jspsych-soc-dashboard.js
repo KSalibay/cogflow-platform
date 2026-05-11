@@ -2856,7 +2856,7 @@
           <div class="soc-card soc-mwprobe-root">
             <div class="soc-mwprobe-panel">
               <h4 style="margin:0 0 8px 0;">${escHtml(cfg.title || 'Thought Probe')}</h4>
-              ${cfg.instructions ? `<div class="soc-mwprobe-intro">${escHtml(cfg.instructions)}</div>` : ''}
+              ${cfg.instructions ? `<div class="soc-mwprobe-intro">${cfg.instructions}</div>` : ''}
               <div id="soc_mw_error_${i}" style="display:none; margin: 6px 0 10px 0; padding: 8px; border-radius: 10px; border: 1px solid rgba(255,92,92,0.45); color: #ffd2d2; background: rgba(255,92,92,0.12);"></div>
               <form id="soc_mw_form_${i}" class="soc-mwprobe-form">
                 <div class="soc-mwprobe-scroll">
