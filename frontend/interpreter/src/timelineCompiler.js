@@ -1107,6 +1107,7 @@
         ...(Number.isFinite(inferredMin) && a.min_value === undefined ? { min_value: inferredMin } : {}),
         ...(Number.isFinite(inferredMax) && a.max_value === undefined ? { max_value: inferredMax } : {})
       };
+      adaptiveMeta.questOpts = { ...questOpts };
 
       // Coarse/fine phase support
       const trialsCoarse = Number.isFinite(Number(a.quest_trials_coarse ?? values.quest_trials_coarse))
@@ -1347,18 +1348,29 @@
     const applyGaborBlockCounterbalance = (generatedTrials) => {
       if (!Array.isArray(generatedTrials) || generatedTrials.length === 0) return;
 
-      const cbSig = JSON.stringify({
-        baseType,
-        target_location: values.target_location,
-        target_left_probability: values.target_left_probability,
-        spatial_cue_target_mode: values.spatial_cue_target_mode,
-        spatial_cue_validity_probability: values.spatial_cue_validity_probability,
-        value_target_value: values.value_target_value,
-        value_non_target_value: values.value_non_target_value,
-        target_tilt_deg: values.target_tilt_deg,
-        distractor_orientation_deg: values.distractor_orientation_deg,
-        adaptive_mode: (isObject(values.adaptive) ? values.adaptive.mode : null)
-      });
+      const counterbalanceScope = (values.counterbalance_scope ?? 'per_block').toString().trim().toLowerCase();
+      const counterbalanceGroupId = (values.counterbalance_group_id ?? '').toString().trim();
+      const useSharedCounterbalanceGroup = (counterbalanceScope === 'group') && counterbalanceGroupId !== '';
+
+      const cbSig = useSharedCounterbalanceGroup
+        ? JSON.stringify({
+            counterbalance_group_id: counterbalanceGroupId,
+            value_target_value: values.value_target_value,
+            value_non_target_value: values.value_non_target_value,
+            adaptive_mode: (isObject(values.adaptive) ? values.adaptive.mode : null)
+          })
+        : JSON.stringify({
+            baseType,
+            target_location: values.target_location,
+            target_left_probability: values.target_left_probability,
+            spatial_cue_target_mode: values.spatial_cue_target_mode,
+            spatial_cue_validity_probability: values.spatial_cue_validity_probability,
+            value_target_value: values.value_target_value,
+            value_non_target_value: values.value_non_target_value,
+            target_tilt_deg: values.target_tilt_deg,
+            distractor_orientation_deg: values.distractor_orientation_deg,
+            adaptive_mode: (isObject(values.adaptive) ? values.adaptive.mode : null)
+          });
 
       const targetLocationOpts = normalizeOptions(values.target_location).map(v => (v ?? '').toString().trim().toLowerCase());
       const hasBothTargetSides = targetLocationOpts.includes('left') && targetLocationOpts.includes('right');
@@ -1685,6 +1697,8 @@
 
         delete t.spatial_cue_target_mode;
         delete t.target_left_probability;
+        delete t.counterbalance_scope;
+        delete t.counterbalance_group_id;
         delete t.use_stored_thresholds;
         delete t.value_non_target_value;
 
@@ -1904,9 +1918,10 @@
 
           const reinit = (sc) => {
             const currentMean = sc.meanThreshold();
-            const origSd = Number.isFinite(Number(questOpts.start_sd)) ? Number(questOpts.start_sd) : 20;
+            const savedQuestOpts = isObject(adaptiveMeta.questOpts) ? adaptiveMeta.questOpts : {};
+            const origSd = Number.isFinite(Number(savedQuestOpts.start_sd)) ? Number(savedQuestOpts.start_sd) : 20;
             return new QuestStaircase({
-              ...questOpts,
+              ...savedQuestOpts,
               start_value: currentMean,
               start_sd: Math.max(0.5, origSd * 0.4)
             });
@@ -2826,6 +2841,7 @@
 
     const responseDefaults = isObject(config.response_parameters) ? config.response_parameters : {};
     const dataCollection = normalizeDataCollection(config.data_collection);
+    const learningCounterbalanceState = {};
 
     const defaultTransition = isObject(config.transition_settings) ? config.transition_settings : { duration_ms: 0, type: 'both' };
 
@@ -4781,6 +4797,54 @@
           return out;
         };
 
+        const learningCounterbalanceScope = (src.counterbalance_scope ?? 'per_block').toString().trim().toLowerCase();
+        const learningCounterbalanceGroupId = (src.counterbalance_group_id ?? '').toString().trim();
+        const useSharedLearningCounterbalance = learningCounterbalanceScope === 'group' && learningCounterbalanceGroupId !== '';
+
+        const learningCounterbalanceKey = JSON.stringify({
+          group: learningCounterbalanceGroupId,
+          value_target_value: src.value_target_value,
+          value_non_target_value: src.value_non_target_value
+        });
+
+        const takeLearningBoolPlan = (bucketName, total, pTrue) => {
+          const n = Math.max(0, Number.parseInt(total, 10) || 0);
+          if (n <= 0) return [];
+          if (!useSharedLearningCounterbalance) {
+            return buildLearningBoolPlan(n, pTrue);
+          }
+
+          const stateKey = `${bucketName}:${learningCounterbalanceKey}`;
+          const bucket = isObject(learningCounterbalanceState[stateKey]) ? learningCounterbalanceState[stateKey] : {};
+          learningCounterbalanceState[stateKey] = bucket;
+          bucket.queue = Array.isArray(bucket.queue) ? bucket.queue : [];
+
+          while (bucket.queue.length < n) {
+            const chunk = Math.max(n, 24);
+            bucket.queue.push(...buildLearningBoolPlan(chunk, pTrue));
+          }
+          return bucket.queue.splice(0, n);
+        };
+
+        const takeLearningPairPlan = (bucketName, total, aVals, bVals) => {
+          const n = Math.max(0, Number.parseInt(total, 10) || 0);
+          if (n <= 0) return [];
+          if (!useSharedLearningCounterbalance) {
+            return buildLearningPairPlan(n, aVals, bVals);
+          }
+
+          const stateKey = `${bucketName}:${learningCounterbalanceKey}`;
+          const bucket = isObject(learningCounterbalanceState[stateKey]) ? learningCounterbalanceState[stateKey] : {};
+          learningCounterbalanceState[stateKey] = bucket;
+          bucket.queue = Array.isArray(bucket.queue) ? bucket.queue : [];
+
+          while (bucket.queue.length < n) {
+            const chunk = Math.max(n, 24);
+            bucket.queue.push(...buildLearningPairPlan(chunk, aVals, bVals));
+          }
+          return bucket.queue.splice(0, n);
+        };
+
         const buildLearningPairPlan = (total, aVals, bVals) => {
           const n = Math.max(0, Number.parseInt(total, 10) || 0);
           const a = Array.isArray(aVals) ? aVals : [];
@@ -4807,25 +4871,26 @@
         const learningTargetLocationOpts = normalizeLearningOptions(src.target_location).map(v => (v ?? '').toString().trim().toLowerCase());
         const learningHasBothTargetSides = learningTargetLocationOpts.includes('left') && learningTargetLocationOpts.includes('right');
         const learningPTargetLeft = Number(src.target_left_probability);
-        const learningTargetPlan = (Number.isFinite(learningPTargetLeft) && learningHasBothTargetSides)
-          ? buildLearningBoolPlan(Math.max(1, Number.parseInt(src.learning_max_trials ?? 200, 10) || 200), clamp(learningPTargetLeft, 0, 1))
+        const learningPlanCount = Math.max(1, Number.parseInt(src.learning_max_trials ?? 200, 10) || 200);
+        const learningTargetPlan = learningHasBothTargetSides
+          ? takeLearningBoolPlan('learning-target-left', learningPlanCount, Number.isFinite(learningPTargetLeft) ? clamp(learningPTargetLeft, 0, 1) : 0.5)
           : [];
 
         const learningPCueValid = Number(src.spatial_cue_validity_probability);
         const learningCueValidityPlan = {
           left: Number.isFinite(learningPCueValid)
-            ? buildLearningBoolPlan(Math.max(1, Number.parseInt(src.learning_max_trials ?? 200, 10) || 200), clamp(learningPCueValid, 0, 1))
+            ? takeLearningBoolPlan('learning-cue-valid-left', learningPlanCount, clamp(learningPCueValid, 0, 1))
             : [],
           right: Number.isFinite(learningPCueValid)
-            ? buildLearningBoolPlan(Math.max(1, Number.parseInt(src.learning_max_trials ?? 200, 10) || 200), clamp(learningPCueValid, 0, 1))
+            ? takeLearningBoolPlan('learning-cue-valid-right', learningPlanCount, clamp(learningPCueValid, 0, 1))
             : []
         };
 
         const learningTargetTiltOptions = learningNumberOptions(src.target_tilt_deg);
         const learningDistractorOptions = learningNumberOptions(src.distractor_orientation_deg);
         const learningTiltDistrPlan = {
-          left: buildLearningPairPlan(Math.max(1, Number.parseInt(src.learning_max_trials ?? 200, 10) || 200), learningTargetTiltOptions, learningDistractorOptions),
-          right: buildLearningPairPlan(Math.max(1, Number.parseInt(src.learning_max_trials ?? 200, 10) || 200), learningTargetTiltOptions, learningDistractorOptions)
+          left: takeLearningPairPlan('learning-tilt-distr-left', learningPlanCount, learningTargetTiltOptions, learningDistractorOptions),
+          right: takeLearningPairPlan('learning-tilt-distr-right', learningPlanCount, learningTargetTiltOptions, learningDistractorOptions)
         };
 
         const applyCueLearningPolicies = (trial, learningIndex, gState) => {
@@ -5040,6 +5105,7 @@
                 k === 'spatial_cue_validity_probability' || k === 'spatial_cue_target_mode' ||
                 k === 'target_left_probability' || k === 'value_target_value' ||
                 k === 'value_non_target_value' ||
+                k === 'counterbalance_scope' || k === 'counterbalance_group_id' ||
                 k === 'reward_availability_high' || k === 'reward_availability_low' ||
                 k === 'reward_availability_neutral'
               ) continue;

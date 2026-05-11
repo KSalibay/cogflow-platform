@@ -7220,6 +7220,8 @@ class JsonBuilder {
                 gabor_spatial_cue_validity_probability: { type: 'number', default: 1, min: 0, max: 1, step: 0.01, description: 'When target-cue coupling is enabled, probability that a unilateral cue is valid.' },
                 gabor_target_left_probability: { type: 'number', default: null, min: 0, max: 1, step: 0.01, description: 'Optional target-side bias. When both target locations are available, this sets P(target = left). Leave blank for uniform sampling.' },
                 gabor_spatial_cue_target_mode: { type: 'select', default: 'couple_target_to_cue', options: ['couple_target_to_cue', 'preserve_target_distribution'], description: 'Choose whether cue validity flips the target side, or whether the sampled target distribution is preserved.' },
+                gabor_counterbalance_scope: { type: 'select', default: 'per_block', options: ['per_block', 'group'], description: 'Per-block = balance inside this block only. Group = share balancing queues across blocks with the same Group ID.' },
+                gabor_counterbalance_group_id: { type: 'string', default: '', description: 'Optional ID for sharing target-side/cue balancing across independently configured Gabor blocks.' },
                 gabor_value_cue_enabled: { type: 'boolean', default: true },
                 gabor_left_value_options: { type: 'string', default: 'neutral,high,low', description: 'Allowed value cues for the left side.' },
                 gabor_right_value_options: { type: 'string', default: 'neutral,high,low', description: 'Allowed value cues for the right side.' },
@@ -10941,6 +10943,8 @@ class JsonBuilder {
             gabor_spatial_cue_probability: Number.parseFloat(document.getElementById('gaborSpatialCueProbability')?.value || '1'),
             gabor_spatial_cue_target_mode: 'couple_target_to_cue',
             gabor_target_left_probability: null,
+            gabor_counterbalance_scope: 'per_block',
+            gabor_counterbalance_group_id: '',
 
             gabor_value_cue_enabled: !!document.getElementById('gaborValueCueEnabled')?.checked,
             gabor_left_value_options: (document.getElementById('gaborLeftValueOptions')?.value || 'neutral,high,low').toString(),
@@ -11899,6 +11903,16 @@ class JsonBuilder {
             const spatialCueTargetMode = (blockComponent.gabor_spatial_cue_target_mode ?? '').toString().trim().toLowerCase();
             if (spatialCueTargetMode === 'couple_target_to_cue' || spatialCueTargetMode === 'preserve_target_distribution') {
                 values.spatial_cue_target_mode = spatialCueTargetMode;
+            }
+
+            const counterbalanceScope = (blockComponent.gabor_counterbalance_scope ?? '').toString().trim().toLowerCase();
+            if (counterbalanceScope === 'per_block' || counterbalanceScope === 'group') {
+                values.counterbalance_scope = counterbalanceScope;
+            }
+
+            const counterbalanceGroupId = (blockComponent.gabor_counterbalance_group_id ?? '').toString().trim();
+            if (counterbalanceGroupId) {
+                values.counterbalance_group_id = counterbalanceGroupId;
             }
 
             const lv = parseStringList(blockComponent.gabor_left_value_options);

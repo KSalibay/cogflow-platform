@@ -3103,6 +3103,8 @@ class TimelineBuilder {
                 [
                     'gabor_use_stored_thresholds',
                     'gabor_target_left_probability',
+                    'gabor_counterbalance_scope',
+                    'gabor_counterbalance_group_id',
                     'gabor_spatial_cue_options',
                     'gabor_spatial_cue_probability',
                     'gabor_spatial_cue_validity_probability',
@@ -3121,6 +3123,10 @@ class TimelineBuilder {
 
             setParamVisible('gabor_use_stored_thresholds', selected === 'gabor-trial' || selected === 'gabor-learning');
             setParamVisible('gabor_target_left_probability', true);
+            setParamVisible('gabor_counterbalance_scope', true);
+            const cbScopeEl = formContainer.querySelector('#param_gabor_counterbalance_scope');
+            const cbScope = cbScopeEl ? (cbScopeEl.value || 'per_block') : 'per_block';
+            setParamVisible('gabor_counterbalance_group_id', cbScope === 'group');
 
             const spatialEnabledEl = formContainer.querySelector('#param_gabor_spatial_cue_enabled');
             const spatialEnabled = spatialEnabledEl ? !!spatialEnabledEl.checked : true;
@@ -3386,6 +3392,10 @@ class TimelineBuilder {
             const valueCueEnabledEl = formContainer.querySelector('#param_gabor_value_cue_enabled');
             if (valueCueEnabledEl) {
                 valueCueEnabledEl.addEventListener('change', updateGaborCueVisibility);
+            }
+            const gaborCounterbalanceScopeEl = formContainer.querySelector('#param_gabor_counterbalance_scope');
+            if (gaborCounterbalanceScopeEl) {
+                gaborCounterbalanceScopeEl.addEventListener('change', updateGaborCueVisibility);
             }
             updateGaborCueVisibility();
 
