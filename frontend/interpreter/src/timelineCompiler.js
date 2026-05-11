@@ -341,6 +341,69 @@
     return length;
   }
 
+  function applyMiniblockStructureToTrials(trials, block) {
+    const srcTrials = Array.isArray(trials) ? trials.slice() : [];
+    if (!srcTrials.length || !isObject(block)) return srcTrials;
+
+    const mb = isObject(block.miniblock_structure)
+      ? block.miniblock_structure
+      : (isObject(block.parameter_values) && isObject(block.parameter_values.miniblock_structure)
+        ? block.parameter_values.miniblock_structure
+        : null);
+
+    if (!isObject(mb) || mb.enabled !== true) return srcTrials;
+
+    const breakEveryN = Number.parseInt(mb.break_every_n_trials ?? '', 10);
+    const numBlocks = Number.parseInt(mb.num_blocks ?? '', 10);
+    const trialsPerBlockExplicit = Number.parseInt(mb.trials_per_block ?? '', 10);
+
+    let trialsPerBlock = Number.isFinite(breakEveryN) && breakEveryN > 0
+      ? breakEveryN
+      : (Number.isFinite(trialsPerBlockExplicit) && trialsPerBlockExplicit > 0
+        ? trialsPerBlockExplicit
+        : null);
+
+    if (!trialsPerBlock && Number.isFinite(numBlocks) && numBlocks > 1) {
+      trialsPerBlock = Math.ceil(srcTrials.length / numBlocks);
+    }
+
+    if (!Number.isFinite(trialsPerBlock) || trialsPerBlock <= 0) {
+      return srcTrials;
+    }
+
+    const message = (mb.break_message ?? 'Take a short break.\n\nPress the key below when you are ready to continue.').toString();
+    const forceWait = mb.force_wait_for_break === true;
+    const durationSec = Number(mb.break_duration_sec);
+    const waitMs = (forceWait && Number.isFinite(durationSec) && durationSec > 0) ? Math.round(durationSec * 1000) : null;
+    const escapeKeysRaw = (mb.break_escape_keys ?? 'space').toString();
+    const escapeKeys = escapeKeysRaw
+      .split(/[\s,]+/g)
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    const out = [];
+    for (let i = 0; i < srcTrials.length; i++) {
+      out.push(srcTrials[i]);
+
+      const atBoundary = ((i + 1) % trialsPerBlock === 0);
+      const hasMoreTrials = (i + 1) < srcTrials.length;
+      if (!atBoundary || !hasMoreTrials) continue;
+
+      const breakTrial = {
+        type: 'html-keyboard-response',
+        stimulus: `<div style="max-width:720px;margin:0 auto;text-align:center;white-space:pre-wrap;">${escapeHtml(message)}</div>`,
+        choices: forceWait ? 'NO_KEYS' : (escapeKeys.length ? escapeKeys : ['space']),
+        response_ends_trial: !forceWait,
+        ...(forceWait && Number.isFinite(waitMs) && waitMs > 0 ? { trial_duration: waitMs } : {}),
+        _auto_inserted_miniblock_break: true
+      };
+
+      out.push(breakTrial);
+    }
+
+    return out;
+  }
+
   function expandBlock(block, opts) {
     const length = resolveBlockLength(block, opts, 1);
     const baseType = (typeof block.block_component_type === 'string' && block.block_component_type.trim())
@@ -652,7 +715,7 @@
         });
       }
 
-      return out;
+      return applyMiniblockStructureToTrials(out, block);
     }
 
     const seedParsed = Number.parseInt((block.seed ?? '').toString(), 10);
@@ -1963,7 +2026,7 @@
       applyGaborBlockCounterbalance(trials);
     }
 
-    return trials;
+    return applyMiniblockStructureToTrials(trials, block);
   }
 
   function expandTimeline(rawTimeline, opts, level = 0) {
@@ -2138,8 +2201,9 @@
       return 0;
     };
 
-    const chunkItemsForShuffle = (items) => {
+    const chunkItemsForShuffle = (items, options = {}) => {
       const src = Array.isArray(items) ? items : [];
+      const bundleInstructionRuns = options && options.bundleInstructionRuns === true;
       const chunks = [];
 
       for (let i = 0; i < src.length;) {
@@ -2159,6 +2223,21 @@
               j += 1;
               break;
             }
+          }
+          chunks.push(chunk);
+          i = j;
+          continue;
+        }
+
+        // Treat authored instruction-led runs as atomic shuffle units when
+        // randomizing inside explicit randomize groups.
+        if (bundleInstructionRuns && isInstructionLikeItem(current)) {
+          const chunk = [current];
+          let j = i + 1;
+          for (; j < src.length; j++) {
+            const candidate = src[j];
+            if (isInstructionLikeItem(candidate)) break;
+            chunk.push(candidate);
           }
           chunks.push(chunk);
           i = j;
@@ -2269,11 +2348,41 @@
             ? item.timeline
             : (Array.isArray(item.components) ? item.components : []));
 
-        const childChunks = chunkItemsForShuffle(childItems).map((chunk) => expandTimeline(chunk, opts, level + 1));
+        const childChunks = chunkItemsForShuffle(childItems, { bundleInstructionRuns: true }).map((chunk) => expandTimeline(chunk, opts, level + 1));
         const shouldShuffle = item.randomizable_across_markers !== false;
-        const orderedChildChunks = shouldShuffle
-          ? shuffleChunksPreservingInstructionLike(childChunks)
-          : childChunks;
+
+        let orderedChildChunks = childChunks;
+        if (shouldShuffle) {
+          // For two-way counterbalance groups reused by a parent loop, preserve
+          // strict alternation (ABAB or BABA) across repeated expansions.
+          const groupKey = String(item.random_group_id || '').trim();
+          const canAlternate = groupKey && childChunks.length === 2;
+          if (canAlternate) {
+            if (!isObject(opts.__randomizeGroupState)) opts.__randomizeGroupState = {};
+            const state = opts.__randomizeGroupState;
+            if (!isObject(state[groupKey])) {
+              const startsFlipped = Math.random() < 0.5;
+              state[groupKey] = {
+                baseOrder: startsFlipped ? [1, 0] : [0, 1],
+                flipNext: false
+              };
+            }
+
+            const groupState = state[groupKey];
+            const orderNow = groupState.flipNext
+              ? [groupState.baseOrder[1], groupState.baseOrder[0]]
+              : groupState.baseOrder;
+
+            orderedChildChunks = orderNow
+              .map((idx) => childChunks[idx])
+              .filter((chunk) => Array.isArray(chunk));
+
+            groupState.flipNext = !groupState.flipNext;
+          } else {
+            orderedChildChunks = shuffleChunksPreservingInstructionLike(childChunks);
+          }
+        }
+
         for (const expandedChunk of orderedChildChunks) {
           out.push(...expandedChunk);
         }
@@ -2380,10 +2489,18 @@
 
       // Anchor each probe to ONE neighboring generated run so probes are not
       // pooled across two blocks when the marker sits at a boundary.
+      const isProbeAnchorTrial = (candidate) => {
+        if (!isObject(candidate)) return false;
+        const t = String(candidate.type || '').trim().toLowerCase();
+        if (t === 'mw-probe') return false;
+        if (t === 'detection-response-task-start' || t === 'detection-response-task-stop') return false;
+        return estimateTrialDurationMs(candidate) > 0;
+      };
+
       const prevIdx = [];
       for (let k = i - 1; k >= 0; k--) {
         const candidate = out[k];
-        if (!isObject(candidate) || candidate._generated_from_block !== true) break;
+        if (!isProbeAnchorTrial(candidate)) break;
         prevIdx.push(k);
       }
       prevIdx.reverse();
@@ -2391,7 +2508,7 @@
       const nextIdx = [];
       for (let k = i + 1; k < out.length; k++) {
         const candidate = out[k];
-        if (!isObject(candidate) || candidate._generated_from_block !== true) break;
+        if (!isProbeAnchorTrial(candidate)) break;
         nextIdx.push(k);
       }
 
@@ -2413,12 +2530,10 @@
       }
 
       if (!generatedIdx.length) {
-        // Jittered MW insertion currently works only when the marker touches
-        // block-expanded trials (_generated_from_block=true). For standalone
-        // plugin trials/sequences, the probe remains at its authored position.
+        // If no adjacent trial-duration anchors exist, keep authored position.
         if ((Number.isFinite(minRaw) && minRaw > 0) || (Number.isFinite(maxRaw) && maxRaw > 0)) {
           try {
-            console.warn('[timelineCompiler] mw-probe jitter skipped: no adjacent block-generated trials; probe will run only at authored position.', {
+            console.warn('[timelineCompiler] mw-probe jitter skipped: no adjacent duration-bearing trials; probe will run only at authored position.', {
               min_interval_ms: minRaw,
               max_interval_ms: maxRaw,
               probe_name: probe.name || probe.title || 'mw-probe'

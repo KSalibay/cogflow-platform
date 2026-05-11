@@ -234,6 +234,25 @@ var jsPsychRdm = (function (jspsych) {
 
       const requireResponse = response.require_response !== false;
       const responseDevice = response.response_device || 'keyboard';
+      const mouseInactivityPrompt = (() => {
+        if (responseDevice !== 'mouse') return null;
+        const mouseResp = (response && typeof response.mouse_response === 'object') ? response.mouse_response : null;
+        const cfg = (mouseResp && typeof mouseResp.inactivity_prompt === 'object') ? mouseResp.inactivity_prompt : null;
+        if (!cfg || cfg.enabled !== true) return null;
+
+        const threshold = Number(cfg.idle_threshold_ms);
+        const cooldown = Number(cfg.reminder_cooldown_ms);
+        const message = (typeof cfg.message === 'string' && cfg.message.trim() !== '')
+          ? cfg.message.trim()
+          : 'Please keep moving the mouse to continue.';
+
+        return {
+          enabled: true,
+          idleThresholdMs: Number.isFinite(threshold) && threshold > 0 ? threshold : 15000,
+          reminderCooldownMs: Number.isFinite(cooldown) && cooldown >= 0 ? cooldown : 10000,
+          message,
+        };
+      })();
 
       // Continuous-only
       const endOnResponse = experimentType === 'continuous' && response.end_condition_on_response === true;
@@ -310,6 +329,11 @@ var jsPsychRdm = (function (jspsych) {
       let mouseMoveEvents = 0;
       let mouseLastPointerX = null;
       let mouseLastPointerY = null;
+      let mouseLastMoveTs = null;
+      let inactivityPromptVisible = false;
+      let inactivityPromptShownCount = 0;
+      let inactivityPromptLastShownTs = null;
+      let inactivityPromptFirstShownRtMs = null;
       let feedbackEndAt = null;
       let stimulusStopped = false;
 
@@ -327,6 +351,33 @@ var jsPsychRdm = (function (jspsych) {
       };
 
       const getCurrentCorrectSide = () => window.RDMEngine.computeCorrectSide(getActiveRdmParams());
+
+      const hideInactivityPrompt = () => {
+        if (!inactivityPromptVisible) return;
+        const el = display_element.querySelector('#rdm-feedback');
+        const note = el ? el.querySelector('#rdm-inactivity-prompt') : null;
+        if (note && note.parentNode) note.remove();
+        inactivityPromptVisible = false;
+      };
+
+      const showInactivityPrompt = () => {
+        if (!mouseInactivityPrompt || inactivityPromptVisible) return;
+        const el = display_element.querySelector('#rdm-feedback');
+        if (!el) return;
+
+        const note = document.createElement('div');
+        note.id = 'rdm-inactivity-prompt';
+        note.style.cssText = 'width:100%; max-width:' + canvasW + 'px; text-align:center; color:#FFD166; font-weight:600; font-size:0.95rem;';
+        note.textContent = mouseInactivityPrompt.message;
+        el.appendChild(note);
+
+        inactivityPromptVisible = true;
+        inactivityPromptShownCount += 1;
+        inactivityPromptLastShownTs = nowMs();
+        if (inactivityPromptFirstShownRtMs === null && startTs) {
+          inactivityPromptFirstShownRtMs = Math.max(0, Math.round(inactivityPromptLastShownTs - startTs));
+        }
+      };
 
       // Detection Response Task (DRT) overlay (builder flag: detection_response_task_enabled)
       const drtEnabled = rdm.detection_response_task_enabled === true;
@@ -420,6 +471,13 @@ var jsPsychRdm = (function (jspsych) {
           mouse_move_events: mouseMoveEvents,
           mouse_last_pointer_x_px: mouseLastPointerX,
           mouse_last_pointer_y_px: mouseLastPointerY,
+          mouse_inactivity_prompt_enabled: mouseInactivityPrompt ? true : false,
+          mouse_inactivity_idle_threshold_ms: mouseInactivityPrompt ? mouseInactivityPrompt.idleThresholdMs : null,
+          mouse_inactivity_reminder_cooldown_ms: mouseInactivityPrompt ? mouseInactivityPrompt.reminderCooldownMs : null,
+          mouse_inactivity_prompt_message: mouseInactivityPrompt ? mouseInactivityPrompt.message : null,
+          mouse_inactivity_prompt_shown_count: inactivityPromptShownCount,
+          mouse_inactivity_prompt_first_shown_rt_ms: inactivityPromptFirstShownRtMs,
+          mouse_inactivity_prompt_visible_at_end: inactivityPromptVisible,
           end_reason: reason || null,
           ...(includeRt ? { rt_ms: rt } : {}),
           ...(includeAccuracy ? { accuracy: isCorrect } : {}),
@@ -517,6 +575,7 @@ var jsPsychRdm = (function (jspsych) {
       const onResponse = (payload) => {
         if (responded) return;
         responded = true;
+        hideInactivityPrompt();
 
         responseKey = payload.key || null;
         responseSide = payload.side || null;
@@ -578,6 +637,8 @@ var jsPsychRdm = (function (jspsych) {
       let keyListenerId = null;
       let mouseListener = null;
       let mouseListenerEvent = null;
+      let inactivityMouseMoveListener = null;
+      let inactivityPromptIntervalId = null;
 
       const setupListeners = () => {
         if (responseDevice === 'keyboard') {
@@ -763,6 +824,37 @@ var jsPsychRdm = (function (jspsych) {
 
           mouseListenerEvent = (selectionMode === 'hover' || selectionMode === 'mousemove') ? 'mousemove' : 'click';
           canvas.addEventListener(mouseListenerEvent, mouseListener);
+
+          if (responseDevice === 'mouse' && mouseInactivityPrompt) {
+            mouseLastMoveTs = nowMs();
+            inactivityMouseMoveListener = () => {
+              mouseLastMoveTs = nowMs();
+              if (inactivityPromptVisible) {
+                hideInactivityPrompt();
+              }
+            };
+            canvas.addEventListener('mousemove', inactivityMouseMoveListener);
+
+            inactivityPromptIntervalId = window.setInterval(() => {
+              if (ended || responded || !startTs) return;
+              const now = nowMs();
+              const lastMoveTs = mouseLastMoveTs || startTs;
+              const idleForMs = now - lastMoveTs;
+              if (idleForMs < mouseInactivityPrompt.idleThresholdMs) {
+                if (inactivityPromptVisible) hideInactivityPrompt();
+                return;
+              }
+
+              const sinceLastShown = (inactivityPromptLastShownTs === null)
+                ? Infinity
+                : (now - inactivityPromptLastShownTs);
+              if (sinceLastShown < mouseInactivityPrompt.reminderCooldownMs) {
+                return;
+              }
+
+              showInactivityPrompt();
+            }, 200);
+          }
         } else if (responseDevice === 'voice') {
           // Not implemented
         }
@@ -771,10 +863,17 @@ var jsPsychRdm = (function (jspsych) {
       const cleanupListeners = () => {
         if (keyListenerId) this.jsPsych.pluginAPI.cancelKeyboardResponse(keyListenerId);
         if (mouseListener && canvas && mouseListenerEvent) canvas.removeEventListener(mouseListenerEvent, mouseListener);
+        if (inactivityMouseMoveListener && canvas) canvas.removeEventListener('mousemove', inactivityMouseMoveListener);
+        if (inactivityPromptIntervalId) {
+          window.clearInterval(inactivityPromptIntervalId);
+        }
+        hideInactivityPrompt();
         keyListener = null;
         keyListenerId = null;
         mouseListener = null;
         mouseListenerEvent = null;
+        inactivityMouseMoveListener = null;
+        inactivityPromptIntervalId = null;
       };
 
       const startStimulus = () => {

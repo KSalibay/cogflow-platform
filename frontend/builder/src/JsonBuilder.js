@@ -41,6 +41,7 @@ class JsonBuilder {
      */
     updateConditionalUI() {
         const defaultDevice = document.getElementById('defaultResponseDevice')?.value || 'keyboard';
+        const mouseInactivityEnabled = document.getElementById('mouseInactivityPromptEnabled')?.checked === true;
 
         const feedbackType = document.getElementById('defaultFeedbackType')?.value || 'off';
         const feedbackArrowColorMode = document.getElementById('defaultFeedbackArrowColorMode')?.value || 'auto';
@@ -117,6 +118,15 @@ class JsonBuilder {
             mouseAccuracySettings.style.display = showMouseAccuracy ? '' : 'none';
             mouseAccuracySettings.querySelectorAll('input, select, textarea').forEach((el) => {
                 el.disabled = !showMouseAccuracy;
+            });
+        }
+
+        const mouseInactivitySettings = document.getElementById('mouseInactivityPromptSettings');
+        if (mouseInactivitySettings) {
+            const showMouseInactivity = (defaultDevice === 'mouse') && mouseInactivityEnabled;
+            mouseInactivitySettings.style.display = showMouseInactivity ? '' : 'none';
+            mouseInactivitySettings.querySelectorAll('input, select, textarea').forEach((el) => {
+                el.disabled = !showMouseInactivity;
             });
         }
 
@@ -5690,6 +5700,33 @@ class JsonBuilder {
                         </select>
                         <div class="parameter-help">How a segment selection is registered</div>
                     </div>
+                    <div class="parameter-row">
+                        <label class="parameter-label">Inactivity Prompt:</label>
+                        <div class="parameter-input">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="mouseInactivityPromptEnabled">
+                                <label class="form-check-label" for="mouseInactivityPromptEnabled">Enable mouse inactivity warning</label>
+                            </div>
+                        </div>
+                        <div class="parameter-help">Optional: show a reminder when no mouse movement is detected for a while.</div>
+                    </div>
+                    <div id="mouseInactivityPromptSettings" style="display:none;">
+                        <div class="parameter-row">
+                            <label class="parameter-label">Idle Threshold (ms):</label>
+                            <input type="number" class="form-control parameter-input" id="mouseInactivityThresholdMs" value="15000" min="500" max="300000" step="100">
+                            <div class="parameter-help">How long to wait without mouse movement before showing the warning.</div>
+                        </div>
+                        <div class="parameter-row">
+                            <label class="parameter-label">Reminder Cooldown (ms):</label>
+                            <input type="number" class="form-control parameter-input" id="mouseInactivityReminderCooldownMs" value="10000" min="0" max="300000" step="100">
+                            <div class="parameter-help">Minimum delay before showing the warning again.</div>
+                        </div>
+                        <div class="parameter-row">
+                            <label class="parameter-label">Warning Message:</label>
+                            <input type="text" class="form-control parameter-input" id="mouseInactivityPromptText" value="Please keep moving the mouse to continue." maxlength="240">
+                            <div class="parameter-help">Displayed below the canvas when inactivity is detected.</div>
+                        </div>
+                    </div>
                     <div id="mouseAccuracySettings">
                         <div class="parameter-row">
                             <label class="parameter-label">Accuracy Mode:</label>
@@ -5736,6 +5773,11 @@ class JsonBuilder {
         const feedbackArrowColorModeEl = document.getElementById('defaultFeedbackArrowColorMode');
         if (feedbackArrowColorModeEl) {
             feedbackArrowColorModeEl.addEventListener('change', () => this.updateConditionalUI());
+        }
+
+        const mouseInactivityEnabledEl = document.getElementById('mouseInactivityPromptEnabled');
+        if (mouseInactivityEnabledEl) {
+            mouseInactivityEnabledEl.addEventListener('change', () => this.updateConditionalUI());
         }
 
         // Task-specific conditional UI (Gabor response keys)
@@ -6881,6 +6923,33 @@ class JsonBuilder {
                         </select>
                         <div class="parameter-help">How a segment selection is registered</div>
                     </div>
+                    <div class="parameter-row">
+                        <label class="parameter-label">Inactivity Prompt:</label>
+                        <div class="parameter-input">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="mouseInactivityPromptEnabled">
+                                <label class="form-check-label" for="mouseInactivityPromptEnabled">Enable mouse inactivity warning</label>
+                            </div>
+                        </div>
+                        <div class="parameter-help">Optional: show a reminder when no mouse movement is detected for a while.</div>
+                    </div>
+                    <div id="mouseInactivityPromptSettings" style="display:none;">
+                        <div class="parameter-row">
+                            <label class="parameter-label">Idle Threshold (ms):</label>
+                            <input type="number" class="form-control parameter-input" id="mouseInactivityThresholdMs" value="15000" min="500" max="300000" step="100">
+                            <div class="parameter-help">How long to wait without mouse movement before showing the warning.</div>
+                        </div>
+                        <div class="parameter-row">
+                            <label class="parameter-label">Reminder Cooldown (ms):</label>
+                            <input type="number" class="form-control parameter-input" id="mouseInactivityReminderCooldownMs" value="10000" min="0" max="300000" step="100">
+                            <div class="parameter-help">Minimum delay before showing the warning again.</div>
+                        </div>
+                        <div class="parameter-row">
+                            <label class="parameter-label">Warning Message:</label>
+                            <input type="text" class="form-control parameter-input" id="mouseInactivityPromptText" value="Please keep moving the mouse to continue." maxlength="240">
+                            <div class="parameter-help">Displayed below the canvas when inactivity is detected.</div>
+                        </div>
+                    </div>
                     <div id="mouseAccuracySettings">
                         <div class="parameter-row">
                             <label class="parameter-label">Accuracy Mode:</label>
@@ -6929,6 +6998,11 @@ class JsonBuilder {
         const feedbackArrowColorModeEl = document.getElementById('defaultFeedbackArrowColorMode');
         if (feedbackArrowColorModeEl) {
             feedbackArrowColorModeEl.addEventListener('change', () => this.updateConditionalUI());
+        }
+
+        const mouseInactivityEnabledEl = document.getElementById('mouseInactivityPromptEnabled');
+        if (mouseInactivityEnabledEl) {
+            mouseInactivityEnabledEl.addEventListener('change', () => this.updateConditionalUI());
         }
 
         // Task-specific conditional UI (Gabor response keys)
@@ -12573,19 +12647,23 @@ class JsonBuilder {
 
         // Apply mouse overrides
         if (effectiveDevice === 'mouse') {
+            const existingMouse = (merged.mouse_response && typeof merged.mouse_response === 'object')
+                ? merged.mouse_response
+                : {};
             merged.mouse_response = {
+                ...existingMouse,
                 enabled: true,
                 mode: 'aperture-segments',
-                segments: parseInt(componentParams.mouse_segments ?? merged.mouse_response?.segments ?? 2),
-                start_angle_deg: parseFloat(componentParams.mouse_start_angle_deg ?? merged.mouse_response?.start_angle_deg ?? 0),
-                selection_mode: componentParams.mouse_selection_mode ?? merged.mouse_response?.selection_mode ?? 'click',
-                accuracy_mode: componentParams.mouse_accuracy_mode ?? merged.mouse_response?.accuracy_mode,
+                segments: parseInt(componentParams.mouse_segments ?? existingMouse.segments ?? 2),
+                start_angle_deg: parseFloat(componentParams.mouse_start_angle_deg ?? existingMouse.start_angle_deg ?? 0),
+                selection_mode: componentParams.mouse_selection_mode ?? existingMouse.selection_mode ?? 'click',
+                accuracy_mode: componentParams.mouse_accuracy_mode ?? existingMouse.accuracy_mode,
                 accuracy_tolerance_deg: (componentParams.mouse_accuracy_tolerance_deg !== undefined && componentParams.mouse_accuracy_tolerance_deg !== null && componentParams.mouse_accuracy_tolerance_deg !== '')
                     ? parseFloat(componentParams.mouse_accuracy_tolerance_deg)
-                    : merged.mouse_response?.accuracy_tolerance_deg,
+                    : existingMouse.accuracy_tolerance_deg,
                 accuracy_slack_deg: (componentParams.mouse_accuracy_slack_deg !== undefined && componentParams.mouse_accuracy_slack_deg !== null && componentParams.mouse_accuracy_slack_deg !== '')
                     ? parseFloat(componentParams.mouse_accuracy_slack_deg)
-                    : merged.mouse_response?.accuracy_slack_deg
+                    : existingMouse.accuracy_slack_deg
             };
         } else {
             // Keep output clean if not a mouse-response component
@@ -12860,6 +12938,19 @@ class JsonBuilder {
                 start_angle_deg: parseFloat(document.getElementById('mouseSegmentStartAngle')?.value || 0),
                 selection_mode: document.getElementById('mouseSelectionMode')?.value || 'click'
             };
+
+            const inactivityEnabled = document.getElementById('mouseInactivityPromptEnabled')?.checked === true;
+            if (inactivityEnabled) {
+                const idleThresholdMs = Number.parseInt(document.getElementById('mouseInactivityThresholdMs')?.value || '15000', 10);
+                const reminderCooldownMs = Number.parseInt(document.getElementById('mouseInactivityReminderCooldownMs')?.value || '10000', 10);
+                const messageRaw = (document.getElementById('mouseInactivityPromptText')?.value || '').toString().trim();
+                responseParams.mouse_response.inactivity_prompt = {
+                    enabled: true,
+                    idle_threshold_ms: Number.isFinite(idleThresholdMs) && idleThresholdMs > 0 ? idleThresholdMs : 15000,
+                    reminder_cooldown_ms: Number.isFinite(reminderCooldownMs) && reminderCooldownMs >= 0 ? reminderCooldownMs : 10000,
+                    ...(messageRaw ? { message: messageRaw } : {})
+                };
+            }
 
             const accuracyMode = (document.getElementById('mouseAccuracyMode')?.value || 'auto').toString();
             const accuracyTolerance = Number.parseFloat(document.getElementById('mouseAccuracyToleranceDeg')?.value || '');
@@ -13696,6 +13787,15 @@ class JsonBuilder {
             this.setElementValue('mouseAccuracyMode', exp.response_parameters.mouse_response.accuracy_mode);
             this.setElementValue('mouseAccuracyToleranceDeg', exp.response_parameters.mouse_response.accuracy_tolerance_deg);
             this.setElementValue('mouseAccuracySlackDeg', exp.response_parameters.mouse_response.accuracy_slack_deg);
+            this.setElementChecked('mouseInactivityPromptEnabled', exp.response_parameters.mouse_response.inactivity_prompt?.enabled === true);
+            this.setElementValue('mouseInactivityThresholdMs', exp.response_parameters.mouse_response.inactivity_prompt?.idle_threshold_ms ?? 15000);
+            this.setElementValue('mouseInactivityReminderCooldownMs', exp.response_parameters.mouse_response.inactivity_prompt?.reminder_cooldown_ms ?? 10000);
+            this.setElementValue('mouseInactivityPromptText', exp.response_parameters.mouse_response.inactivity_prompt?.message ?? 'Please keep moving the mouse to continue.');
+        } else {
+            this.setElementChecked('mouseInactivityPromptEnabled', false);
+            this.setElementValue('mouseInactivityThresholdMs', 15000);
+            this.setElementValue('mouseInactivityReminderCooldownMs', 10000);
+            this.setElementValue('mouseInactivityPromptText', 'Please keep moving the mouse to continue.');
         }
         this.setElementChecked('enableFixation', true);
         

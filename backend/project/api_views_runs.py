@@ -61,8 +61,13 @@ class StartRunView(APIView):
         participant_external_id = (
             data.get("participant_external_id")
             or (token_payload.get("participant_external_id") if launch_token else "")
-            or "anonymous"
+            or ""
         )
+        participant_external_id = str(participant_external_id).strip()
+        if not participant_external_id:
+            # Keep anonymous launches counterbalanced across runs even when no
+            # external participant identifier is provided.
+            participant_external_id = f"anonymous-{uuid4().hex}"
         participant_key = hash_identifier(participant_external_id)
 
         config_versions = list(study.config_versions.all())
