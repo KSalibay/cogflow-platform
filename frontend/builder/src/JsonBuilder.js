@@ -3126,6 +3126,9 @@ class JsonBuilder {
             setFrom('socBackgroundColor', s.background_color);
             setFrom('socDefaultApp', s.default_app);
             setFrom('socNumTasks', s.num_tasks);
+            setFrom('socSubtaskControlMode', s.subtask_control_mode);
+            setFrom('socSubtaskDurationMode', s.subtask_duration_mode);
+            setFrom('socSubtaskDurationEntries', s.subtask_duration_entries);
             setFrom('socSessionDurationMs', s.trial_duration_ms);
             setFrom('socEndKey', s.end_key);
             if (s.icons_clickable !== undefined) setFrom('socIconsClickable', s.icons_clickable, 'checked');
@@ -5330,6 +5333,30 @@ class JsonBuilder {
                 </div>
 
                 <div class="parameter-row">
+                    <label class="parameter-label">Subtask Control Mode:</label>
+                    <select class="form-control parameter-input" id="socSubtaskControlMode">
+                        <option value="duration_based" selected>Duration-based</option>
+                        <option value="timeline_order_based">Timeline order-based</option>
+                    </select>
+                    <div class="parameter-help">Duration-based uses each subtask's schedule fields; Timeline order-based runs SOC subtasks sequentially in authored timeline order.</div>
+                </div>
+
+                <div class="parameter-row">
+                    <label class="parameter-label">Default Subtask Duration Mode:</label>
+                    <select class="form-control parameter-input" id="socSubtaskDurationMode">
+                        <option value="time_ms" selected>Time (ms)</option>
+                        <option value="entries">Trial / Frame count</option>
+                    </select>
+                    <div class="parameter-help">Default fallback for SOC subtask duration interpretation when subtask-level override is not set.</div>
+                </div>
+
+                <div class="parameter-row">
+                    <label class="parameter-label">Default Duration Entries:</label>
+                    <input type="number" class="form-control parameter-input" id="socSubtaskDurationEntries" value="200" min="0" max="100000">
+                    <div class="parameter-help">Used when duration mode is Trial / Frame count (e.g., 200 log entries in SART-like).</div>
+                </div>
+
+                <div class="parameter-row">
                     <label class="parameter-label">Session Duration (ms):</label>
                     <input type="number" class="form-control parameter-input" id="socSessionDurationMs" value="60000" min="0" max="3600000">
                     <div class="parameter-help">Duration of each SOC Dashboard session component. This is separate from the experiment-wide continuous duration.</div>
@@ -6505,6 +6532,30 @@ class JsonBuilder {
                     <label class="parameter-label">Number of Tasks:</label>
                     <input type="number" class="form-control parameter-input" id="socNumTasks" value="1" min="1" max="4">
                     <div class="parameter-help">Fallback window count used when no subtasks are configured (1–4)</div>
+                </div>
+
+                <div class="parameter-row">
+                    <label class="parameter-label">Subtask Control Mode:</label>
+                    <select class="form-control parameter-input" id="socSubtaskControlMode">
+                        <option value="duration_based" selected>Duration-based</option>
+                        <option value="timeline_order_based">Timeline order-based</option>
+                    </select>
+                    <div class="parameter-help">Duration-based uses each subtask's schedule fields; Timeline order-based runs SOC subtasks sequentially in authored timeline order.</div>
+                </div>
+
+                <div class="parameter-row">
+                    <label class="parameter-label">Default Subtask Duration Mode:</label>
+                    <select class="form-control parameter-input" id="socSubtaskDurationMode">
+                        <option value="time_ms" selected>Time (ms)</option>
+                        <option value="entries">Trial / Frame count</option>
+                    </select>
+                    <div class="parameter-help">Default fallback for SOC subtask duration interpretation when subtask-level override is not set.</div>
+                </div>
+
+                <div class="parameter-row">
+                    <label class="parameter-label">Default Duration Entries:</label>
+                    <input type="number" class="form-control parameter-input" id="socSubtaskDurationEntries" value="200" min="0" max="100000">
+                    <div class="parameter-help">Used when duration mode is Trial / Frame count (e.g., 200 log entries in SART-like).</div>
                 </div>
 
                 <div class="parameter-row">
@@ -9357,6 +9408,11 @@ class JsonBuilder {
                 ? parseInt(numTasksRaw)
                 : 1;
 
+            const durationEntriesRaw = document.getElementById('socSubtaskDurationEntries')?.value;
+            const durationEntries = (durationEntriesRaw !== undefined && durationEntriesRaw !== null && `${durationEntriesRaw}` !== '')
+                ? parseInt(durationEntriesRaw)
+                : 200;
+
             const safeNumTasks = Number.isFinite(numTasks)
                 ? Math.max(1, Math.min(4, Math.floor(numTasks)))
                 : 1;
@@ -9367,6 +9423,9 @@ class JsonBuilder {
                 background_color: (document.getElementById('socBackgroundColor')?.value || '#0b1220').toString(),
                 default_app: defaultApp,
                 num_tasks: safeNumTasks,
+                subtask_control_mode: (document.getElementById('socSubtaskControlMode')?.value || 'duration_based').toString(),
+                subtask_duration_mode: (document.getElementById('socSubtaskDurationMode')?.value || 'time_ms').toString(),
+                subtask_duration_entries: Number.isFinite(durationEntries) ? Math.max(0, Math.floor(durationEntries)) : 200,
                 trial_duration_ms: Number.isFinite(durationMs) ? durationMs : 60000,
                 end_key: (document.getElementById('socEndKey')?.value || 'escape').toString(),
                 icons_clickable: !!document.getElementById('socIconsClickable')?.checked,
@@ -10495,6 +10554,9 @@ class JsonBuilder {
             background_color: (document.getElementById('socBackgroundColor')?.value || '#0b1220').toString(),
             default_app: (document.getElementById('socDefaultApp')?.value || 'soc').toString(),
             num_tasks: parseInt(document.getElementById('socNumTasks')?.value || '1', 10),
+            subtask_control_mode: (document.getElementById('socSubtaskControlMode')?.value || 'duration_based').toString(),
+            subtask_duration_mode: (document.getElementById('socSubtaskDurationMode')?.value || 'time_ms').toString(),
+            subtask_duration_entries: parseInt(document.getElementById('socSubtaskDurationEntries')?.value || '200', 10),
             trial_duration_ms: parseInt(document.getElementById('socSessionDurationMs')?.value || '60000', 10),
             end_key: (document.getElementById('socEndKey')?.value || 'escape').toString(),
             icons_clickable: !!document.getElementById('socIconsClickable')?.checked,

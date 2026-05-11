@@ -97,8 +97,9 @@ class InterpreterAppView(APIView):
         try:
             main_js = interpreter_dir / "src" / "main.js"
             timeline_compiler_js = interpreter_dir / "src" / "timelineCompiler.js"
+            soc_dashboard_js = interpreter_dir / "src" / "jspsych-soc-dashboard.js"
             mtimes = []
-            for p in (main_js, timeline_compiler_js, index_path):
+            for p in (main_js, timeline_compiler_js, soc_dashboard_js, index_path):
                 if p.exists():
                     mtimes.append(int(p.stat().st_mtime))
             cache_bust = str(max(mtimes)) if mtimes else str(int(timezone.now().timestamp()))

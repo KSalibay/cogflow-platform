@@ -106,6 +106,25 @@ class JSPsychSchemas {
                         max: 4,
                         description: 'Fallback: number of placeholder windows shown when no subtasks are configured (1–4)'
                     },
+                    subtask_control_mode: {
+                        type: this.parameterTypes.SELECT,
+                        default: 'duration_based',
+                        options: ['duration_based', 'timeline_order_based'],
+                        description: 'How SOC subtask windows are sequenced: duration-based scheduling vs timeline-order sequencing'
+                    },
+                    subtask_duration_mode: {
+                        type: this.parameterTypes.SELECT,
+                        default: 'time_ms',
+                        options: ['time_ms', 'entries'],
+                        description: 'Default subtask duration interpretation: explicit ms schedule vs trial/frame entries'
+                    },
+                    subtask_duration_entries: {
+                        type: this.parameterTypes.INT,
+                        default: 200,
+                        min: 0,
+                        max: 100000,
+                        description: 'Default entry count when subtask duration mode is entries (e.g., ~200 log rows)'
+                    },
                     icons_clickable: {
                         type: this.parameterTypes.BOOL,
                         default: true,
@@ -147,6 +166,19 @@ class JSPsychSchemas {
                         min: 0,
                         max: 3600000,
                         description: 'Scheduled duration (ms). If 0, scheduling is disabled unless end_at_ms is provided manually in JSON.'
+                    },
+                    subtask_duration_mode: {
+                        type: this.parameterTypes.SELECT,
+                        default: 'time_ms',
+                        options: ['time_ms', 'entries'],
+                        description: 'Override for this subtask: time-based scheduling in ms vs trial/frame entries'
+                    },
+                    subtask_duration_entries: {
+                        type: this.parameterTypes.INT,
+                        default: 0,
+                        min: 0,
+                        max: 100000,
+                        description: 'When duration mode is entries, number of entries/trials to run (0 = use session default)'
                     },
                     instructions: {
                         type: this.parameterTypes.HTML_STRING,
@@ -293,6 +325,19 @@ class JSPsychSchemas {
                         max: 3600000,
                         description: 'Scheduled duration (ms). If 0, scheduling is disabled unless end_at_ms is provided manually in JSON.'
                     },
+                    subtask_duration_mode: {
+                        type: this.parameterTypes.SELECT,
+                        default: 'time_ms',
+                        options: ['time_ms', 'entries'],
+                        description: 'Override for this subtask: time-based scheduling in ms vs trial/frame entries'
+                    },
+                    subtask_duration_entries: {
+                        type: this.parameterTypes.INT,
+                        default: 0,
+                        min: 0,
+                        max: 100000,
+                        description: 'When duration mode is entries, number of entries/trials to run (0 = use session default)'
+                    },
                     num_trials: {
                         type: this.parameterTypes.INT,
                         default: 20,
@@ -431,6 +476,19 @@ class JSPsychSchemas {
                         max: 3600000,
                         description: 'Scheduled duration (ms). If 0, scheduling is disabled unless end_at_ms is provided manually in JSON.'
                     },
+                    subtask_duration_mode: {
+                        type: this.parameterTypes.SELECT,
+                        default: 'time_ms',
+                        options: ['time_ms', 'entries'],
+                        description: 'Override for this subtask: time-based scheduling in ms vs trial/frame entries'
+                    },
+                    subtask_duration_entries: {
+                        type: this.parameterTypes.INT,
+                        default: 0,
+                        min: 0,
+                        max: 100000,
+                        description: 'When duration mode is entries, number of entries/trials to run (0 = use session default)'
+                    },
                     instructions: {
                         type: this.parameterTypes.HTML_STRING,
                         default: '<p>You will see a stream of security alerts, one at a time.</p>\n<p>Press <b>{{GO_CONTROL}}</b> when the current alert matches the one from <b>{{N}}-back</b> on <b>{{MATCH_FIELD}}</b>.</p>\n<p>If it does not match, respond <b>{{NOGO_CONTROL}}</b> (or withhold if using Go/No-Go).</p>\n<p><i>Click this popup to begin.</i></p>',
@@ -535,6 +593,19 @@ class JSPsychSchemas {
                         min: 0,
                         max: 3600000,
                         description: 'Scheduled duration (ms). If 0, scheduling is disabled unless end_at_ms is provided manually in JSON.'
+                    },
+                    subtask_duration_mode: {
+                        type: this.parameterTypes.SELECT,
+                        default: 'time_ms',
+                        options: ['time_ms', 'entries'],
+                        description: 'Override for this subtask: time-based scheduling in ms vs trial/frame entries'
+                    },
+                    subtask_duration_entries: {
+                        type: this.parameterTypes.INT,
+                        default: 0,
+                        min: 0,
+                        max: 100000,
+                        description: 'When duration mode is entries, number of entries/trials to run (0 = use session default)'
                     },
                     instructions: {
                         type: this.parameterTypes.HTML_STRING,
@@ -757,6 +828,19 @@ class JSPsychSchemas {
                         min: 0,
                         max: 3600000,
                         description: 'Scheduled duration (ms). If 0, scheduling is disabled unless end_at_ms is provided manually in JSON.'
+                    },
+                    subtask_duration_mode: {
+                        type: this.parameterTypes.SELECT,
+                        default: 'time_ms',
+                        options: ['time_ms', 'entries'],
+                        description: 'Override for this subtask: time-based scheduling in ms vs trial/frame entries'
+                    },
+                    subtask_duration_entries: {
+                        type: this.parameterTypes.INT,
+                        default: 0,
+                        min: 0,
+                        max: 100000,
+                        description: 'When duration mode is entries, number of entries/trials to run (0 = use session default)'
                     },
                     instructions: {
                         type: this.parameterTypes.HTML_STRING,

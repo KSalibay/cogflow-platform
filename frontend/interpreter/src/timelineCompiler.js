@@ -2754,6 +2754,8 @@
           || t === 'mw-probe';
       };
 
+      const isSocInlineHtmlType = (t) => t === 'html-keyboard-response';
+
       const mapSocSubtaskKind = (t) => {
         switch (t) {
           case 'soc-subtask-sart-like': return 'sart-like';
@@ -2778,7 +2780,33 @@
 
       const subtasks = [];
       const icons = [];
+      const absorbedItems = [];
+      const absorbedInlineHtmlIndices = new Set();
       let insertAt = -1;
+
+      const hasSocNeighboringSubtask = (index) => {
+        let hasPrevSocSubtask = false;
+        for (let j = index - 1; j >= 0; j--) {
+          const it = tl[j];
+          if (!it || typeof it !== 'object') continue;
+          if (isSocSubtaskType(it.type)) {
+            hasPrevSocSubtask = true;
+            break;
+          }
+        }
+
+        if (!hasPrevSocSubtask) return false;
+
+        for (let j = index + 1; j < tl.length; j++) {
+          const it = tl[j];
+          if (!it || typeof it !== 'object') continue;
+          if (isSocSubtaskType(it.type)) {
+            return true;
+          }
+        }
+
+        return false;
+      };
 
       for (let i = 0; i < tl.length; i++) {
         const item = tl[i];
@@ -2798,15 +2826,220 @@
         }
         if (isSocSubtaskType(t)) {
           if (insertAt < 0) insertAt = i;
-          subtasks.push({
+          const subtask = {
             type: mapSocSubtaskKind(t),
             title: (item.title || item.name || mapSocSubtaskKind(t) || 'Subtask').toString(),
             ...extractSubtaskParams(item)
-          });
+          };
+          subtasks.push(subtask);
+          absorbedItems.push({ kind: 'subtask', index: i, subtask });
+          continue;
+        }
+        if (isSocInlineHtmlType(t)) {
+          // Only absorb html-keyboard trials that are placed between SOC helper subtasks.
+          // This avoids pulling global intro/outro instruction screens into SOC window chrome.
+          if (!hasSocNeighboringSubtask(i)) {
+            continue;
+          }
+
+          if (insertAt < 0) insertAt = i;
+          const baseParams = extractSubtaskParams(item);
+          const subtask = {
+            type: 'soc-inline-html-keyboard',
+            title: (item.title || item.name || 'Interruption').toString(),
+            ...baseParams,
+            stimulus: (item.stimulus ?? baseParams.stimulus ?? '').toString(),
+            prompt: (item.prompt ?? baseParams.prompt ?? '').toString(),
+            choices: (item.choices ?? baseParams.choices ?? 'ALL_KEYS'),
+            response_ends_trial: (item.response_ends_trial ?? baseParams.response_ends_trial),
+            trial_duration: (item.trial_duration ?? baseParams.trial_duration),
+            stimulus_duration: (item.stimulus_duration ?? baseParams.stimulus_duration)
+          };
+          subtasks.push(subtask);
+          absorbedItems.push({ kind: 'subtask', index: i, subtask });
+          absorbedInlineHtmlIndices.add(i);
+        }
+      }
+
+      // If helper-composed subtasks don't have explicit non-zero timing anchors,
+      // assign sequential schedule windows by helper order to avoid accidental overlap.
+      // This is especially important when SOC helper defaults set start_at_ms=0.
+      const hasInlineSocHtml = absorbedItems.some((rec) => (rec?.subtask?.type ?? '').toString().toLowerCase() === 'soc-inline-html-keyboard');
+      const hasExplicitTimingAnchor = absorbedItems.some((rec) => {
+        const s = rec?.subtask;
+        if (!s || typeof s !== 'object') return false;
+        return (
+          (Number.isFinite(Number(s.start_at_ms)) && Number(s.start_at_ms) > 0)
+          || (Number.isFinite(Number(s.start_delay_ms)) && Number(s.start_delay_ms) > 0)
+          || (Number.isFinite(Number(s.end_at_ms)) && Number(s.end_at_ms) > 0)
+        );
+      });
+
+      const normalizeDurationMode = (raw) => {
+        const v = (raw ?? '').toString().trim().toLowerCase();
+        if (v === 'entries' || v === 'trial_count' || v === 'frame_count') return 'entries';
+        return 'time_ms';
+      };
+
+      const estimateEntryDurationMs = (s) => {
+        const type = (s?.type ?? '').toString().toLowerCase();
+        if (type === 'sart-like') {
+          const n = Number(s?.scroll_interval_ms);
+          return (Number.isFinite(n) && n > 0) ? Math.max(100, Math.floor(n)) : 900;
+        }
+        if (type === 'flanker-like') {
+          const n = Number(s?.trial_interval_ms);
+          return (Number.isFinite(n) && n > 0) ? Math.max(300, Math.floor(n)) : 1400;
+        }
+        if (type === 'nback-like') {
+          const n = Number(s?.stimulus_interval_ms);
+          return (Number.isFinite(n) && n > 0) ? Math.max(200, Math.floor(n)) : 1200;
+        }
+        if (type === 'wcst-like') {
+          const rw = Number(s?.response_window_ms);
+          const iti = Number(s?.iti_ms ?? s?.trial_interval_ms);
+          const rwSafe = (Number.isFinite(rw) && rw > 0) ? Math.floor(rw) : 3500;
+          const itiSafe = (Number.isFinite(iti) && iti >= 0) ? Math.floor(iti) : 200;
+          return Math.max(250, rwSafe + itiSafe);
+        }
+        if (type === 'pvt-like') {
+          const n = Number(s?.log_scroll_interval_ms ?? s?.scroll_interval_ms);
+          return (Number.isFinite(n) && n > 0) ? Math.max(50, Math.floor(n)) : 400;
+        }
+        if (type === 'soc-inline-html-keyboard') {
+          const td = Number(s?.trial_duration_ms ?? s?.trial_duration ?? s?.duration_ms);
+          return (Number.isFinite(td) && td > 0) ? Math.max(250, Math.floor(td)) : 4000;
+        }
+        return 1000;
+      };
+
+      const estimateSequentialDurationMs = (s) => {
+        const type = (s?.type ?? '').toString().toLowerCase();
+
+        if (type === 'soc-inline-html-keyboard' || type === 'html-keyboard-response') {
+          const responseEnds = (s?.response_ends_trial === undefined) ? true : !!s.response_ends_trial;
+          if (responseEnds) return 1;
+          const td = Number(s?.trial_duration_ms ?? s?.trial_duration ?? s?.duration_ms);
+          if (Number.isFinite(td) && td > 0) {
+            return Math.max(1, Math.floor(td));
+          }
+          return 4000;
+        }
+
+        const durationMode = normalizeDurationMode(s?.subtask_duration_mode ?? socDefaultsGlobal?.subtask_duration_mode);
+
+        if (durationMode === 'entries') {
+          const entriesRaw = Number(s?.subtask_duration_entries);
+          const sessionEntriesRaw = Number(socDefaultsGlobal?.subtask_duration_entries);
+          const entries = (Number.isFinite(entriesRaw) && entriesRaw > 0)
+            ? Math.floor(entriesRaw)
+            : ((Number.isFinite(sessionEntriesRaw) && sessionEntriesRaw > 0) ? Math.floor(sessionEntriesRaw) : 0);
+          if (entries > 0) {
+            return Math.max(1, Math.floor(entries * estimateEntryDurationMs(s)));
+          }
+        }
+
+        const explicitDuration = Number(s?.duration_ms);
+        if (Number.isFinite(explicitDuration) && explicitDuration > 0) {
+          return Math.max(1, Math.floor(explicitDuration));
+        }
+
+        const trialDuration = Number(s?.trial_duration_ms ?? s?.trial_duration);
+        if (Number.isFinite(trialDuration) && trialDuration > 0) {
+          return Math.max(1, Math.floor(trialDuration));
+        }
+
+        const minRun = Number(s?.min_run_ms);
+        const maxRun = Number(s?.max_run_ms);
+        if (Number.isFinite(minRun) && minRun > 0) {
+          return Math.max(1, Math.floor(minRun));
+        }
+        if (Number.isFinite(maxRun) && maxRun > 0) {
+          return Math.max(1, Math.floor(maxRun));
+        }
+
+        return 10000;
+      };
+
+      if (hasInlineSocHtml && !hasExplicitTimingAnchor) {
+        let cursorMs = 0;
+        for (const rec of absorbedItems) {
+          const s = rec?.subtask;
+          if (!s || typeof s !== 'object') continue;
+          const durMs = estimateSequentialDurationMs(s);
+          s.start_at_ms = Math.max(0, Math.floor(cursorMs));
+          const responseEnds = (s?.response_ends_trial === undefined) ? true : !!s.response_ends_trial;
+          if (responseEnds) {
+            // Response-gated inline HTML must not auto-timeout in helper auto-sequencing.
+            s.end_at_ms = null;
+            // Keep cursor progression so later subtasks are still ordered after this step.
+            cursorMs = s.start_at_ms + Math.max(1, Math.floor(durMs));
+          } else {
+            s.end_at_ms = Math.max(s.start_at_ms + 1, s.start_at_ms + Math.max(1, Math.floor(durMs)));
+            cursorMs = s.end_at_ms;
+          }
         }
       }
 
       if (insertAt < 0 || (subtasks.length === 0 && icons.length === 0)) return tl;
+
+      // Timeline-order helper: if inline SOC HTML interruptions are unscheduled,
+      // place them in the temporal gap between neighboring scheduled subtasks.
+      const getScheduleBoundsMs = (s) => {
+        const start = Number.isFinite(Number(s?.start_at_ms))
+          ? Number(s.start_at_ms)
+          : (Number.isFinite(Number(s?.start_delay_ms)) ? Number(s.start_delay_ms) : null);
+
+        let end = null;
+        if (Number.isFinite(Number(s?.duration_ms)) && Number(s.duration_ms) > 0 && Number.isFinite(start)) {
+          end = start + Number(s.duration_ms);
+        } else if (Number.isFinite(Number(s?.end_at_ms)) && Number(s.end_at_ms) > 0) {
+          end = Number(s.end_at_ms);
+        }
+
+        return {
+          start: Number.isFinite(start) ? start : null,
+          end: Number.isFinite(end) ? end : null
+        };
+      };
+
+      for (let k = 0; k < absorbedItems.length; k++) {
+        const record = absorbedItems[k];
+        if (record.kind !== 'subtask') continue;
+        const s = record.subtask;
+        if ((s?.type ?? '').toString().toLowerCase() !== 'soc-inline-html-keyboard') continue;
+
+        const hasExplicitSchedule = (
+          (Number.isFinite(Number(s.start_at_ms)) && Number(s.start_at_ms) > 0)
+          || (Number.isFinite(Number(s.start_delay_ms)) && Number(s.start_delay_ms) > 0)
+          || (Number.isFinite(Number(s.duration_ms)) && Number(s.duration_ms) > 0)
+          || (Number.isFinite(Number(s.end_at_ms)) && Number(s.end_at_ms) > 0)
+        );
+        if (hasExplicitSchedule) continue;
+
+        let prevEnd = null;
+        for (let j = k - 1; j >= 0; j--) {
+          const b = getScheduleBoundsMs(absorbedItems[j]?.subtask);
+          if (Number.isFinite(b.end)) {
+            prevEnd = b.end;
+            break;
+          }
+        }
+
+        let nextStart = null;
+        for (let j = k + 1; j < absorbedItems.length; j++) {
+          const b = getScheduleBoundsMs(absorbedItems[j]?.subtask);
+          if (Number.isFinite(b.start)) {
+            nextStart = b.start;
+            break;
+          }
+        }
+
+        if (Number.isFinite(prevEnd) && Number.isFinite(nextStart) && nextStart > prevEnd) {
+          s.start_at_ms = Math.max(0, Math.floor(prevEnd));
+          s.end_at_ms = Math.max(s.start_at_ms + 1, Math.floor(nextStart));
+        }
+      }
 
       // If the SOC defaults don't specify duration, infer it from the scheduled subtasks.
       const inferSessionDurationMs = () => {
@@ -2815,10 +3048,12 @@
           const start = Number.isFinite(Number(s.start_at_ms)) ? Number(s.start_at_ms)
             : (Number.isFinite(Number(s.start_delay_ms)) ? Number(s.start_delay_ms) : 0);
           let end = null;
-          if (Number.isFinite(Number(s.duration_ms)) && Number(s.duration_ms) > 0) {
-            end = start + Number(s.duration_ms);
-          } else if (Number.isFinite(Number(s.end_at_ms)) && Number(s.end_at_ms) > 0) {
+          // Prefer explicit schedule endpoints (including helper auto-sequenced end_at_ms)
+          // over raw duration fields that may be legacy/default placeholders.
+          if (Number.isFinite(Number(s.end_at_ms)) && Number(s.end_at_ms) > 0) {
             end = Number(s.end_at_ms);
+          } else if (Number.isFinite(Number(s.duration_ms)) && Number(s.duration_ms) > 0) {
+            end = start + Number(s.duration_ms);
           }
           if (Number.isFinite(end) && end > maxEnd) maxEnd = end;
         }
@@ -2846,7 +3081,7 @@
         }
 
         const t = item.type;
-        if (t === 'soc-dashboard-icon' || isSocSubtaskType(t)) {
+        if (t === 'soc-dashboard-icon' || isSocSubtaskType(t) || (isSocInlineHtmlType(t) && absorbedInlineHtmlIndices.has(i))) {
           continue; // absorbed into session
         }
 

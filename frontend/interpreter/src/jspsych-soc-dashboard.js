@@ -319,8 +319,29 @@
     const socDebugEnabled = getUrlFlag('soc_debug') || getUrlFlag('debug');
 
     const trialMs = Number.isFinite(Number(trial.trial_duration_ms)) ? Number(trial.trial_duration_ms) : null;
+    let effectiveTrialMs = trialMs;
     const endKey = normalizeKeyName(trial.end_key ?? 'escape');
     const title = (trial.title ?? 'SOC Dashboard').toString();
+
+    const normalizeSocSubtaskControlMode = (raw) => {
+      const s = (raw ?? '').toString().trim().toLowerCase();
+      if (s === 'timeline_order_based' || s === 'timeline_order') return 'timeline_order_based';
+      return 'duration_based';
+    };
+
+    const normalizeSocSubtaskDurationMode = (raw) => {
+      const s = (raw ?? '').toString().trim().toLowerCase();
+      if (s === 'entries' || s === 'trial_count' || s === 'frame_count') return 'entries';
+      return 'time_ms';
+    };
+
+    const sessionSubtaskControlMode = normalizeSocSubtaskControlMode(trial.subtask_control_mode);
+    const sessionSubtaskDurationMode = normalizeSocSubtaskDurationMode(trial.subtask_duration_mode);
+    const sessionSubtaskDurationEntries = (() => {
+      const n = Number(trial.subtask_duration_entries);
+      if (!Number.isFinite(n)) return 200;
+      return Math.max(0, Math.floor(n));
+    })();
 
     const numTasksRaw = Number(trial.num_tasks);
     const fallbackCount = Number.isFinite(numTasksRaw) ? Math.max(1, Math.min(4, Math.floor(numTasksRaw))) : 1;
@@ -477,23 +498,209 @@
       windowsSpec = expanded;
     }
 
+    const estimateEntryDurationMs = (subtaskTypeRaw, rawSubtask) => {
+      const type = (subtaskTypeRaw ?? '').toString().trim().toLowerCase();
+      const s = (rawSubtask && typeof rawSubtask === 'object') ? rawSubtask : {};
+
+      if (type === 'sart-like') {
+        return clamp(s.scroll_interval_ms, 100, 10000) || 900;
+      }
+      if (type === 'flanker-like') {
+        return clamp(s.trial_interval_ms, 300, 10000) || 1400;
+      }
+      if (type === 'nback-like') {
+        return clamp(s.stimulus_interval_ms, 200, 10000) || 1200;
+      }
+      if (type === 'wcst-like') {
+        const rw = clamp(s.response_window_ms, 200, 20000) || 3500;
+        const iti = clamp(s.iti_ms ?? s.trial_interval_ms, 0, 20000) || 200;
+        return Math.max(250, rw + iti);
+      }
+      if (type === 'pvt-like') {
+        return clamp(s.log_scroll_interval_ms ?? s.scroll_interval_ms, 50, 5000) || 400;
+      }
+      if (type === 'mw-probe') {
+        const timeout = Number(s.timeout_ms);
+        if (Number.isFinite(timeout) && timeout > 0) return Math.max(250, Math.floor(timeout));
+        const explicitDur = Number(s.duration_ms);
+        if (Number.isFinite(explicitDur) && explicitDur > 0) return Math.max(250, Math.floor(explicitDur));
+        return 10000;
+      }
+      if (type === 'soc-inline-html-keyboard' || type === 'html-keyboard-response' || type === 'instructions') {
+        const td = Number(s.trial_duration ?? s.trial_duration_ms ?? s.duration_ms);
+        if (Number.isFinite(td) && td > 0) return Math.max(250, Math.floor(td));
+        return 4000;
+      }
+      return 1000;
+    };
+
+    const resolveTimelineOrderDurationMs = (wSpec) => {
+      const s = (wSpec?.subtask && typeof wSpec.subtask === 'object') ? wSpec.subtask : {};
+      const type = (wSpec?.subtask_type ?? '').toString();
+      const typeNorm = type.trim().toLowerCase();
+      const durationMode = normalizeSocSubtaskDurationMode(s.subtask_duration_mode ?? sessionSubtaskDurationMode);
+      const hasExplicitEntries = (s.subtask_duration_entries !== undefined && s.subtask_duration_entries !== null);
+
+      // Inline html-keyboard interruptions should behave like jsPsych html-keyboard-response:
+      // if response_ends_trial=true, advance immediately to the next timeline item.
+      if (typeNorm === 'soc-inline-html-keyboard' || typeNorm === 'html-keyboard-response') {
+        const responseEnds = (s.response_ends_trial === undefined) ? true : !!s.response_ends_trial;
+        if (responseEnds) return 0;
+        const td = Number(s.trial_duration_ms ?? s.trial_duration ?? s.duration_ms);
+        if (Number.isFinite(td) && td > 0) return Math.max(1, Math.floor(td));
+        return 4000;
+      }
+
+      if (durationMode === 'entries' || hasExplicitEntries) {
+        const entriesRaw = Number(s.subtask_duration_entries);
+        const entries = (Number.isFinite(entriesRaw) && entriesRaw > 0)
+          ? Math.floor(entriesRaw)
+          : sessionSubtaskDurationEntries;
+        if (entries > 0) {
+          return Math.max(1, Math.floor(entries * estimateEntryDurationMs(type, s)));
+        }
+      }
+
+      const durationRaw = Number(s.duration_ms);
+      if (Number.isFinite(durationRaw) && durationRaw > 0) {
+        return Math.max(1, Math.floor(durationRaw));
+      }
+
+      const trialDurRaw = Number(s.trial_duration_ms ?? s.trial_duration);
+      if (Number.isFinite(trialDurRaw) && trialDurRaw > 0) {
+        return Math.max(1, Math.floor(trialDurRaw));
+      }
+
+      const minRunRaw = Number(s.min_run_ms);
+      const maxRunRaw = Number(s.max_run_ms);
+      if (Number.isFinite(minRunRaw) && minRunRaw > 0 && Number.isFinite(maxRunRaw) && maxRunRaw > 0) {
+        return Math.max(1, Math.floor((Math.min(minRunRaw, maxRunRaw) + Math.max(minRunRaw, maxRunRaw)) / 2));
+      }
+      if (Number.isFinite(minRunRaw) && minRunRaw > 0) {
+        return Math.max(1, Math.floor(minRunRaw));
+      }
+      if (Number.isFinite(maxRunRaw) && maxRunRaw > 0) {
+        return Math.max(1, Math.floor(maxRunRaw));
+      }
+
+      if (Number.isFinite(trialMs) && trialMs > 0 && windowsSpec.length > 0) {
+        return Math.max(1, Math.floor(trialMs / windowsSpec.length));
+      }
+
+      return Math.max(1, Math.floor(estimateEntryDurationMs(type, s)));
+    };
+
+    // In duration-based mode, allow per-subtask/session entries mode to define runtime length.
+    // This overrides ms duration defaults when duration mode is explicitly entries.
+    if (sessionSubtaskControlMode === 'duration_based' && windowsSpec.length > 0) {
+      for (let i = 0; i < windowsSpec.length; i++) {
+        const w = windowsSpec[i];
+        const s = (w?.subtask && typeof w.subtask === 'object') ? w.subtask : {};
+        const typeNorm = (w?.subtask_type ?? '').toString().trim().toLowerCase();
+        if (typeNorm === 'soc-inline-html-keyboard' || typeNorm === 'html-keyboard-response') {
+          continue;
+        }
+        const durationMode = normalizeSocSubtaskDurationMode(s.subtask_duration_mode ?? sessionSubtaskDurationMode);
+        if (durationMode !== 'entries') continue;
+
+        const entriesRaw = Number(s.subtask_duration_entries);
+        const entries = (Number.isFinite(entriesRaw) && entriesRaw > 0)
+          ? Math.floor(entriesRaw)
+          : sessionSubtaskDurationEntries;
+        if (!(entries > 0)) continue;
+
+        const estMs = Math.max(1, Math.floor(entries * estimateEntryDurationMs(w?.subtask_type, s)));
+
+        const sch = w?.schedule || { has_schedule: false, start_at_ms: 0, end_at_ms: null };
+        const startAt = Math.max(0, Math.floor(Number(sch.start_at_ms) || 0));
+        const endAt = startAt + estMs;
+
+        w.schedule = {
+          has_schedule: true,
+          start_at_ms: startAt,
+          end_at_ms: endAt,
+          _source: 'entries_duration'
+        };
+      }
+    }
+
+    if (sessionSubtaskControlMode === 'timeline_order_based' && windowsSpec.length > 0) {
+      let cursorMs = 0;
+      for (let i = 0; i < windowsSpec.length; i++) {
+        const w = windowsSpec[i];
+        let durMs = resolveTimelineOrderDurationMs(w);
+
+        const startAt = Math.max(0, Math.floor(cursorMs));
+        const typeNorm = (w?.subtask_type ?? '').toString().trim().toLowerCase();
+        const isResponseGated = (
+          (typeNorm === 'soc-inline-html-keyboard' || typeNorm === 'html-keyboard-response')
+          && (((w?.subtask?.response_ends_trial) === undefined) ? true : !!w?.subtask?.response_ends_trial)
+        );
+
+        // In timeline-order mode, all windows show their estimated duration; response-gated windows
+        // will end when the response comes in, timed windows will end after their duration.
+        const endAt = isResponseGated ? null : (startAt + Math.max(1, Math.floor(durMs)));
+
+        w.schedule = {
+          has_schedule: true,
+          start_at_ms: startAt,
+          end_at_ms: endAt,
+          _source: 'timeline_order',
+          _response_gated: isResponseGated,
+          _duration_ms: Math.max(1, Math.floor(durMs))
+        };
+
+        cursorMs = startAt + Math.max(1, Math.floor(durMs));
+      }
+
+      // Ensure global session timeout never truncates the planned timeline-order sequence.
+      if (Number.isFinite(effectiveTrialMs) && effectiveTrialMs > 0) {
+        const requiredMs = Math.max(1, Math.floor(cursorMs));
+        if (effectiveTrialMs < requiredMs) {
+          effectiveTrialMs = requiredMs;
+        }
+      }
+    }
+
     // Auto-sequencing fallback:
     // If the researcher requested multiple tasks (num_tasks > 1) but provided no explicit
     // per-subtask scheduling fields, default to showing exactly one window at a time.
     // This preserves the explicit scheduling/overlap demo behavior when any schedule exists.
     const hasAnySchedule = windowsSpec.some((w) => (w?.schedule?.has_schedule === true));
-    if (!hasAnySchedule && Number.isFinite(trialMs) && trialMs > 0 && windowsSpec.length > 1) {
+    if (!hasAnySchedule && Number.isFinite(effectiveTrialMs) && effectiveTrialMs > 0 && windowsSpec.length > 1) {
       const n = windowsSpec.length;
       for (let i = 0; i < n; i++) {
-        const startAt = Math.floor((trialMs * i) / n);
-        let endAt = Math.floor((trialMs * (i + 1)) / n);
-        if (i === n - 1) endAt = Math.floor(trialMs);
+        const startAt = Math.floor((effectiveTrialMs * i) / n);
+        let endAt = Math.floor((effectiveTrialMs * (i + 1)) / n);
+        if (i === n - 1) endAt = Math.floor(effectiveTrialMs);
         if (endAt < startAt) endAt = startAt;
         windowsSpec[i].schedule = { has_schedule: true, start_at_ms: startAt, end_at_ms: endAt };
       }
     }
 
     const subtaskStartTs = new Array(windowsSpec.length).fill(null);
+
+    // Debug aid: record the effective schedule the runtime will use for each subtask.
+    events.push({
+      t_ms: 0,
+      type: 'soc_schedule_snapshot',
+      schedule: windowsSpec.map((w, idx) => {
+        const sch = w?.schedule || {};
+        return {
+          index: idx,
+          subtask_type: (w?.subtask_type ?? '').toString() || null,
+          subtask_title: (w?.subtask_title ?? '').toString() || null,
+          source: (sch._source ?? null),
+          start_at_ms: Number.isFinite(Number(sch.start_at_ms)) ? Math.floor(Number(sch.start_at_ms)) : null,
+          end_at_ms: (sch.end_at_ms === null || sch.end_at_ms === undefined)
+            ? null
+            : (Number.isFinite(Number(sch.end_at_ms)) ? Math.floor(Number(sch.end_at_ms)) : null),
+          response_gated: (sch._response_gated === true),
+          duration_ms: Number.isFinite(Number(sch._duration_ms)) ? Math.floor(Number(sch._duration_ms)) : null
+        };
+      })
+    });
+
     const markGenericSubtaskStart = (idx) => {
       if (!Number.isFinite(idx) || idx < 0 || idx >= windowsSpec.length) return;
       if (subtaskStartTs[idx] !== null) return;
@@ -532,7 +739,11 @@
         body.innerHTML = raw;
       }
 
+      const mountedAt = nowMs();
+      const dismissGuardMs = 350;
+
       const startOnce = () => {
+        if ((nowMs() - mountedAt) < dismissGuardMs) return;
         try { overlay.remove(); } catch { /* ignore */ }
         try { onDismiss?.(overlay); } catch { /* ignore */ }
         try { onStart?.(); } catch { /* ignore */ }
@@ -591,6 +802,11 @@
     const maxConcurrentNonMwWindows = (() => {
       const nonMw = windowsSpec.filter((w) => ((w?.subtask_type ?? '').toString().toLowerCase() !== 'mw-probe'));
       if (!nonMw.length) return 1;
+
+      // In timeline-order mode, only 1 window is visible at a time
+      if (nonMw.some((w) => w?.schedule?._source === 'timeline_order')) {
+        return 1;
+      }
 
       const unscheduledCount = nonMw.filter((w) => !(w?.schedule?.has_schedule)).length;
       const events = [];
@@ -668,6 +884,7 @@
     const windowInstructionsTitle = new Array(windowsSpec.length).fill(null);
     const windowInstructionsHtml = new Array(windowsSpec.length).fill('');
     const windowInstructionsOverlay = new Array(windowsSpec.length).fill(null);
+    const windowInstructionsAcknowledged = new Array(windowsSpec.length).fill(false);
     const windowStartIsGated = new Array(windowsSpec.length).fill(false);
     // Duration (ms) to wait from popup-dismissal before force-ending a gated window.
     // null means no deferred end pending.
@@ -683,7 +900,16 @@
       for (let i = 0; i < windowsSpec.length; i++) {
         if (!isWindowVisible(i)) continue;
         const t = (windowsSpec[i]?.subtask_type ?? '').toString().toLowerCase();
-        if (t === 'sart-like' || t === 'nback-like' || t === 'flanker-like' || t === 'wcst-like' || t === 'pvt-like' || t === 'mw-probe') return i;
+        if (
+          t === 'sart-like'
+          || t === 'nback-like'
+          || t === 'flanker-like'
+          || t === 'wcst-like'
+          || t === 'pvt-like'
+          || t === 'mw-probe'
+          || t === 'soc-inline-html-keyboard'
+          || t === 'html-keyboard-response'
+        ) return i;
       }
       for (let i = 0; i < windowsSpec.length; i++) {
         if (isWindowVisible(i)) return i;
@@ -696,6 +922,29 @@
         return;
       }
       activeWindowIndex = pickFirstVisibleKeyboardWindow();
+    };
+
+    const showNextSequentialWindow = (idx) => {
+      // Hide the current window and all others
+      for (let j = 0; j < windowsSpec.length; j++) {
+        if (j !== idx + 1 && isWindowVisible(j)) {
+          hideWindow(j);
+        }
+      }
+      // Show only the next window in sequence
+      if (idx + 1 < windowsSpec.length) {
+        const nextIdx = idx + 1;
+        showWindow(nextIdx);
+        activeWindowIndex = nextIdx;
+        const hasInstructions = (windowInstructionsHtml[nextIdx] ?? '').toString().trim() !== '';
+        if (hasInstructions) {
+          ensureWindowInstructionsVisible(nextIdx);
+        } else if (!windowStartIsGated[nextIdx]) {
+          startWindowIfNeeded(nextIdx);
+        }
+        return nextIdx;
+      }
+      return null;
     };
 
     const isMwProbeWindow = (idx) => ((windowsSpec[idx]?.subtask_type ?? '').toString().toLowerCase() === 'mw-probe');
@@ -844,6 +1093,14 @@
 
     const startWindowIfNeeded = (idx) => {
       if (windowHasStarted[idx]) return;
+
+      const hasInstructions = (windowInstructionsHtml[idx] ?? '').toString().trim() !== '';
+      if (hasInstructions && windowInstructionsAcknowledged[idx] !== true) {
+        windowStartIsGated[idx] = true;
+        ensureWindowInstructionsVisible(idx);
+        return;
+      }
+
       windowHasStarted[idx] = true;
       try { subtaskAutoStart[idx]?.(); } catch { /* ignore */ }
       ensureActiveWindowVisible();
@@ -856,6 +1113,10 @@
           if (ended) return;
           forceEndWindow(idx, 'scheduled_end');
           hideWindow(idx);
+          // In timeline-order mode, advance to next window when duration expires
+          if (windowsSpec[idx]?.schedule?._source === 'timeline_order') {
+            showNextSequentialWindow(idx);
+          }
         });
       }
     };
@@ -873,18 +1134,24 @@
       const html = raw.trim();
 
       if (!html) {
+        windowInstructionsAcknowledged[idx] = true;
         windowStartIsGated[idx] = false;
         // No instructions => start immediately when the window becomes visible.
         startWindowIfNeeded(idx);
         return;
       }
 
+      windowInstructionsAcknowledged[idx] = false;
+
       const titleRaw = (windowInstructionsTitle[idx] ?? windowsSpec[idx]?.subtask_title ?? 'Instructions').toString();
       const overlay = installInstructionsOverlay(
         hostEl,
         titleRaw,
         raw,
-        () => startWindowIfNeeded(idx),
+        () => {
+          windowInstructionsAcknowledged[idx] = true;
+          startWindowIfNeeded(idx);
+        },
         () => {
           windowInstructionsOverlay[idx] = null;
           settleInstructionPause();
@@ -894,6 +1161,32 @@
       windowStartIsGated[idx] = !!overlay;
       if (overlay) {
         beginInstructionPause();
+      }
+    };
+
+    const ensureWindowInstructionsVisible = (idx, attempt = 0) => {
+      if (!Number.isFinite(idx) || idx < 0 || idx >= windowsSpec.length) return;
+      if (windowHasStarted[idx]) return;
+
+      const raw = (windowInstructionsHtml[idx] ?? '').toString();
+      if (!raw.trim()) return;
+
+      if (windowInstructionsOverlay[idx] && windowInstructionsOverlay[idx].isConnected) {
+        windowStartIsGated[idx] = true;
+        beginInstructionPause();
+        return;
+      }
+
+      maybeInstallWindowInstructions(idx);
+
+      if (windowInstructionsOverlay[idx] && windowInstructionsOverlay[idx].isConnected) {
+        windowStartIsGated[idx] = true;
+        beginInstructionPause();
+        return;
+      }
+
+      if (attempt < 10) {
+        setSafeTimeout(() => ensureWindowInstructionsVisible(idx, attempt + 1), 25);
       }
     };
 
@@ -939,6 +1232,11 @@
       const harmfulProb = clamp((o.harmful_probability ?? o.target_probability), 0, 1);
       const benignProb = clamp((o.benign_probability ?? o.distractor_probability), 0, 1);
       const includeNeutralEntries = (o.include_neutral_entries !== undefined) ? !!o.include_neutral_entries : true;
+      const durationMode = normalizeSocSubtaskDurationMode(o.subtask_duration_mode ?? sessionSubtaskDurationMode);
+      const entriesRaw = Number(o.subtask_duration_entries);
+      const targetEntries = (Number.isFinite(entriesRaw) && entriesRaw > 0)
+        ? Math.floor(entriesRaw)
+        : ((durationMode === 'entries' && sessionSubtaskDurationEntries > 0) ? sessionSubtaskDurationEntries : null);
 
       return {
         visible_entries: visibleEntries,
@@ -966,11 +1264,15 @@
         target_probability: harmfulProb,
         distractor_probability: benignProb,
         include_neutral_entries: includeNeutralEntries
+        ,
+        subtask_duration_mode: durationMode,
+        subtask_duration_entries: targetEntries
       };
     };
 
     const sartStates = [];
     const nbackStates = [];
+    const socHtmlKeyboardStates = [];
 
     const styleEl = makeShellStyle();
     display_element.innerHTML = '';
@@ -1038,6 +1340,10 @@
       const isWcstLike = (wSpec.subtask_type || '').toString().toLowerCase() === 'wcst-like';
       const isPvtLike = (wSpec.subtask_type || '').toString().toLowerCase() === 'pvt-like';
       const isMwProbeLike = (wSpec.subtask_type || '').toString().toLowerCase() === 'mw-probe';
+      const isSocHtmlKeyboardLike = (() => {
+        const st = (wSpec.subtask_type || '').toString().toLowerCase();
+        return st === 'soc-inline-html-keyboard' || st === 'html-keyboard-response';
+      })();
       if (isMwProbeLike) {
         w.classList.add('soc-mwprobe-window');
       }
@@ -2668,6 +2974,186 @@
         continue;
       }
 
+      if (isSocHtmlKeyboardLike) {
+        const coerceSocHtmlKeyboardConfig = (raw) => {
+          const o = (raw && typeof raw === 'object') ? raw : {};
+          const stimulusHtml = (o.stimulus ?? '').toString();
+          const promptHtml = (o.prompt ?? '').toString();
+
+          const normalizeChoices = (value) => {
+            if (value === 'ALL_KEYS') return { allKeys: true, choices: [] };
+            if (Array.isArray(value)) {
+              const keys = value
+                .map((k) => normalizeKeyName(k))
+                .filter(Boolean);
+              return { allKeys: false, choices: keys };
+            }
+            if (typeof value === 'string' && value.trim()) {
+              const keys = value
+                .split(/[,\n]+/g)
+                .map((k) => normalizeKeyName(k))
+                .filter(Boolean);
+              return { allKeys: false, choices: keys };
+            }
+            return { allKeys: true, choices: [] };
+          };
+
+          const trialDurationRaw = Number(o.trial_duration ?? o.trial_duration_ms ?? o.duration_ms);
+          const stimulusDurationRaw = Number(o.stimulus_duration ?? o.stimulus_duration_ms);
+          const parsedChoices = normalizeChoices(o.choices);
+
+          return {
+            stimulus_html: stimulusHtml,
+            prompt_html: promptHtml,
+            all_keys: parsedChoices.allKeys,
+            choices: parsedChoices.choices,
+            response_ends_trial: (o.response_ends_trial === undefined) ? true : !!o.response_ends_trial,
+            trial_duration_ms: Number.isFinite(trialDurationRaw) && trialDurationRaw > 0 ? Math.floor(trialDurationRaw) : null,
+            stimulus_duration_ms: Number.isFinite(stimulusDurationRaw) && stimulusDurationRaw > 0 ? Math.floor(stimulusDurationRaw) : null
+          };
+        };
+
+        const cfg = coerceSocHtmlKeyboardConfig(wSpec.subtask || {});
+        const stimId = `soc_htmlkbd_stim_${i}`;
+        const promptId = `soc_htmlkbd_prompt_${i}`;
+        host.innerHTML = `
+          <div class="soc-htmlkbd-wrap">
+            <div id="${stimId}" class="soc-htmlkbd-stimulus">${cfg.stimulus_html}</div>
+            ${cfg.prompt_html ? `<div id="${promptId}" class="soc-htmlkbd-prompt">${cfg.prompt_html}</div>` : ''}
+          </div>
+        `;
+
+        const stimEl = host.querySelector(`#${stimId}`);
+
+        const state = {
+          idx: i,
+          title: wSpec.subtask_title,
+          cfg,
+          started: false,
+          ended: false,
+          hidden_after_end: false,
+          accept_input_after_ts: 0,
+          subtask_start_ts: null,
+          response_key: null,
+          response_rt_ms: null,
+          finish_reason: null,
+          acceptsKey: (key) => {
+            if (!cfg) return false;
+            if (cfg.all_keys) return true;
+            const nk = normalizeKeyName(key);
+            return !!(nk && cfg.choices.includes(nk));
+          }
+        };
+        socHtmlKeyboardStates[i] = state;
+
+        const tSubtaskMs = () => {
+          if (!state.started || !Number.isFinite(state.subtask_start_ts)) return null;
+          return Math.max(0, Math.round(nowMs() - state.subtask_start_ts));
+        };
+
+        const finishSocHtmlKeyboard = (reason, key = null) => {
+          if (state.ended) return;
+          state.ended = true;
+          state.finish_reason = (reason ?? 'ended').toString();
+          if (key !== null && key !== undefined && state.response_key === null) {
+            state.response_key = normalizeKeyName(key);
+            state.response_rt_ms = tSubtaskMs();
+          }
+
+          events.push({
+            t_ms: Math.round(nowMs() - startTs),
+            t_subtask_ms: tSubtaskMs(),
+            type: 'soc_html_keyboard_end',
+            subtask_index: i,
+            subtask_title: state.title,
+            reason: state.finish_reason,
+            response_key: state.response_key,
+            rt_ms: state.response_rt_ms
+          });
+
+          // Match html-keyboard-response behavior: when response ends trial,
+          // advance immediately instead of waiting for scheduled end.
+          if (state.cfg && state.cfg.response_ends_trial) {
+            if (!state.hidden_after_end) {
+              state.hidden_after_end = true;
+              setSafeTimeout(() => {
+                if (ended) return;
+                hideWindow(i);
+                // In timeline-order mode, advance to the next window
+                if (windowsSpec[i]?.schedule?._source === 'timeline_order') {
+                  showNextSequentialWindow(i);
+                }
+              }, 0);
+            }
+          }
+        };
+
+        const startSocHtmlKeyboard = () => {
+          if (state.started) return;
+          state.started = true;
+          state.subtask_start_ts = nowMs();
+          // Guard against carry-over keypresses from the previous subtask/window.
+          state.accept_input_after_ts = state.subtask_start_ts + 350;
+
+          events.push({
+            t_ms: Math.round(nowMs() - startTs),
+            t_subtask_ms: 0,
+            type: 'soc_html_keyboard_start',
+            subtask_index: i,
+            subtask_title: state.title,
+            choices: cfg.all_keys ? 'ALL_KEYS' : cfg.choices
+          });
+
+          if (Number.isFinite(cfg.stimulus_duration_ms) && cfg.stimulus_duration_ms > 0) {
+            setSafeTimeout(() => {
+              if (state.ended) return;
+              if (stimEl) stimEl.style.visibility = 'hidden';
+            }, cfg.stimulus_duration_ms);
+          }
+
+          if (Number.isFinite(cfg.trial_duration_ms) && cfg.trial_duration_ms > 0) {
+            setSafeTimeout(() => {
+              if (state.ended) return;
+              finishSocHtmlKeyboard('timeout');
+            }, cfg.trial_duration_ms);
+          }
+        };
+
+        state.respond = (key) => {
+          if (!state.started || state.ended) return false;
+          if (nowMs() < state.accept_input_after_ts) return false;
+          if (!state.acceptsKey(key)) return false;
+          const nk = normalizeKeyName(key);
+
+          events.push({
+            t_ms: Math.round(nowMs() - startTs),
+            t_subtask_ms: tSubtaskMs(),
+            type: 'soc_html_keyboard_response',
+            subtask_index: i,
+            subtask_title: state.title,
+            key: nk,
+            accepted: true
+          });
+
+          if (cfg.response_ends_trial) {
+            finishSocHtmlKeyboard('response', nk);
+          }
+          return true;
+        };
+
+        subtaskAutoStart[i] = startSocHtmlKeyboard;
+        subtaskForceEnd[i] = (reason) => {
+          if (state.ended) return;
+          finishSocHtmlKeyboard((reason ?? 'forced').toString());
+        };
+
+        windowInstructionsHost[i] = w;
+        windowInstructionsTitle[i] = wSpec.subtask_title;
+        windowInstructionsHtml[i] = subtaskInstructions;
+        maybeInstallWindowInstructions(i);
+        continue;
+      }
+
       if (!isSartLike && !isNbackLike && !isFlankerLike && !isWcstLike && !isPvtLike && !isMwProbeLike) {
         host.innerHTML = `
           <h4>Subtask window</h4>
@@ -4034,6 +4520,9 @@
       let stopAt = null;
 
       const computeStopAt = () => {
+        if (Number.isFinite(Number(cfg.subtask_duration_entries)) && Number(cfg.subtask_duration_entries) > 0) {
+          return Infinity;
+        }
         const minR = cfg.min_run_ms;
         const maxR = cfg.max_run_ms;
         if (!minR && !maxR) return Infinity;
@@ -4048,6 +4537,30 @@
 
         if (isSubtaskExecutionPaused(i)) {
           setSafeTimeout(tick, 50);
+          return;
+        }
+
+        // Entries mode: stop exactly at configured entry count.
+        const targetEntries = Number(cfg.subtask_duration_entries);
+        if (Number.isFinite(targetEntries) && targetEntries > 0 && state.presented >= targetEntries) {
+          const latest = state.entries.length ? state.entries[state.entries.length - 1] : null;
+          recordNonResponseIfNeeded(latest, 'subtask_end');
+          state.ended = true;
+          if (statusEl) statusEl.textContent = 'Complete';
+          events.push({
+            t_ms: Math.round(nowMs() - startTs),
+            t_subtask_ms: tSubtaskMs(),
+            type: 'sart_subtask_end',
+            subtask_index: i,
+            subtask_title: state.title,
+            reason: 'entry_limit',
+            target_entries: Math.floor(targetEntries),
+            presented: state.presented,
+            hits: state.hits,
+            misses: state.misses,
+            false_alarms: state.false_alarms,
+            correct_rejects: state.correct_rejects
+          });
           return;
         }
 
@@ -4210,6 +4723,31 @@
             e.preventDefault();
             consumed = true;
             try { nb.respond?.('nonmatch', 'keyboard', k); } catch { /* ignore */ }
+          }
+        }
+      }
+
+      // SOC-inline html-keyboard interruption: apply keyboard response to active window.
+      const hk = socHtmlKeyboardStates[activeWindowIndex];
+      if (hk && hk.started && !hk.ended && typeof hk.respond === 'function') {
+        if (hk.respond(k) === true) {
+          e.preventDefault();
+          consumed = true;
+        }
+      }
+
+      // Fallback: if active window is not the html-keyboard interruption, route key to
+      // any visible/started html-keyboard interruption window.
+      if (!consumed) {
+        for (let i = 0; i < socHtmlKeyboardStates.length; i++) {
+          const state = socHtmlKeyboardStates[i];
+          if (!state || !state.started || state.ended || typeof state.respond !== 'function') continue;
+          if (!isWindowVisible(i)) continue;
+          if (state.respond(k) === true) {
+            e.preventDefault();
+            consumed = true;
+            activeWindowIndex = i;
+            break;
           }
         }
       }
@@ -4555,10 +5093,28 @@
     shell.appendChild(modalLayer);
     display_element.appendChild(shell);
 
+    // After the shell is attached to the DOM, retry instruction overlay installation for
+    // any currently visible windows. This avoids mount-order races on the initial subtask.
+    for (let i = 0; i < windowsSpec.length; i++) {
+      if (!isWindowVisible(i)) continue;
+      ensureWindowInstructionsVisible(i);
+    }
+
     // Scheduled windows: auto-show/auto-start and auto-hide/auto-end.
     for (let i = 0; i < windowsSpec.length; i++) {
       const sch = windowsSpec[i]?.schedule || { has_schedule: false, start_at_ms: 0, end_at_ms: null };
       if (!sch.has_schedule) continue;
+
+      // In timeline-order mode, only the first window is scheduled via setLogicalTimeout;
+      // subsequent windows are shown by showNextSequentialWindow when the previous completes.
+      const isTimelineOrderLater = (sch._source === 'timeline_order' && i > 0);
+      if (isTimelineOrderLater) {
+        // Store duration for this window so it can be scheduled when shown
+        if (sch._response_gated !== true && Number.isFinite(Number(sch._duration_ms)) && Number(sch._duration_ms) > 0) {
+          windowEndDurationMs[i] = Math.max(0, Math.floor(Number(sch._duration_ms)));
+        }
+        continue;
+      }
 
       const startAt = Math.max(0, Math.floor(Number(sch.start_at_ms) || 0));
       const endAt = (sch.end_at_ms === null || sch.end_at_ms === undefined)
@@ -4576,7 +5132,7 @@
 
       setLogicalTimeout(startAt, doStart);
 
-      if (Number.isFinite(endAt)) {
+      if (Number.isFinite(endAt) && sch._response_gated !== true) {
         // If this window has an instructions popup, the participant must dismiss it first.
         // Defer the forced-end by the window duration from popup-dismissal time rather
         // than firing at an absolute trial timestamp (which would eat into task time).
@@ -4589,7 +5145,21 @@
             if (ended) return;
             forceEndWindow(i, 'scheduled_end');
             hideWindow(i);
+            if (sch._source === 'timeline_order') {
+              showNextSequentialWindow(i);
+            }
           });
+        }
+      }
+    }
+
+    // For timeline-order mode: hide all windows except the first one initially
+    const isTimelineOrder = windowsSpec.some((w) => w?.schedule?._source === 'timeline_order');
+    if (isTimelineOrder) {
+      for (let i = 1; i < windowsSpec.length; i++) {
+        const sch = windowsSpec[i]?.schedule || {};
+        if (sch._source === 'timeline_order') {
+          hideWindow(i);
         }
       }
     }
@@ -4611,8 +5181,8 @@
     iconsHost.addEventListener('click', onDesktopClick);
     document.addEventListener('keydown', onKeyDown);
 
-    if (Number.isFinite(trialMs) && trialMs > 0) {
-      setLogicalTimeout(trialMs, () => {
+    if (Number.isFinite(effectiveTrialMs) && effectiveTrialMs > 0) {
+      setLogicalTimeout(effectiveTrialMs, () => {
         endTrial('timeout');
       });
     }

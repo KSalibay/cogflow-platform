@@ -1842,7 +1842,25 @@ class TimelineBuilder {
         }
 
         let formHtml = '';
-        for (const [paramName, paramDef] of Object.entries(parameters)) {
+        const isSocSubtaskComponent = (
+            type === 'soc-subtask-sart-like'
+            || type === 'soc-subtask-nback-like'
+            || type === 'soc-subtask-flanker-like'
+            || type === 'soc-subtask-wcst-like'
+            || type === 'soc-subtask-pvt-like'
+        );
+        const orderedEntries = Object.entries(parameters).sort(([a], [b]) => {
+            if (!isSocSubtaskComponent) return 0;
+            const rank = (name) => {
+                if (name === 'subtask_duration_mode') return 10;
+                if (name === 'start_at_ms') return 20;
+                if (name === 'duration_ms') return 21;
+                if (name === 'subtask_duration_entries') return 30;
+                return 50;
+            };
+            return rank(a) - rank(b);
+        });
+        for (const [paramName, paramDef] of orderedEntries) {
             if (paramDef && typeof paramDef === 'object' && paramDef.blockTarget && type !== 'block') {
                 continue;
             }
@@ -1901,13 +1919,24 @@ class TimelineBuilder {
                                 : ''))));
             const dynamicTargetSubGroup = (paramName === 'dynamic_target_group_every_n_frames') ? 'dynamicTargetRange' : '';
             const dependentDirectionSubGroup = (paramName === 'dependent_group_1_direction_options' || paramName === 'dependent_group_direction_difference_options') ? 'dependentDirectionFields' : '';
+            const socDurationModeGroup = (isSocSubtaskComponent && (paramName === 'subtask_duration_mode')) ? 'mode' : '';
+            const socDurationModeDep = (isSocSubtaskComponent && (paramName === 'start_at_ms' || paramName === 'duration_ms'))
+                ? 'time_ms'
+                : ((isSocSubtaskComponent && paramName === 'subtask_duration_entries') ? 'entries' : '');
+            const socDurationOrder = (isSocSubtaskComponent)
+                ? ((paramName === 'subtask_duration_mode')
+                    ? '10'
+                    : ((paramName === 'start_at_ms' || paramName === 'duration_ms')
+                        ? '20'
+                        : ((paramName === 'subtask_duration_entries') ? '30' : '50')))
+                : '';
 
             const blockTargetAttr = (type === 'block' && blockTargetByParam[paramName])
                 ? ` data-block-target="${this.escapeHtmlAttr(String(blockTargetByParam[paramName]))}"`
                 : '';
 
             formHtml += `
-                <div class="mb-3" data-param-name="${this.escapeHtmlAttr(paramName)}"${responseGroup ? ` data-response-group="${this.escapeHtmlAttr(responseGroup)}"` : ''}${cueSubGroup ? ` data-cue-subgroup="${this.escapeHtmlAttr(cueSubGroup)}"` : ''}${feedbackSubGroup ? ` data-feedback-subgroup="${this.escapeHtmlAttr(feedbackSubGroup)}"` : ''}${dynamicTargetSubGroup ? ` data-dynamic-target-subgroup="${this.escapeHtmlAttr(dynamicTargetSubGroup)}"` : ''}${dependentDirectionSubGroup ? ` data-dependent-direction-subgroup="${this.escapeHtmlAttr(dependentDirectionSubGroup)}"` : ''}${blockTargetAttr}>
+                <div class="mb-3" data-param-name="${this.escapeHtmlAttr(paramName)}"${responseGroup ? ` data-response-group="${this.escapeHtmlAttr(responseGroup)}"` : ''}${cueSubGroup ? ` data-cue-subgroup="${this.escapeHtmlAttr(cueSubGroup)}"` : ''}${feedbackSubGroup ? ` data-feedback-subgroup="${this.escapeHtmlAttr(feedbackSubGroup)}"` : ''}${dynamicTargetSubGroup ? ` data-dynamic-target-subgroup="${this.escapeHtmlAttr(dynamicTargetSubGroup)}"` : ''}${dependentDirectionSubGroup ? ` data-dependent-direction-subgroup="${this.escapeHtmlAttr(dependentDirectionSubGroup)}"` : ''}${socDurationModeGroup ? ` data-soc-duration-mode-group="${this.escapeHtmlAttr(socDurationModeGroup)}"` : ''}${socDurationModeDep ? ` data-soc-duration-mode="${this.escapeHtmlAttr(socDurationModeDep)}"` : ''}${socDurationOrder ? ` data-soc-duration-order="${this.escapeHtmlAttr(socDurationOrder)}"` : ''}${blockTargetAttr}>
                     <label for="param_${this.escapeHtmlAttr(paramName)}" class="form-label">${label}</label>
                     ${this.generateParameterInputFromComponentDef(paramName, paramDef, currentValue, shouldDisable)}
                     ${helpText}
@@ -1921,7 +1950,9 @@ class TimelineBuilder {
     generateParameterInputFromComponentDef(paramName, paramDef, currentValue, shouldDisable = false) {
         const inputId = `param_${paramName}`;
         const def = (paramDef && typeof paramDef === 'object') ? paramDef : {};
-        const t = (def.type ?? 'string').toString();
+        const tRaw = (def.type ?? 'string').toString();
+        const tUpper = tRaw.trim().toUpperCase();
+        const tLower = tRaw.trim().toLowerCase();
 
         const disabledAttr = shouldDisable ? 'disabled' : '';
 
@@ -1929,7 +1960,7 @@ class TimelineBuilder {
             ? (def.default ?? '')
             : currentValue;
 
-        if (t === 'boolean') {
+        if (tLower === 'boolean' || tUpper === 'BOOL') {
             return `
                 <div class="form-check form-switch">
                     <input class="form-check-input" type="checkbox" id="${this.escapeHtmlAttr(inputId)}" ${safeVal ? 'checked' : ''} ${disabledAttr}>
@@ -1937,7 +1968,7 @@ class TimelineBuilder {
             `;
         }
 
-        if (t === 'select') {
+        if (tLower === 'select' || tUpper === 'SELECT') {
             const options = Array.isArray(def.options) ? def.options : [];
             const v = (safeVal ?? '').toString();
             const optionsHtml = options
@@ -1949,19 +1980,19 @@ class TimelineBuilder {
             return `<select class="form-select" id="${this.escapeHtmlAttr(inputId)}" ${disabledAttr}>${optionsHtml}</select>`;
         }
 
-        if (t === 'number') {
+        if (tLower === 'number' || tUpper === 'INT' || tUpper === 'FLOAT') {
             const minAttr = (def.min !== undefined && def.min !== null) ? ` min="${this.escapeHtmlAttr(String(def.min))}"` : '';
             const maxAttr = (def.max !== undefined && def.max !== null) ? ` max="${this.escapeHtmlAttr(String(def.max))}"` : '';
             const stepAttr = (def.step !== undefined && def.step !== null) ? ` step="${this.escapeHtmlAttr(String(def.step))}"` : '';
             return `<input type="number" class="form-control" id="${this.escapeHtmlAttr(inputId)}" value="${this.escapeHtmlAttr(String(safeVal))}"${minAttr}${maxAttr}${stepAttr} ${disabledAttr}>`;
         }
 
-        if (t === 'textarea') {
-            const rows = Number.isFinite(Number(def.rows)) ? Math.max(2, Math.min(40, Number(def.rows))) : 6;
+        if (tLower === 'textarea' || tUpper === 'HTML_STRING') {
+            const rows = Number.isFinite(Number(def.rows)) ? Math.max(2, Math.min(40, Number(def.rows))) : 4;
             return `<textarea class="form-control" id="${this.escapeHtmlAttr(inputId)}" rows="${this.escapeHtmlAttr(String(rows))}" ${disabledAttr}>${this.escapeHtml(String(safeVal))}</textarea>`;
         }
 
-        if (t === 'COLOR') {
+        if (tUpper === 'COLOR') {
             const v = (safeVal ?? '').toString() || (def.default ?? '#ff3b3b');
             return `
                 <div class="d-flex gap-2">
@@ -1996,9 +2027,28 @@ class TimelineBuilder {
         let formHtml = '';
         const componentType = (component?.type ?? '').toString();
         const isSocNbackLikeSubtask = (componentType === 'soc-subtask-nback-like' || componentType === 'nback-like');
+        const isSocDurationModeSubtask = (
+            componentType === 'soc-subtask-sart-like'
+            || componentType === 'soc-subtask-nback-like'
+            || componentType === 'soc-subtask-flanker-like'
+            || componentType === 'soc-subtask-wcst-like'
+            || componentType === 'soc-subtask-pvt-like'
+        );
         const parameters = schema.parameters;
 
-        for (const [paramName, paramDef] of Object.entries(parameters)) {
+        const orderedEntries = Object.entries(parameters).sort(([a], [b]) => {
+            if (!isSocDurationModeSubtask) return 0;
+            const rank = (name) => {
+                if (name === 'subtask_duration_mode') return 10;
+                if (name === 'start_at_ms') return 20;
+                if (name === 'duration_ms') return 21;
+                if (name === 'subtask_duration_entries') return 30;
+                return 50;
+            };
+            return rank(a) - rank(b);
+        });
+
+        for (const [paramName, paramDef] of orderedEntries) {
             if (paramDef.blockTarget && componentType !== 'block') {
                 continue;
             }
@@ -2084,8 +2134,16 @@ class TimelineBuilder {
                 if (paramName === 'match_key' || paramName === 'nonmatch_key') nbackParadigmAttr = 'data-nback-paradigm="2afc"';
             }
 
+            let socDurationModeGroupAttr = '';
+            let socDurationModeAttr = '';
+            if (isSocDurationModeSubtask) {
+                if (paramName === 'subtask_duration_mode') socDurationModeGroupAttr = 'data-soc-duration-mode-group="mode"';
+                if (paramName === 'start_at_ms' || paramName === 'duration_ms') socDurationModeAttr = 'data-soc-duration-mode="time_ms"';
+                if (paramName === 'subtask_duration_entries') socDurationModeAttr = 'data-soc-duration-mode="entries"';
+            }
+
             formHtml += `
-                <div class="mb-3 ${shouldDisable ? 'parameter-disabled' : ''}" data-param-name="${paramName}" ${responseGroup ? `data-response-group="${responseGroup}"` : ''} ${cueSubGroup ? `data-cue-subgroup="${cueSubGroup}"` : ''} ${feedbackSubGroup ? `data-feedback-subgroup="${feedbackSubGroup}"` : ''} ${dynamicTargetSubGroup ? `data-dynamic-target-subgroup="${dynamicTargetSubGroup}"` : ''} ${dependentDirectionSubGroup ? `data-dependent-direction-subgroup="${dependentDirectionSubGroup}"` : ''} ${blockTargetAttr} ${nbackParadigmAttr}>
+                <div class="mb-3 ${shouldDisable ? 'parameter-disabled' : ''}" data-param-name="${paramName}" ${responseGroup ? `data-response-group="${responseGroup}"` : ''} ${cueSubGroup ? `data-cue-subgroup="${cueSubGroup}"` : ''} ${feedbackSubGroup ? `data-feedback-subgroup="${feedbackSubGroup}"` : ''} ${dynamicTargetSubGroup ? `data-dynamic-target-subgroup="${dynamicTargetSubGroup}"` : ''} ${dependentDirectionSubGroup ? `data-dependent-direction-subgroup="${dependentDirectionSubGroup}"` : ''} ${blockTargetAttr} ${nbackParadigmAttr} ${socDurationModeGroupAttr} ${socDurationModeAttr}>
                     <label for="param_${paramName}" class="form-label ${shouldDisable ? 'text-muted' : ''}">
                         ${this.formatParameterNameForComponent(componentType, paramName)}
                         ${paramDef.required ? '<span class="text-danger">*</span>' : ''}
@@ -2531,6 +2589,30 @@ class TimelineBuilder {
         if (nbackParadigmEl) {
             nbackParadigmEl.addEventListener('change', updateNbackKeyVisibility);
             updateNbackKeyVisibility();
+        }
+
+        // SOC subtask duration controls:
+        // - subtask_duration_mode = time_ms => show start_at_ms + duration_ms
+        // - subtask_duration_mode = entries => show subtask_duration_entries
+        const socDurationModeEl = formContainer.querySelector('#param_subtask_duration_mode');
+        const updateSocDurationModeVisibility = () => {
+            if (!socDurationModeEl) return;
+            const modeRaw = (socDurationModeEl.value || 'time_ms').toString().trim().toLowerCase();
+            const mode = (modeRaw === 'entries') ? 'entries' : 'time_ms';
+
+            formContainer.querySelectorAll('[data-soc-duration-mode]').forEach(el => {
+                const want = (el.getAttribute('data-soc-duration-mode') || '').toString().trim().toLowerCase();
+                const show = (want === mode);
+                el.style.display = show ? '' : 'none';
+                el.querySelectorAll('input, select, textarea').forEach(i => {
+                    i.disabled = !show;
+                });
+            });
+        };
+
+        if (socDurationModeEl) {
+            socDurationModeEl.addEventListener('change', updateSocDurationModeVisibility);
+            updateSocDurationModeVisibility();
         }
 
         // Feedback conditional fields (per-component / per-block)
