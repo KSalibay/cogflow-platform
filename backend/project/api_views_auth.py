@@ -315,7 +315,7 @@ class TotpDisableView(APIView):
             return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
         profile = get_or_create_profile(request.user)
         profile.mfa_enabled = False
-        profile.mfa_totp_secret_encrypted = None
+        profile.mfa_totp_secret_encrypted = ""
         profile.mfa_last_verified_at = None
         profile.save(update_fields=["mfa_enabled", "mfa_totp_secret_encrypted", "mfa_last_verified_at"])
         request.session.pop("mfa_verified_at", None)

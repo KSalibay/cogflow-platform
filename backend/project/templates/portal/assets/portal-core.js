@@ -3,8 +3,11 @@
 
     // ── CSRF ──────────────────────────────────────────────────
     function getCsrf() {
-      const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
-      return m ? decodeURIComponent(m[1]) : "";
+      // When multiple csrftoken cookies exist (e.g., stale domain/path variants),
+      // use the last one to align with how browsers send cookie headers.
+      const matches = Array.from(document.cookie.matchAll(/(?:^|;\s*)csrftoken=([^;]+)/g));
+      if (!matches.length) return "";
+      return decodeURIComponent(matches[matches.length - 1][1]);
     }
 
     function postOpts(body) {
