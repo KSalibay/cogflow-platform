@@ -70,7 +70,19 @@ echo "==> Applying known drift-safe fake migrations (idempotent)"
 docker compose run --rm api python manage.py migrate runs 0002_runsession_owner_user --fake || true
 docker compose run --rm api python manage.py migrate studies 0002_study_owner_user_studyresearcheraccess --fake || true
 
-echo "==> Applying migrations"
+echo "==> Applying studies migrations through 0005"
+docker compose run --rm api python manage.py migrate studies 0005_analysis_report_jobs --noinput
+
+echo "==> Reconciling studies.0006 (launch_properties_json)"
+if docker compose run --rm api python manage.py shell -c "from django.db import connection; c=connection.cursor(); c.execute(\"SELECT 1 FROM information_schema.columns WHERE table_name='studies_study' AND column_name='launch_properties_json' LIMIT 1\"); raise SystemExit(0 if c.fetchone() else 1)"; then
+  echo "    Detected existing studies_study.launch_properties_json; faking studies.0006"
+  docker compose run --rm api python manage.py migrate studies 0006_study_launch_properties_json --fake
+else
+  echo "    Column not present; applying studies.0006 normally"
+  docker compose run --rm api python manage.py migrate studies 0006_study_launch_properties_json --noinput
+fi
+
+echo "==> Applying remaining migrations"
 docker compose run --rm api python manage.py migrate --noinput
 
 echo "==> Restarting API service"
