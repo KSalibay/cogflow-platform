@@ -533,7 +533,76 @@ class StudyLatestConfigView(APIView):
                 "task_type": latest_task_type,
                 "available_task_types": available_task_types,
                 "configs": configs,
+                "study_properties": _normalize_study_launch_properties(study, versions),
                 "config": config_version.config_json,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class StudyPropertiesView(APIView):
+    """Persist study-level task labels/order and flow variants for launch orchestration."""
+
+    @transaction.atomic
+    def post(self, request, study_slug: str):
+        if not request.user.is_authenticated:
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        study = Study.objects.filter(slug=study_slug, is_active=True).first()
+        if not study:
+            return Response({"error": "Study not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        profile = get_or_create_profile(request.user)
+        if not _can_manage_study_scope(request, profile, study):
+            return Response(
+                {
+                    "error": "Study configuration access requires researcher or platform_admin role",
+                    "current_role": profile.role,
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if (
+            not _has_study_access(study, request.user, profile)
+            and not _is_legacy_public_study(study)
+            and not _is_study_publish_actor(study, request.user)
+        ):
+            return Response({"error": "Study is not owned by the current researcher"}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = StudyPropertiesRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        versions = list(study.config_versions.all())
+        normalized = _normalize_study_launch_properties(study, versions, raw_properties=serializer.validated_data)
+        study.launch_properties_json = {
+            "task_profile": normalized["task_profile"],
+            "flow_variants": [
+                {
+                    "id": variant["id"],
+                    "label": variant["label"],
+                    "task_order": variant["task_order"],
+                }
+                for variant in normalized["flow_variants"]
+            ],
+        }
+        study.save(update_fields=["launch_properties_json", "updated_at"])
+
+        record_audit(
+            action="study_properties_updated",
+            resource_type="study",
+            resource_id=study.id,
+            actor=request.user.username,
+            metadata={
+                "study_slug": study.slug,
+                "task_count": len(normalized["task_profile"].get("items", [])),
+                "flow_variant_count": len(normalized["flow_variants"]),
+            },
+        )
+
+        return Response(
+            {
+                "study_slug": study.slug,
+                "study_properties": normalized,
             },
             status=status.HTTP_200_OK,
         )
@@ -816,11 +885,13 @@ class CreateParticipantLinkView(APIView):
         data = serializer.validated_data
 
         config_versions = list(study.config_versions.all())
+        study_properties = _normalize_study_launch_properties(study, config_versions)
         known_ids = {str(cv.id) for cv in config_versions}
 
         expires_at = timezone.now() + timedelta(hours=data.get("expires_in_hours", 72))
         participant_external_id = (data.get("participant_external_id") or "").strip()
         counterbalance_enabled = bool(data.get("counterbalance_enabled", True))
+        use_flow_variants = bool(data.get("use_flow_variants", False))
         task_order_strict = bool(data.get("task_order_strict", False))
         raw_task_order = data.get("task_order") or []
         task_order = []
@@ -829,6 +900,8 @@ class CreateParticipantLinkView(APIView):
             if not sid or sid not in known_ids or sid in task_order:
                 continue
             task_order.append(sid)
+        if use_flow_variants and not study_properties.get("flow_variants"):
+            return Response({"error": "No saved study variants are available for this study"}, status=status.HTTP_400_BAD_REQUEST)
         completion_redirect_url = (data.get("completion_redirect_url") or "").strip()
         abort_redirect_url = (data.get("abort_redirect_url") or "").strip()
         prolific_completion_mode = (data.get("prolific_completion_mode") or "default").strip() or "default"
@@ -838,6 +911,7 @@ class CreateParticipantLinkView(APIView):
             "researcher_username": request.user.username,
             "participant_external_id": participant_external_id,
             "counterbalance_enabled": counterbalance_enabled,
+            "use_flow_variants": use_flow_variants,
             "task_order": task_order,
             "task_order_strict": task_order_strict,
             "expires_at": expires_at.isoformat(),
@@ -872,8 +946,10 @@ class CreateParticipantLinkView(APIView):
                 "prolific_completion_mode": prolific_completion_mode,
                 "has_prolific_completion_code": bool(prolific_completion_code),
                 "counterbalance_enabled": counterbalance_enabled,
+                "use_flow_variants": use_flow_variants,
                 "task_order_count": len(task_order),
                 "task_order_strict": task_order_strict,
+                "flow_variant_count": len(study_properties.get("flow_variants") or []),
                 "single_use_token_digest": _launch_token_digest(single_use_token),
                 "multi_use_token_digest": _launch_token_digest(multi_use_token),
             },
@@ -887,6 +963,7 @@ class CreateParticipantLinkView(APIView):
                 "launch_token": multi_use_token,
                 "launch_url": launch_url_multi,
                 "counterbalance_enabled": counterbalance_enabled,
+                "use_flow_variants": use_flow_variants,
                 "task_order": task_order,
                 "task_order_strict": task_order_strict,
                 "completion_redirect_url": completion_redirect_url,
@@ -899,6 +976,7 @@ class CreateParticipantLinkView(APIView):
                         "launch_token": multi_use_token,
                         "launch_url": launch_url_multi,
                         "counterbalance_enabled": counterbalance_enabled,
+                        "use_flow_variants": use_flow_variants,
                         "task_order": task_order,
                         "task_order_strict": task_order_strict,
                         "completion_redirect_url": completion_redirect_url,
@@ -911,6 +989,7 @@ class CreateParticipantLinkView(APIView):
                         "launch_token": single_use_token,
                         "launch_url": launch_url_single,
                         "counterbalance_enabled": counterbalance_enabled,
+                        "use_flow_variants": use_flow_variants,
                         "task_order": task_order,
                         "task_order_strict": task_order_strict,
                         "completion_redirect_url": completion_redirect_url,

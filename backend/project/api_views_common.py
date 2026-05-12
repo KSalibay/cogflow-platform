@@ -71,6 +71,7 @@ from project.api_serializers import (
     PublishConfigRequestSerializer,
     StartRunRequestSerializer,
     StudyAnalysisReportRequestSerializer,
+    StudyPropertiesRequestSerializer,
     SubmitResultRequestSerializer,
     TotpSetupRequestSerializer,
     TotpVerifyRequestSerializer,
@@ -574,6 +575,135 @@ def _ordered_config_versions_by_ids(config_versions: list, ordered_ids: list[str
 
     present.sort(key=lambda v: rank.get(str(v.id), 10**9))
     return present + rest
+
+
+def _study_task_display_name(config_version) -> str:
+    cfg_json = config_version.config_json if isinstance(getattr(config_version, "config_json", None), dict) else {}
+    from_json = str(cfg_json.get("task_name") or cfg_json.get("task_label") or cfg_json.get("name") or "").strip()
+    if from_json:
+        return from_json
+    task_type = _extract_config_task_type(cfg_json) or "task"
+    version_label = str(getattr(config_version, "version_label", "") or "").strip()
+    return f"{task_type} · {version_label}" if version_label else task_type
+
+
+def _build_default_study_task_profile(config_versions: list) -> dict:
+    items = []
+    for config_version in list(config_versions or []):
+        items.append(
+            {
+                "config_version_id": str(config_version.id),
+                "task_type": _extract_config_task_type(getattr(config_version, "config_json", None)) or "",
+                "label": _study_task_display_name(config_version),
+                "enabled": True,
+            }
+        )
+    return {"items": items}
+
+
+def _normalize_study_launch_properties(study: Study | None, config_versions: list | None, raw_properties: dict | None = None) -> dict:
+    versions = list(config_versions or [])
+    raw = raw_properties if isinstance(raw_properties, dict) else (
+        study.launch_properties_json if study and isinstance(getattr(study, "launch_properties_json", None), dict) else {}
+    )
+
+    defaults = _build_default_study_task_profile(versions)
+    by_id = {item["config_version_id"]: item.copy() for item in defaults["items"]}
+    raw_profile = raw.get("task_profile") if isinstance(raw.get("task_profile"), dict) else {}
+    raw_items = raw_profile.get("items") if isinstance(raw_profile.get("items"), list) else []
+
+    task_items = []
+    for raw_item in raw_items:
+        if not isinstance(raw_item, dict):
+            continue
+        sid = str(raw_item.get("config_version_id") or "").strip()
+        if not sid or sid not in by_id:
+            continue
+        base = by_id.pop(sid)
+        label = str(raw_item.get("label") or "").strip() or base["label"]
+        task_items.append(
+            {
+                **base,
+                "label": label,
+                "enabled": bool(raw_item.get("enabled", True)),
+            }
+        )
+
+    task_items.extend(by_id.values())
+    task_profile = {"items": task_items}
+
+    label_by_id = {item["config_version_id"]: item["label"] for item in task_items}
+    enabled_ids = {item["config_version_id"] for item in task_items if item.get("enabled") is not False}
+    raw_variants = raw.get("flow_variants") if isinstance(raw.get("flow_variants"), list) else []
+    flow_variants = []
+    used_variant_ids = set()
+
+    for idx, raw_variant in enumerate(raw_variants, start=1):
+        if not isinstance(raw_variant, dict):
+            continue
+        label = str(raw_variant.get("label") or f"Variant {idx}").strip() or f"Variant {idx}"
+        variant_id_base = slugify(str(raw_variant.get("id") or label or f"variant-{idx}"))[:64] or f"variant-{idx}"
+        variant_id = variant_id_base
+        suffix = 2
+        while variant_id in used_variant_ids:
+            variant_id = f"{variant_id_base[:58]}-{suffix}"
+            suffix += 1
+        used_variant_ids.add(variant_id)
+
+        task_order = []
+        seen_ids = set()
+        for raw_id in raw_variant.get("task_order") or []:
+            sid = str(raw_id or "").strip()
+            if not sid or sid in seen_ids or sid not in enabled_ids:
+                continue
+            task_order.append(sid)
+            seen_ids.add(sid)
+
+        if not task_order:
+            continue
+
+        flow_variants.append(
+            {
+                "id": variant_id,
+                "label": label,
+                "task_order": task_order,
+                "task_labels": [label_by_id.get(sid, sid) for sid in task_order],
+            }
+        )
+
+    return {
+        "task_profile": task_profile,
+        "flow_variants": flow_variants,
+    }
+
+
+def _select_study_flow_variant(study: Study, config_versions: list, launch_token_digest: str | None):
+    properties = _normalize_study_launch_properties(study, config_versions)
+    variants = properties.get("flow_variants") or []
+    if not variants:
+        return None, properties, 0
+
+    counts = {variant["id"]: 0 for variant in variants}
+    digest = str(launch_token_digest or "").strip()
+    if digest:
+        prior_events = AuditEvent.objects.filter(
+            action="start_run",
+            resource_type="run_session",
+            metadata_json__study_slug=study.slug,
+            metadata_json__launch_token_digest=digest,
+        ).only("metadata_json")
+        for event in prior_events:
+            metadata = event.metadata_json if isinstance(event.metadata_json, dict) else {}
+            variant_id = str(metadata.get("flow_variant_id") or "").strip()
+            if variant_id in counts:
+                counts[variant_id] += 1
+
+    min_count = min(counts.values())
+    candidates = [variant for variant in variants if counts.get(variant["id"], 0) == min_count]
+    total_assignments = sum(counts.values())
+    chosen = candidates[total_assignments % len(candidates)]
+    chosen_index = next((idx for idx, variant in enumerate(variants) if variant["id"] == chosen["id"]), 0)
+    return chosen, properties, chosen_index
 
 
 def _issue_email_verification_token(user: User) -> str:

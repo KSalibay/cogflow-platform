@@ -37,6 +37,7 @@ from .api_views_studies import (
     StudyAnalysisReportJobCancelView,
     StudyAnalysisReportJobDeleteView,
     StudyLatestConfigView,
+    StudyPropertiesView,
     PublishConfigView,
     UploadBuilderAssetView,
     DownloadBuilderAssetView,

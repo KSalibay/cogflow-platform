@@ -56,6 +56,7 @@
           runs: [], runsLoaded: false, runsLoading: false, runsError: null,
           decryptions: {}, exportBusy: false,
           taskProfile: null,
+          flowVariants: null,
         };
       }
       return studyUiState[k];
@@ -85,6 +86,184 @@
       } catch {
         // ignore localStorage failures
       }
+    }
+
+    function normalizeFlowVariants(rawVariants, configs, profile) {
+      const cfgs = Array.isArray(configs) ? configs : [];
+      const cfgById = new Map(cfgs.map((cfg) => [String(cfg?.config_version_id || "").trim(), cfg]));
+      const items = Array.isArray(profile?.items) ? profile.items : [];
+      const enabledIds = new Set(
+        items
+          .filter((item) => item?.enabled !== false)
+          .map((item) => String(item?.config_version_id || "").trim())
+          .filter((id) => cfgById.has(id))
+      );
+      const labelById = new Map(
+        items
+          .map((item) => {
+            const id = String(item?.config_version_id || "").trim();
+            const cfg = cfgById.get(id);
+            const fallback = taskDisplayNameForConfig(cfg || {});
+            return [id, (item?.label || fallback || id).toString().trim() || id];
+          })
+          .filter(([id]) => !!id)
+      );
+      const toVariantId = (value, fallback) => {
+        const base = String(value || fallback || "")
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "");
+        return base || fallback;
+      };
+
+      const out = [];
+      const usedVariantIds = new Set();
+      (Array.isArray(rawVariants) ? rawVariants : []).forEach((rawVariant, index) => {
+        if (!rawVariant || typeof rawVariant !== "object") return;
+        const fallbackId = `variant-${index + 1}`;
+        const label = (rawVariant.label || `Variant ${index + 1}`).toString().trim() || `Variant ${index + 1}`;
+        let variantId = toVariantId(rawVariant.id || label, fallbackId);
+        let suffix = 2;
+        while (usedVariantIds.has(variantId)) {
+          variantId = `${toVariantId(rawVariant.id || label, fallbackId)}-${suffix}`;
+          suffix += 1;
+        }
+        usedVariantIds.add(variantId);
+
+        const taskOrder = [];
+        const seenIds = new Set();
+        (Array.isArray(rawVariant.task_order) ? rawVariant.task_order : []).forEach((rawId) => {
+          const id = String(rawId || "").trim();
+          if (!id || seenIds.has(id) || !enabledIds.has(id)) return;
+          seenIds.add(id);
+          taskOrder.push(id);
+        });
+        if (!taskOrder.length) return;
+
+        out.push({
+          id: variantId,
+          label,
+          task_order: taskOrder,
+          task_labels: taskOrder.map((id) => labelById.get(id) || id),
+        });
+      });
+
+      return out;
+    }
+
+    function normalizeStudyPropertiesForConfigs(raw, configs, fallbackProfile = null) {
+      const taskProfile = normalizeTaskProfileForConfigs(
+        raw?.task_profile || raw?.taskProfile || fallbackProfile,
+        configs
+      );
+      return {
+        task_profile: taskProfile,
+        flow_variants: normalizeFlowVariants(raw?.flow_variants, configs, taskProfile),
+      };
+    }
+
+    function getEnabledTaskOrderFromList(listEl) {
+      return Array.from(listEl?.querySelectorAll("li") || [])
+        .filter((li) => !!li.querySelector("input[data-role='task-enabled']")?.checked)
+        .map((li) => String(li.dataset.configId || "").trim())
+        .filter(Boolean);
+    }
+
+    function getTaskLabelsFromList(listEl) {
+      const out = new Map();
+      Array.from(listEl?.querySelectorAll("li") || []).forEach((li) => {
+        const id = String(li.dataset.configId || "").trim();
+        if (!id) return;
+        const label = (li.querySelector("input[data-role='task-label']")?.value || li.dataset.defaultLabel || id).toString().trim() || id;
+        out.set(id, label);
+      });
+      return out;
+    }
+
+    function readFlowVariantsFromEditor(host) {
+      return Array.from(host?.querySelectorAll("[data-role='flow-variant-card']") || []).map((card, index) => ({
+        id: String(card.dataset.variantId || `variant-${index + 1}`).trim() || `variant-${index + 1}`,
+        label: (card.querySelector("input[data-role='variant-label']")?.value || `Variant ${index + 1}`).toString().trim() || `Variant ${index + 1}`,
+        task_order: Array.from(card.querySelectorAll("li[data-config-id]") || [])
+          .map((li) => String(li.dataset.configId || "").trim())
+          .filter(Boolean),
+      })).filter((variant) => variant.task_order.length > 0);
+    }
+
+    function renderFlowVariantsEditor(host, variants, getLabelMap, currentTaskOrderGetter, setErr) {
+      const safeVariants = Array.isArray(variants) ? variants : [];
+      const labelMap = typeof getLabelMap === "function" ? getLabelMap() : new Map();
+      if (!safeVariants.length) {
+        host.innerHTML = '<div class="text-muted" style="font-size:.84rem;">No saved variants yet. Arrange the task list above, then use “Add Variant From Current Order”.</div>';
+        return;
+      }
+
+      host.innerHTML = safeVariants.map((variant, index) => `
+        <article class="study-flow-variant-card" data-role="flow-variant-card" data-variant-id="${esc(variant.id || `variant-${index + 1}`)}">
+          <div class="study-flow-variant-head">
+            <input type="text" data-role="variant-label" value="${esc(variant.label || `Variant ${index + 1}`)}" />
+            <div class="study-flow-variant-actions">
+              <button type="button" class="btn btn-secondary btn-xs" data-role="variant-sync">Use Current Order</button>
+              <button type="button" class="btn btn-danger btn-xs" data-role="variant-delete">Delete</button>
+            </div>
+          </div>
+          <ul class="study-flow-variant-list list-group">
+            ${(Array.isArray(variant.task_order) ? variant.task_order : []).map((id) => `
+              <li class="list-group-item" draggable="true" data-config-id="${esc(id)}">
+                <div class="study-flow-variant-row">
+                  <span>${esc(labelMap.get(id) || id)}</span>
+                  <span style="display:inline-flex;align-items:center;gap:8px;">
+                    <button type="button" class="btn btn-danger btn-xs" data-role="variant-remove-task">Remove</button>
+                    <span class="task-order-grip" aria-hidden="true">⋮⋮</span>
+                  </span>
+                </div>
+              </li>
+            `).join("")}
+          </ul>
+        </article>
+      `).join("");
+
+      host.querySelectorAll(".study-flow-variant-list").forEach((listEl) => setupDragList(listEl));
+      host.querySelectorAll("button[data-role='variant-delete']").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const card = btn.closest("[data-role='flow-variant-card']");
+          const index = Array.from(host.children).indexOf(card);
+          if (index < 0) return;
+          const next = readFlowVariantsFromEditor(host).filter((_, idx) => idx !== index);
+          renderFlowVariantsEditor(host, next, getLabelMap, currentTaskOrderGetter, setErr);
+        });
+      });
+      host.querySelectorAll("button[data-role='variant-sync']").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const currentOrder = (typeof currentTaskOrderGetter === "function" ? currentTaskOrderGetter() : []).filter(Boolean);
+          if (!currentOrder.length) {
+            setErr?.("Enable at least one task before syncing a variant.");
+            return;
+          }
+          const next = readFlowVariantsFromEditor(host);
+          const card = btn.closest("[data-role='flow-variant-card']");
+          const index = Array.from(host.children).indexOf(card);
+          if (index < 0) return;
+          next[index] = { ...next[index], task_order: currentOrder };
+          setErr?.("");
+          renderFlowVariantsEditor(host, next, getLabelMap, currentTaskOrderGetter, setErr);
+        });
+      });
+      host.querySelectorAll("button[data-role='variant-remove-task']").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const li = btn.closest("li[data-config-id]");
+          if (!li) return;
+          li.remove();
+        });
+      });
+    }
+
+    async function saveStudyProperties(slug, payload) {
+      const r = await fetch(`${API}/api/v1/studies/${encodeURIComponent(slug)}/properties`, postOpts(payload));
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+      return d;
     }
 
     function taskDisplayNameForConfig(cfg) {
@@ -174,6 +353,11 @@
                   <input class="form-check-input" type="checkbox" id="generateLinksCounterbalance" checked>
                   <label class="form-check-label" for="generateLinksCounterbalance">Enable automatic counterbalancing</label>
                 </div>
+                <div class="form-check d-none" id="generateLinksVariantsWrap" style="margin-bottom:12px;">
+                  <input class="form-check-input" type="checkbox" id="generateLinksUseFlowVariants" checked>
+                  <label class="form-check-label" for="generateLinksUseFlowVariants">Use saved study variants</label>
+                  <div class="text-muted" id="generateLinksVariantsHelp" style="font-size:.82rem;margin-top:4px;"></div>
+                </div>
                 <div id="generateLinksOrderWrap">
                   <label class="form-label" style="font-weight:600;">Task order (used when counterbalancing is OFF)</label>
                   <div class="text-muted" style="font-size:.84rem;margin-bottom:8px;">Drag to reorder tasks.</div>
@@ -252,6 +436,16 @@
                 <div id="studyPropertiesError" class="alert alert-danger py-2 d-none" role="alert"></div>
                 <p style="margin:0 0 10px;color:var(--muted);font-size:.84rem;">Select which tasks are active for this study, rename display labels, and drag to change launch order.</p>
                 <ul id="studyPropertiesTaskList" class="list-group"></ul>
+                <div class="study-flow-variants-section">
+                  <div class="study-flow-variants-bar">
+                    <div>
+                      <div style="font-weight:600;">Participant Flow Variants</div>
+                      <div class="text-muted" style="font-size:.82rem;">Save alternate task sequences here, then use them at link generation for balanced assignment across clicks on the same link.</div>
+                    </div>
+                    <button type="button" class="btn btn-secondary btn-sm" id="studyPropertiesAddVariantBtn">Add Variant From Current Order</button>
+                  </div>
+                  <div id="studyPropertiesVariants"></div>
+                </div>
               </div>
               <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -338,6 +532,8 @@
       const modalEl = ensureStudyPropertiesModal();
       const errEl = document.getElementById("studyPropertiesError");
       const listEl = document.getElementById("studyPropertiesTaskList");
+      const variantsEl = document.getElementById("studyPropertiesVariants");
+      const addVariantBtn = document.getElementById("studyPropertiesAddVariantBtn");
       const saveBtn = document.getElementById("studyPropertiesSaveBtn");
       const st = getStudyState(slug);
 
@@ -349,16 +545,24 @@
 
       setErr("");
       listEl.innerHTML = "";
+      variantsEl.innerHTML = "";
+
+      const getLabelMap = () => getTaskLabelsFromList(listEl);
+      const getCurrentTaskOrder = () => getEnabledTaskOrderFromList(listEl);
 
       try {
         const payload = await fetchStudyLatestConfig(slug);
         const cfgs = Array.isArray(payload?.configs) ? payload.configs : [];
         const cfgById = new Map(cfgs.map((c) => [String(c?.config_version_id || "").trim(), c]));
-        const stored = st.taskProfile || loadStudyTaskProfile(slug);
-        const profile = normalizeTaskProfileForConfigs(stored, cfgs);
-        st.taskProfile = profile;
+        const stored = payload?.study_properties || {
+          task_profile: st.taskProfile || loadStudyTaskProfile(slug),
+          flow_variants: st.flowVariants || [],
+        };
+        const studyProperties = normalizeStudyPropertiesForConfigs(stored, cfgs, st.taskProfile || loadStudyTaskProfile(slug));
+        st.taskProfile = studyProperties.task_profile;
+        st.flowVariants = studyProperties.flow_variants;
 
-        profile.items.forEach((item) => {
+        studyProperties.task_profile.items.forEach((item) => {
           const cfg = cfgById.get(String(item.config_version_id || "").trim()) || {};
           const versionLabel = (cfg?.config_version_label || item.config_version_id || "").toString();
           const li = document.createElement("li");
@@ -366,6 +570,7 @@
           li.dataset.configId = item.config_version_id;
           li.dataset.taskType = item.task_type || "";
           li.dataset.versionLabel = versionLabel;
+          li.dataset.defaultLabel = item.label || item.task_type || "task";
           li.innerHTML = `
             <div class="study-prop-row">
               <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;">
@@ -381,6 +586,7 @@
           listEl.appendChild(li);
         });
         setupDragList(listEl);
+        renderFlowVariantsEditor(variantsEl, st.flowVariants || [], getLabelMap, getCurrentTaskOrder, setErr);
 
         listEl.querySelectorAll("button[data-role='delete-config']").forEach((btn) => {
           btn.addEventListener("click", async (e) => {
@@ -415,16 +621,50 @@
         setErr(err?.message || String(err));
       }
 
-      saveBtn.onclick = () => {
-        const profile = buildTaskProfileFromList(listEl);
-        if (!profile.items.some((x) => x.enabled !== false)) {
+      addVariantBtn.onclick = () => {
+        const currentOrder = getCurrentTaskOrder();
+        if (!currentOrder.length) {
+          setErr("Enable at least one task before creating a variant.");
+          return;
+        }
+        const variants = readFlowVariantsFromEditor(variantsEl);
+        variants.push({
+          id: `variant-${Date.now().toString(36)}-${variants.length + 1}`,
+          label: `Variant ${variants.length + 1}`,
+          task_order: currentOrder,
+        });
+        setErr("");
+        renderFlowVariantsEditor(variantsEl, variants, getLabelMap, getCurrentTaskOrder, setErr);
+      };
+
+      saveBtn.onclick = async () => {
+        const taskProfile = buildTaskProfileFromList(listEl);
+        if (!taskProfile.items.some((x) => x.enabled !== false)) {
           setErr("At least one task must remain enabled.");
           return;
         }
-        st.taskProfile = profile;
-        saveStudyTaskProfile(slug, profile);
-        hideStudyPropertiesModal(modalEl);
-        refreshStudiesUiFromCache();
+
+        const payload = {
+          task_profile: taskProfile,
+          flow_variants: readFlowVariantsFromEditor(variantsEl),
+        };
+
+        saveBtn.disabled = true;
+        setErr("");
+        try {
+          const saved = await saveStudyProperties(slug, payload);
+          const normalized = normalizeStudyPropertiesForConfigs(saved?.study_properties || payload, [], taskProfile);
+          st.taskProfile = saved?.study_properties?.task_profile || normalized.task_profile;
+          st.flowVariants = saved?.study_properties?.flow_variants || normalized.flow_variants;
+          saveStudyTaskProfile(slug, st.taskProfile);
+          if (latestConfigCache[slug]) latestConfigCache[slug].study_properties = saved?.study_properties || payload;
+          hideStudyPropertiesModal(modalEl);
+          refreshStudiesUiFromCache();
+        } catch (err) {
+          setErr(err?.message || String(err));
+        } finally {
+          saveBtn.disabled = false;
+        }
       };
 
       showStudyPropertiesModal(modalEl);
@@ -461,9 +701,6 @@
     async function openGenerateLinksModal(slug) {
       const modalEl = ensureGenerateLinksModal();
 
-      // Pre-flight: verify the session is still alive before showing the modal.
-      // If auth/me returns 401 here the user sees a clean "session expired" login
-      // prompt rather than a confusing mid-flow error after clicking Generate.
       try {
         const _sessionCheck = await fetch(`${API}/api/v1/auth/me`, { credentials: "include" });
         if (!_sessionCheck.ok) {
@@ -480,6 +717,9 @@
       const errEl = document.getElementById("generateLinksError");
       const pidEl = document.getElementById("generateLinksParticipantId");
       const cbEl = document.getElementById("generateLinksCounterbalance");
+      const variantsWrapEl = document.getElementById("generateLinksVariantsWrap");
+      const useVariantsEl = document.getElementById("generateLinksUseFlowVariants");
+      const variantsHelpEl = document.getElementById("generateLinksVariantsHelp");
       const wrapEl = document.getElementById("generateLinksOrderWrap");
       const listEl = document.getElementById("generateLinksTaskOrder");
       const confirmBtn = document.getElementById("generateLinksConfirmBtn");
@@ -490,25 +730,40 @@
         errEl.classList.toggle("d-none", !s);
       };
 
+      const syncOrderUi = () => {
+        const usingVariants = !variantsWrapEl.classList.contains("d-none") && !!useVariantsEl.checked;
+        cbEl.disabled = usingVariants;
+        if (usingVariants) cbEl.checked = false;
+        const manualEnabled = !usingVariants && !cbEl.checked;
+        wrapEl.style.opacity = manualEnabled ? "1" : "0.55";
+        wrapEl.style.pointerEvents = manualEnabled ? "auto" : "none";
+      };
+
       setErr("");
       pidEl.value = "";
       cbEl.checked = true;
+      cbEl.disabled = false;
+      useVariantsEl.checked = true;
       listEl.innerHTML = "";
-      wrapEl.style.opacity = "0.55";
-      wrapEl.style.pointerEvents = "none";
+      variantsWrapEl.classList.add("d-none");
+      variantsHelpEl.textContent = "";
+      syncOrderUi();
 
-      cbEl.onchange = () => {
-        const on = !!cbEl.checked;
-        wrapEl.style.opacity = on ? "0.55" : "1";
-        wrapEl.style.pointerEvents = on ? "none" : "auto";
-      };
+      cbEl.onchange = syncOrderUi;
+      useVariantsEl.onchange = syncOrderUi;
 
       try {
         const payload = await fetchStudyLatestConfig(slug);
         const cfgs = Array.isArray(payload?.configs) ? payload.configs : [];
         const st = getStudyState(slug);
-        const profile = normalizeTaskProfileForConfigs(st.taskProfile || loadStudyTaskProfile(slug), cfgs);
+        const stored = payload?.study_properties || {
+          task_profile: st.taskProfile || loadStudyTaskProfile(slug),
+          flow_variants: st.flowVariants || [],
+        };
+        const studyProperties = normalizeStudyPropertiesForConfigs(stored, cfgs, st.taskProfile || loadStudyTaskProfile(slug));
+        const profile = studyProperties.task_profile;
         st.taskProfile = profile;
+        st.flowVariants = studyProperties.flow_variants;
 
         const cfgById = new Map(cfgs.map((c) => [String(c?.config_version_id || "").trim(), c]));
         profile.items.forEach((item) => {
@@ -531,6 +786,13 @@
           listEl.appendChild(li);
         });
         setupDragList(listEl);
+
+        if (studyProperties.flow_variants.length > 0) {
+          variantsWrapEl.classList.remove("d-none");
+          variantsHelpEl.textContent = `${studyProperties.flow_variants.length} saved variant${studyProperties.flow_variants.length === 1 ? "" : "s"}: ${studyProperties.flow_variants.map((variant) => variant.label).join(", ")}`;
+          useVariantsEl.checked = true;
+        }
+        syncOrderUi();
       } catch (e) {
         setErr(e?.message || String(e));
       }
@@ -539,13 +801,14 @@
         confirmBtn.disabled = true;
         setErr("");
         try {
+          const usingVariants = !variantsWrapEl.classList.contains("d-none") && !!useVariantsEl.checked;
           const taskRows = Array.from(listEl.querySelectorAll("li"));
           const taskOrder = taskRows
             .filter((li) => !!li.querySelector("input[data-role='task-enabled']")?.checked)
             .map((li) => (li.dataset.configId || "").toString().trim())
             .filter(Boolean);
 
-          if (!taskOrder.length) {
+          if (!usingVariants && !taskOrder.length) {
             throw new Error("Select at least one task to include in generated links.");
           }
 
@@ -556,12 +819,21 @@
 
           const hasDisabledTasks = taskOrder.length !== taskRows.length;
           const strictOrder = hasDisabledTasks || !cbEl.checked;
+          const options = usingVariants
+            ? {
+                counterbalance_enabled: false,
+                use_flow_variants: true,
+                task_order: [],
+                task_order_strict: false,
+              }
+            : {
+                counterbalance_enabled: strictOrder ? false : !!cbEl.checked,
+                use_flow_variants: false,
+                task_order: taskOrder,
+                task_order_strict: strictOrder,
+              };
 
-          await generateLink(slug, pidEl.value || "", null, null, {
-            counterbalance_enabled: strictOrder ? false : !!cbEl.checked,
-            task_order: taskOrder,
-            task_order_strict: strictOrder,
-          });
+          await generateLink(slug, pidEl.value || "", null, null, options);
           hideGeneratedModal(modalEl);
         } catch (e) {
           setErr(e?.message || String(e));

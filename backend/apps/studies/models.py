@@ -14,6 +14,7 @@ class Study(models.Model):
         related_name="owned_studies",
     )
     runtime_mode = models.CharField(max_length=20, choices=RUNTIME_MODE_CHOICES, default=RUNTIME_MODE_DJANGO)
+    launch_properties_json = models.JSONField(default=dict, blank=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

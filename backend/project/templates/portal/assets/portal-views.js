@@ -539,6 +539,7 @@
           postOpts({
             participant_external_id: pid || null,
             counterbalance_enabled: Object.prototype.hasOwnProperty.call(opts, "counterbalance_enabled") ? !!opts.counterbalance_enabled : true,
+            use_flow_variants: !!opts.use_flow_variants,
             task_order: Array.isArray(opts.task_order) ? opts.task_order : [],
             task_order_strict: !!opts.task_order_strict,
             expires_in_hours: 72,

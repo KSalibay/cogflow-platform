@@ -13,6 +13,7 @@ class StartRunView(APIView):
         launch_mode = None
         launch_token_digest = None
         counterbalance_enabled = True
+        use_flow_variants = False
         requested_task_order = []
         task_order_strict = False
 
@@ -39,6 +40,7 @@ class StartRunView(APIView):
             launch_mode = (token_payload.get("launch_mode") or "multi_use").strip()
             launch_token_digest = _launch_token_digest(launch_token)
             counterbalance_enabled = bool(token_payload.get("counterbalance_enabled", True))
+            use_flow_variants = bool(token_payload.get("use_flow_variants", False))
             requested_task_order = token_payload.get("task_order") if isinstance(token_payload.get("task_order"), list) else []
             task_order_strict = bool(token_payload.get("task_order_strict", False))
 
@@ -96,8 +98,28 @@ class StartRunView(APIView):
         permutations_total = 1
         permutation_index = 0
         counterbalance_mode = "fixed"
+        selected_flow_variant = None
 
-        if counterbalance_enabled:
+        if use_flow_variants:
+            selected_flow_variant, study_properties, permutation_index = _select_study_flow_variant(
+                study,
+                config_versions,
+                launch_token_digest,
+            )
+            if not selected_flow_variant:
+                return Response({"error": "No saved study variants are available for this link"}, status=status.HTTP_400_BAD_REQUEST)
+
+            variant_lookup = {str(cv.id): cv for cv in config_versions}
+            ordered_versions = [variant_lookup[sid] for sid in selected_flow_variant["task_order"] if sid in variant_lookup]
+            if not ordered_versions:
+                return Response({"error": "Selected study variant does not match any published config versions"}, status=status.HTTP_400_BAD_REQUEST)
+
+            requested_ids = list(selected_flow_variant["task_order"])
+            task_order_strict = True
+            counterbalance_enabled = False
+            counterbalance_mode = "study_flow_variant"
+            permutations_total = len(study_properties.get("flow_variants") or [])
+        elif counterbalance_enabled:
             ordered_versions, permutation_index, permutations_total = _counterbalanced_config_order(
                 selected_versions,
                 seed=participant_external_id,
@@ -176,6 +198,9 @@ class StartRunView(APIView):
                 "counterbalance_mode": counterbalance_mode,
                 "counterbalance_permutation_index": permutation_index,
                 "counterbalance_permutations_total": permutations_total,
+                "use_flow_variants": use_flow_variants,
+                "flow_variant_id": selected_flow_variant["id"] if selected_flow_variant else None,
+                "flow_variant_label": selected_flow_variant["label"] if selected_flow_variant else None,
                 "task_order_strict": task_order_strict,
                 "task_order_count": len(requested_ids),
                 "has_completion_redirect": bool(completion_redirect_url),
@@ -200,6 +225,9 @@ class StartRunView(APIView):
                     "seed_source": "participant_external_id",
                     "permutation_index": permutation_index,
                     "permutations_total": permutations_total,
+                    "use_flow_variants": use_flow_variants,
+                    "flow_variant_id": selected_flow_variant["id"] if selected_flow_variant else None,
+                    "flow_variant_label": selected_flow_variant["label"] if selected_flow_variant else None,
                 },
                 "participant_key": participant_key,
                 "owner_username": owner_name_response,

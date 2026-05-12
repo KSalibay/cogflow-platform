@@ -720,6 +720,125 @@ class Day7PortalMvpLinkPipelineTests(APITestCase):
         )
         self.assertEqual(second_start.status_code, status.HTTP_201_CREATED)
 
+    def test_researcher_can_save_persisted_study_properties(self):
+        self._publish_as(self.researcher, slug="study-properties")
+        study = Study.objects.get(slug="study-properties")
+        cfg = study.config_versions.first()
+
+        self.client.force_authenticate(user=self.researcher)
+        resp = self.client.post(
+            reverse("studies-properties", kwargs={"study_slug": "study-properties"}),
+            data={
+                "task_profile": {
+                    "items": [
+                        {
+                            "config_version_id": str(cfg.id),
+                            "task_type": "rdm",
+                            "label": "CRDM-1",
+                            "enabled": True,
+                        }
+                    ]
+                },
+                "flow_variants": [
+                    {
+                        "id": "variant-a",
+                        "label": "Variant A",
+                        "task_order": [str(cfg.id)],
+                    }
+                ],
+            },
+            format="json",
+        )
+        self.client.force_authenticate(user=None)
+
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        study.refresh_from_db()
+        self.assertEqual(study.launch_properties_json["task_profile"]["items"][0]["label"], "CRDM-1")
+        self.assertEqual(study.launch_properties_json["flow_variants"][0]["id"], "variant-a")
+        self.assertTrue(
+            AuditEvent.objects.filter(
+                action="study_properties_updated",
+                resource_type="study",
+                actor="r_owner",
+                metadata_json__study_slug="study-properties",
+            ).exists()
+        )
+
+    def test_multi_use_link_balances_saved_flow_variants(self):
+        self._publish_as(self.researcher, slug="variant-flow-study")
+        study = Study.objects.get(slug="variant-flow-study")
+        first_cfg = study.config_versions.first()
+        second_cfg = ConfigVersion.objects.create(
+            study=study,
+            version_label="v2",
+            config_json={"task_type": "mot", "task_name": "MOT-1", "experiment_type": "trial-based"},
+            builder_version="test",
+        )
+        third_cfg = ConfigVersion.objects.create(
+            study=study,
+            version_label="v3",
+            config_json={"task_type": "crdm", "task_name": "CRDM-2", "experiment_type": "trial-based"},
+            builder_version="test",
+        )
+        fourth_cfg = ConfigVersion.objects.create(
+            study=study,
+            version_label="v4",
+            config_json={"task_type": "mot", "task_name": "MOT-2", "experiment_type": "trial-based"},
+            builder_version="test",
+        )
+        study.launch_properties_json = {
+            "task_profile": {
+                "items": [
+                    {"config_version_id": str(first_cfg.id), "task_type": "rdm", "label": "CRDM-1", "enabled": True},
+                    {"config_version_id": str(second_cfg.id), "task_type": "mot", "label": "MOT-1", "enabled": True},
+                    {"config_version_id": str(third_cfg.id), "task_type": "crdm", "label": "CRDM-2", "enabled": True},
+                    {"config_version_id": str(fourth_cfg.id), "task_type": "mot", "label": "MOT-2", "enabled": True},
+                ]
+            },
+            "flow_variants": [
+                {
+                    "id": "abab",
+                    "label": "ABAB",
+                    "task_order": [str(first_cfg.id), str(second_cfg.id), str(third_cfg.id), str(fourth_cfg.id)],
+                },
+                {
+                    "id": "baba",
+                    "label": "BABA",
+                    "task_order": [str(third_cfg.id), str(fourth_cfg.id), str(first_cfg.id), str(second_cfg.id)],
+                },
+            ],
+        }
+        study.save(update_fields=["launch_properties_json", "updated_at"])
+
+        self.client.force_authenticate(user=self.researcher)
+        link_resp = self.client.post(
+            reverse("studies-participant-links", kwargs={"study_slug": "variant-flow-study"}),
+            data={"participant_external_id": "P-VARIANT-001", "use_flow_variants": True},
+            format="json",
+        )
+        self.client.force_authenticate(user=None)
+        self.assertEqual(link_resp.status_code, status.HTTP_201_CREATED)
+
+        multi_token = link_resp.data["launch_options"]["multi_use"]["launch_token"]
+
+        first_start = self.client.post(reverse("runs-start"), data={"launch_token": multi_token}, format="json")
+        second_start = self.client.post(reverse("runs-start"), data={"launch_token": multi_token}, format="json")
+
+        self.assertEqual(first_start.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(second_start.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(first_start.data["counterbalance"]["mode"], "study_flow_variant")
+        self.assertEqual(second_start.data["counterbalance"]["mode"], "study_flow_variant")
+        self.assertEqual(first_start.data["counterbalance"]["flow_variant_id"], "abab")
+        self.assertEqual(second_start.data["counterbalance"]["flow_variant_id"], "baba")
+        self.assertEqual(
+            [cfg["config_version_id"] for cfg in first_start.data["configs"]],
+            [first_cfg.id, second_cfg.id, third_cfg.id, fourth_cfg.id],
+        )
+        self.assertEqual(
+            [cfg["config_version_id"] for cfg in second_start.data["configs"]],
+            [third_cfg.id, fourth_cfg.id, first_cfg.id, second_cfg.id],
+        )
+
     def test_platform_admin_can_reassign_study_owner(self):
         self._publish_as(self.researcher, slug="owner-reassign")
 

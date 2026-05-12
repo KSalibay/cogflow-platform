@@ -78,6 +78,7 @@ class TotpVerifyRequestSerializer(serializers.Serializer):
 class CreateParticipantLinkRequestSerializer(serializers.Serializer):
     participant_external_id = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     counterbalance_enabled = serializers.BooleanField(required=False, default=True)
+    use_flow_variants = serializers.BooleanField(required=False, default=False)
     task_order = serializers.ListField(
         child=serializers.CharField(max_length=128),
         required=False,
@@ -94,6 +95,16 @@ class CreateParticipantLinkRequestSerializer(serializers.Serializer):
         default="default",
     )
     prolific_completion_code = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=64)
+
+    def validate(self, attrs):
+        if attrs.get("use_flow_variants") and attrs.get("task_order"):
+            raise serializers.ValidationError("use_flow_variants cannot be combined with task_order")
+        return attrs
+
+
+class StudyPropertiesRequestSerializer(serializers.Serializer):
+    task_profile = serializers.JSONField(required=False, default=dict)
+    flow_variants = serializers.ListField(child=serializers.JSONField(), required=False, default=list)
 
 
 class AssignStudyOwnerRequestSerializer(serializers.Serializer):
