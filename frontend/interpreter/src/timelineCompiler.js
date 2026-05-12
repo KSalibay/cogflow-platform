@@ -376,9 +376,17 @@
     const durationSec = Number(mb.break_duration_sec);
     const waitMs = (forceWait && Number.isFinite(durationSec) && durationSec > 0) ? Math.round(durationSec * 1000) : null;
     const escapeKeysRaw = (mb.break_escape_keys ?? 'space').toString();
+    const normalizeBreakKey = (raw) => {
+      const k = (raw ?? '').toString().trim().toLowerCase();
+      if (!k) return null;
+      if (k === 'space' || k === 'spacebar') return ' ';
+      if (k === 'enter' || k === 'return') return 'Enter';
+      if (k === 'escape' || k === 'esc') return 'Escape';
+      return raw;
+    };
     const escapeKeys = escapeKeysRaw
       .split(/[\s,]+/g)
-      .map((s) => s.trim())
+      .map((s) => normalizeBreakKey(s))
       .filter(Boolean);
 
     const out = [];
@@ -389,16 +397,35 @@
       const hasMoreTrials = (i + 1) < srcTrials.length;
       if (!atBoundary || !hasMoreTrials) continue;
 
-      const breakTrial = {
-        type: 'html-keyboard-response',
-        stimulus: `<div style="max-width:720px;margin:0 auto;text-align:center;white-space:pre-wrap;">${escapeHtml(message)}</div>`,
-        choices: forceWait ? 'NO_KEYS' : (escapeKeys.length ? escapeKeys : ['space']),
-        response_ends_trial: !forceWait,
-        ...(forceWait && Number.isFinite(waitMs) && waitMs > 0 ? { trial_duration: waitMs } : {}),
-        _auto_inserted_miniblock_break: true
-      };
+      const resolvedKeys = escapeKeys.length ? escapeKeys : [' '];
+      if (forceWait && Number.isFinite(waitMs) && waitMs > 0) {
+        out.push({
+          type: 'html-keyboard-response',
+          stimulus: `<div style="max-width:720px;margin:0 auto;text-align:center;white-space:pre-wrap;">${escapeHtml(message)}</div>`,
+          choices: 'NO_KEYS',
+          response_ends_trial: false,
+          trial_duration: waitMs,
+          _auto_inserted_miniblock_break: true,
+          _auto_inserted_miniblock_wait: true
+        });
 
-      out.push(breakTrial);
+        out.push({
+          type: 'html-keyboard-response',
+          stimulus: `<div style="max-width:720px;margin:0 auto;text-align:center;white-space:pre-wrap;">${escapeHtml(message)}\n\nPress ${escapeHtml(resolvedKeys.map((k) => k === ' ' ? 'Space' : String(k)).join(' / '))} to continue.</div>`,
+          choices: resolvedKeys,
+          response_ends_trial: true,
+          _auto_inserted_miniblock_break: true,
+          _auto_inserted_miniblock_continue: true
+        });
+      } else {
+        out.push({
+          type: 'html-keyboard-response',
+          stimulus: `<div style="max-width:720px;margin:0 auto;text-align:center;white-space:pre-wrap;">${escapeHtml(message)}</div>`,
+          choices: resolvedKeys,
+          response_ends_trial: true,
+          _auto_inserted_miniblock_break: true
+        });
+      }
     }
 
     return out;
@@ -2152,8 +2179,9 @@
     })();
 
     const sampleMwProbeIntervalMs = (probeItem) => {
-      const minRaw = Number(probeItem && probeItem.min_interval_ms);
-      const maxRaw = Number(probeItem && probeItem.max_interval_ms);
+      // Respect global interval bounds when present; fall back to per-probe bounds.
+      const minRaw = Number(probeItem && (probeItem.global_interval_min_ms ?? probeItem.min_interval_ms));
+      const maxRaw = Number(probeItem && (probeItem.global_interval_max_ms ?? probeItem.max_interval_ms));
       const minMs = Number.isFinite(minRaw) ? Math.max(0, minRaw) : 0;
       const maxMs = Number.isFinite(maxRaw) ? Math.max(0, maxRaw) : minMs;
       const lo = Math.min(minMs, maxMs);
@@ -2320,7 +2348,8 @@
       if (!isObject(node)) return false;
       const t = String(node.type || '');
       if (t !== 'randomize-group' && t !== 'randomize-across-markers') return false;
-      return node.randomizable_across_markers !== false;
+      // Only pool across sibling groups when explicitly opted in.
+      return node.randomizable_across_markers === true;
     };
 
     const getBlockBaseType = (node) => {
@@ -2477,7 +2506,7 @@
           : (Array.isArray(groupNode.timeline)
             ? groupNode.timeline
             : (Array.isArray(groupNode.components) ? groupNode.components : []));
-        const groupChunks = chunkItemsForShuffle(groupChildItems).map((chunk) => expandTimeline(chunk, opts, level + 1));
+        const groupChunks = chunkItemsForShuffle(groupChildItems, { bundleInstructionRuns: true }).map((chunk) => expandTimeline(chunk, opts, level + 1));
         for (const expandedChunk of groupChunks) {
           pooledExpandedChunks.push(expandedChunk);
         }

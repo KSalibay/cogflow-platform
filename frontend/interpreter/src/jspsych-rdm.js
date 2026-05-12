@@ -233,12 +233,15 @@ var jsPsychRdm = (function (jspsych) {
       const responseDeadline = Number(timing.response_deadline ?? rdm.response_deadline ?? stimulusDuration);
 
       const requireResponse = response.require_response !== false;
-      const responseDevice = response.response_device || 'keyboard';
+      const responseDevice = (response.response_device || 'keyboard').toString().trim().toLowerCase();
       const mouseInactivityPrompt = (() => {
         if (responseDevice !== 'mouse') return null;
         const mouseResp = (response && typeof response.mouse_response === 'object') ? response.mouse_response : null;
-        const cfg = (mouseResp && typeof mouseResp.inactivity_prompt === 'object') ? mouseResp.inactivity_prompt : null;
-        if (!cfg || cfg.enabled !== true) return null;
+        const legacyCfg = (response && typeof response.inactivity_prompt === 'object') ? response.inactivity_prompt : null;
+        const cfg = (mouseResp && typeof mouseResp.inactivity_prompt === 'object')
+          ? mouseResp.inactivity_prompt
+          : legacyCfg;
+        if (!cfg || !(cfg.enabled === true || cfg.enabled === 'true' || cfg.enabled === 1)) return null;
 
         const threshold = Number(cfg.idle_threshold_ms);
         const cooldown = Number(cfg.reminder_cooldown_ms);
