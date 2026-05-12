@@ -1024,6 +1024,39 @@
         padding-top: 14px;
       }
 
+      .study-flow-task-pool {
+        margin-top: 14px;
+        border: 1px dashed color-mix(in oklab, var(--accent) 30%, var(--line));
+        border-radius: 12px;
+        background: color-mix(in oklab, var(--accent-lt) 18%, var(--panel));
+        padding: 10px;
+      }
+
+      .study-flow-bank-head {
+        font-size: 0.8rem;
+        color: var(--muted);
+        margin-bottom: 8px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      .study-flow-task-bank {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: 8px;
+      }
+
+      .study-flow-task-bank li {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: color-mix(in oklab, var(--panel) 90%, var(--bg));
+        padding: 8px 10px;
+        cursor: grab;
+      }
+
       .study-flow-variants-bar {
         display: flex;
         align-items: flex-start;
@@ -1634,6 +1667,13 @@
                     <option value="">— Select study —</option>
                   </select>
                 </div>
+                <label style="display:flex;gap:8px;align-items:flex-start;margin-top:10px;">
+                  <input type="checkbox" id="integrationUseFlowVariants" />
+                  <span>
+                    <span style="font-weight:600;">Use saved study variants for assignment</span>
+                    <span id="integrationFlowVariantsHint" class="inline-note" style="display:block;margin-top:3px;">No saved variants detected for the selected study.</span>
+                  </span>
+                </label>
               </div>
 
               <div class="panel panel-pad" style="margin-bottom:14px;">

@@ -166,6 +166,40 @@
         sel.appendChild(o);
       }
       if (prev) sel.value = prev;
+      refreshIntegrationFlowVariantOptions(sel.value || "");
+    }
+
+    async function refreshIntegrationFlowVariantOptions(slug) {
+      const toggle = document.getElementById("integrationUseFlowVariants");
+      const hint = document.getElementById("integrationFlowVariantsHint");
+      if (!toggle || !hint) return;
+
+      const key = String(slug || "").trim();
+      if (!key) {
+        toggle.checked = false;
+        toggle.disabled = true;
+        hint.textContent = "Select a study to inspect saved variants.";
+        return;
+      }
+
+      toggle.disabled = true;
+      try {
+        const payload = await fetchStudyLatestConfig(key);
+        const variants = Array.isArray(payload?.study_properties?.flow_variants) ? payload.study_properties.flow_variants : [];
+        if (variants.length > 0) {
+          toggle.disabled = false;
+          toggle.checked = true;
+          hint.textContent = `${variants.length} saved variant${variants.length === 1 ? "" : "s"} available.`;
+        } else {
+          toggle.checked = false;
+          toggle.disabled = true;
+          hint.textContent = "No saved variants found. Use Study Properties to create them.";
+        }
+      } catch {
+        toggle.checked = false;
+        toggle.disabled = true;
+        hint.textContent = "Could not load study variant details.";
+      }
     }
 
     // ── Study tables ───────────────────────────────────────────
@@ -665,6 +699,7 @@
       const pid = (document.getElementById("integrationParticipantId")?.value || "").trim();
       const completionUrl = (document.getElementById("integrationCompletionUrl")?.value || "").trim();
       const abortUrl = (document.getElementById("integrationAbortUrl")?.value || "").trim();
+      const useFlowVariants = !!document.getElementById("integrationUseFlowVariants")?.checked;
 
       if (!slug) {
         statusEl.className = "status-bar error";
@@ -684,6 +719,7 @@
       try {
         const r = await fetch(`${API}/api/v1/studies/${encodeURIComponent(slug)}/participant-links`, postOpts({
           participant_external_id: pid || null,
+          use_flow_variants: useFlowVariants,
           expires_in_hours: 72,
           completion_redirect_url: completionUrl,
           abort_redirect_url: abortUrl || null,
@@ -714,6 +750,7 @@
       const slug = (document.getElementById("integrationStudySelect")?.value || "").trim();
       const completionCode = (document.getElementById("prolificCompletionCode")?.value || "").trim();
       const completionMethod = (document.getElementById("prolificCompletionMethod")?.value || "redirect").trim().toLowerCase();
+      const useFlowVariants = !!document.getElementById("integrationUseFlowVariants")?.checked;
 
       if (!slug) {
         statusEl.className = "status-bar error";
@@ -738,6 +775,7 @@
       try {
         const r = await fetch(`${API}/api/v1/studies/${encodeURIComponent(slug)}/participant-links`, postOpts({
           participant_external_id: "{% templatetag openvariable %}%PROLIFIC_PID%{% templatetag closevariable %}",
+          use_flow_variants: useFlowVariants,
           expires_in_hours: 72,
           completion_redirect_url: completionRedirect,
           abort_redirect_url: null,
@@ -1519,6 +1557,11 @@
     document.getElementById("previewStudySelect").addEventListener("change", (e) => {
       const slug = (e.target?.value || '').toString().trim();
       populatePreviewTaskSelect(slug);
+    });
+
+    document.getElementById("integrationStudySelect")?.addEventListener("change", (e) => {
+      const slug = (e.target?.value || "").toString().trim();
+      refreshIntegrationFlowVariantOptions(slug);
     });
 
     document.getElementById("analysisStudySelect")?.addEventListener("change", async (e) => {
