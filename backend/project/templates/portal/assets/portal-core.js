@@ -191,6 +191,128 @@
       })).filter((variant) => variant.task_order.length > 0);
     }
 
+    function renderFlowTaskBank(host, orderedTaskIds, labelMap) {
+      const ids = Array.isArray(orderedTaskIds) ? orderedTaskIds : [];
+      if (!ids.length) {
+        host.innerHTML = '<div class="text-muted" style="font-size:.82rem;">Enable tasks above to populate the task bank.</div>';
+        return;
+      }
+
+      host.innerHTML = `
+        <div class="study-flow-bank-head">Task Bank (drag tasks into variants below)</div>
+        <ul class="study-flow-task-bank list-group" data-role="flow-task-bank">
+          ${ids.map((id) => `
+            <li class="list-group-item" draggable="true" data-config-id="${esc(id)}">
+              <div class="study-flow-variant-row">
+                <span>${esc(labelMap.get(id) || id)}</span>
+                <span class="task-order-grip" aria-hidden="true">⋮⋮</span>
+              </div>
+            </li>
+          `).join("")}
+        </ul>
+      `;
+    }
+
+    function enableFlowVariantDnD(bankListEl, variantLists) {
+      const lists = (Array.isArray(variantLists) ? variantLists : []).filter(Boolean);
+      if (!bankListEl || !lists.length) return;
+
+      let dragState = null;
+      const allLists = [bankListEl, ...lists];
+
+      const bindDraggables = () => {
+        allLists.forEach((listEl) => {
+          Array.from(listEl.querySelectorAll("li[data-config-id]"))
+            .forEach((li) => {
+              li.draggable = true;
+              li.ondragstart = () => {
+                dragState = {
+                  id: String(li.dataset.configId || "").trim(),
+                  fromBank: listEl === bankListEl,
+                  sourceList: listEl,
+                  sourceEl: li,
+                };
+                li.classList.add("dragging");
+              };
+              li.ondragend = () => {
+                li.classList.remove("dragging");
+                dragState = null;
+              };
+            });
+        });
+      };
+
+      const makeItem = (taskId) => {
+        const src = bankListEl.querySelector(`li[data-config-id="${CSS.escape(taskId)}"]`);
+        const clone = src ? src.cloneNode(true) : document.createElement("li");
+        if (!src) {
+          clone.className = "list-group-item";
+          clone.dataset.configId = taskId;
+          clone.innerHTML = `
+            <div class="study-flow-variant-row">
+              <span>${esc(taskId)}</span>
+              <span class="task-order-grip" aria-hidden="true">⋮⋮</span>
+            </div>
+          `;
+        }
+        const row = clone.querySelector(".study-flow-variant-row");
+        if (row && !row.querySelector("button[data-role='variant-remove-task']")) {
+          const right = document.createElement("span");
+          right.style.display = "inline-flex";
+          right.style.alignItems = "center";
+          right.style.gap = "8px";
+          right.innerHTML = '<button type="button" class="btn btn-danger btn-xs" data-role="variant-remove-task">Remove</button><span class="task-order-grip" aria-hidden="true">⋮⋮</span>';
+          row.lastElementChild?.remove();
+          row.appendChild(right);
+        }
+        return clone;
+      };
+
+      const attachDrop = (listEl) => {
+        listEl.ondragover = (e) => {
+          e.preventDefault();
+        };
+
+        listEl.ondrop = (e) => {
+          e.preventDefault();
+          if (!dragState || !dragState.id) return;
+
+          listEl.querySelectorAll("[data-role='variant-empty-hint']").forEach((el) => el.remove());
+
+          const targetItem = e.target.closest("li[data-config-id]");
+          const existing = listEl.querySelector(`li[data-config-id="${CSS.escape(dragState.id)}"]`);
+
+          if (dragState.fromBank) {
+            if (listEl === bankListEl || existing) return;
+          }
+
+          if (!dragState.fromBank && dragState.sourceList !== listEl && existing) {
+            return;
+          }
+
+          let movingEl = dragState.fromBank ? makeItem(dragState.id) : dragState.sourceEl;
+
+          if (targetItem && targetItem !== movingEl) {
+            const rect = targetItem.getBoundingClientRect();
+            const before = (e.clientY - rect.top) < rect.height / 2;
+            if (before) listEl.insertBefore(movingEl, targetItem);
+            else listEl.insertBefore(movingEl, targetItem.nextSibling);
+          } else {
+            listEl.appendChild(movingEl);
+          }
+
+          if (!dragState.fromBank && dragState.sourceList !== listEl && dragState.sourceEl?.parentElement) {
+            // element moved automatically by append/insert; nothing additional needed
+          }
+
+          bindDraggables();
+        };
+      };
+
+      lists.forEach((listEl) => attachDrop(listEl));
+      bindDraggables();
+    }
+
     function renderFlowVariantsEditor(host, variants, getLabelMap, currentTaskOrderGetter, setErr) {
       const safeVariants = Array.isArray(variants) ? variants : [];
       const labelMap = typeof getLabelMap === "function" ? getLabelMap() : new Map();
@@ -224,7 +346,10 @@
         </article>
       `).join("");
 
-      host.querySelectorAll(".study-flow-variant-list").forEach((listEl) => setupDragList(listEl));
+      const bankListEl = document.querySelector("#studyPropertiesTaskPool [data-role='flow-task-bank']");
+      const variantLists = Array.from(host.querySelectorAll(".study-flow-variant-list"));
+      variantLists.forEach((listEl) => setupDragList(listEl));
+      if (bankListEl) enableFlowVariantDnD(bankListEl, variantLists);
       host.querySelectorAll("button[data-role='variant-delete']").forEach((btn) => {
         btn.addEventListener("click", () => {
           const card = btn.closest("[data-role='flow-variant-card']");
@@ -256,6 +381,11 @@
           if (!li) return;
           li.remove();
         });
+      });
+
+      host.querySelectorAll(".study-flow-variant-list").forEach((listEl) => {
+        if (listEl.querySelector("li[data-config-id]")) return;
+        listEl.innerHTML = '<li class="list-group-item text-muted" style="font-size:.82rem;" data-role="variant-empty-hint">Drop tasks here from the task bank.</li>';
       });
     }
 
@@ -436,13 +566,17 @@
                 <div id="studyPropertiesError" class="alert alert-danger py-2 d-none" role="alert"></div>
                 <p style="margin:0 0 10px;color:var(--muted);font-size:.84rem;">Select which tasks are active for this study, rename display labels, and drag to change launch order.</p>
                 <ul id="studyPropertiesTaskList" class="list-group"></ul>
+                <div id="studyPropertiesTaskPool" class="study-flow-task-pool"></div>
                 <div class="study-flow-variants-section">
                   <div class="study-flow-variants-bar">
                     <div>
                       <div style="font-weight:600;">Participant Flow Variants</div>
                       <div class="text-muted" style="font-size:.82rem;">Save alternate task sequences here, then use them at link generation for balanced assignment across clicks on the same link.</div>
                     </div>
-                    <button type="button" class="btn btn-secondary btn-sm" id="studyPropertiesAddVariantBtn">Add Variant From Current Order</button>
+                    <div style="display:inline-flex;gap:8px;flex-wrap:wrap;">
+                      <button type="button" class="btn btn-secondary btn-sm" id="studyPropertiesAddVariantBtn">Add Variant From Current Order</button>
+                      <button type="button" class="btn btn-ghost btn-sm" id="studyPropertiesAddEmptyVariantBtn">Add Empty Variant</button>
+                    </div>
                   </div>
                   <div id="studyPropertiesVariants"></div>
                 </div>
@@ -532,8 +666,10 @@
       const modalEl = ensureStudyPropertiesModal();
       const errEl = document.getElementById("studyPropertiesError");
       const listEl = document.getElementById("studyPropertiesTaskList");
+      const taskPoolEl = document.getElementById("studyPropertiesTaskPool");
       const variantsEl = document.getElementById("studyPropertiesVariants");
       const addVariantBtn = document.getElementById("studyPropertiesAddVariantBtn");
+      const addEmptyVariantBtn = document.getElementById("studyPropertiesAddEmptyVariantBtn");
       const saveBtn = document.getElementById("studyPropertiesSaveBtn");
       const st = getStudyState(slug);
 
@@ -545,6 +681,7 @@
 
       setErr("");
       listEl.innerHTML = "";
+      taskPoolEl.innerHTML = "";
       variantsEl.innerHTML = "";
 
       const getLabelMap = () => getTaskLabelsFromList(listEl);
@@ -586,7 +723,21 @@
           listEl.appendChild(li);
         });
         setupDragList(listEl);
+        const renderVariantWorkspace = () => {
+          renderFlowTaskBank(taskPoolEl, getCurrentTaskOrder(), getLabelMap());
+          renderFlowVariantsEditor(variantsEl, readFlowVariantsFromEditor(variantsEl).length ? readFlowVariantsFromEditor(variantsEl) : (st.flowVariants || []), getLabelMap, getCurrentTaskOrder, setErr);
+        };
+        renderFlowTaskBank(taskPoolEl, getCurrentTaskOrder(), getLabelMap());
         renderFlowVariantsEditor(variantsEl, st.flowVariants || [], getLabelMap, getCurrentTaskOrder, setErr);
+
+        listEl.querySelectorAll("input[data-role='task-enabled'], input[data-role='task-label']").forEach((inputEl) => {
+          inputEl.addEventListener("change", () => {
+            const current = readFlowVariantsFromEditor(variantsEl);
+            st.flowVariants = current;
+            renderFlowTaskBank(taskPoolEl, getCurrentTaskOrder(), getLabelMap());
+            renderFlowVariantsEditor(variantsEl, current, getLabelMap, getCurrentTaskOrder, setErr);
+          });
+        });
 
         listEl.querySelectorAll("button[data-role='delete-config']").forEach((btn) => {
           btn.addEventListener("click", async (e) => {
@@ -634,6 +785,18 @@
           task_order: currentOrder,
         });
         setErr("");
+        renderFlowVariantsEditor(variantsEl, variants, getLabelMap, getCurrentTaskOrder, setErr);
+      };
+
+      addEmptyVariantBtn.onclick = () => {
+        const variants = readFlowVariantsFromEditor(variantsEl);
+        variants.push({
+          id: `variant-${Date.now().toString(36)}-${variants.length + 1}`,
+          label: `Variant ${variants.length + 1}`,
+          task_order: [],
+        });
+        setErr("");
+        renderFlowTaskBank(taskPoolEl, getCurrentTaskOrder(), getLabelMap());
         renderFlowVariantsEditor(variantsEl, variants, getLabelMap, getCurrentTaskOrder, setErr);
       };
 
