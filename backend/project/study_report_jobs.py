@@ -81,14 +81,19 @@ def _matches_interest(field_name: str, fields_of_interest: list[str]):
     interests = [str(x or "").strip().lower() for x in (fields_of_interest or []) if str(x or "").strip()]
     if not interests:
         return True
-    parts = [p for p in re.split(r"[^a-z0-9]+", field) if p]
-    parts_set = set(parts)
+    path_segments = [seg for seg in field.split(".") if seg]
     for token in interests:
         if token == field:
             return True
-        if token in parts_set:
+        # Allow exact segment matches in dotted paths (e.g. data.rt_ms matches rt_ms).
+        if token in path_segments:
             return True
-        if token in field and ("_" in token or "." in token):
+        # For short generic tokens (rt, correct, accuracy), only match full segment
+        # or segment-prefix, not anywhere inside a larger variable name.
+        if any(seg == token or seg.startswith(f"{token}_") for seg in path_segments):
+            return True
+        # For structured tokens, allow nested matches by exact path prefix/suffix.
+        if "." in token and (field.startswith(f"{token}.") or field.endswith(f".{token}")):
             return True
     return False
 
@@ -118,8 +123,6 @@ def _field_priority(field_name: str, fields_of_interest: list[str]):
         return 100
     if _matches_interest(field, fields_of_interest) and fields_of_interest:
         return 120
-    if any(token and token in field for token in (fields_of_interest or [])):
-        return 110
 
     score = 0
     if any(tok in field for tok in behavioral_tokens):
