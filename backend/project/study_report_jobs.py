@@ -207,6 +207,7 @@ _TASK_FAMILY_LABELS = {
     "rdm": "Random Dot Motion (RDM)",
     "flanker": "Eriksen Flanker",
     "sart": "Sustained Attention to Response Task (SART)",
+    "soc_dashboard": "SOC Dashboard",
     "nback": "N-Back",
     "gabor": "Gabor Contrast Detection",
     "wcst": "Wisconsin Card Sorting Task (WCST)",
@@ -232,6 +233,12 @@ _TASK_KEY_FIELDS = {
         "rt": "Reaction Time (ms)",
         "commission_error": "Commission Errors",
         "omission_error": "Omission Errors",
+        "correct": "Correct",
+    },
+    "soc_dashboard": {
+        "rt": "Reaction Time (ms)",
+        "response": "Response",
+        "score": "Score",
         "correct": "Correct",
     },
     "nback": {
@@ -282,6 +289,11 @@ _TASK_INTERPRETATION_NOTES = {
         "Omission errors (missing 'go' targets) may reflect attentional lapses. "
         "Mean RT provides a baseline processing speed estimate."
     ),
+    "soc_dashboard": (
+        "**Interpretation guidance (SOC Dashboard):** "
+        "Prioritize task-specific score and response distributions across dashboard components. "
+        "Use per-item response patterns and timestamps to characterize strategy and consistency."
+    ),
     "nback": (
         "**Interpretation guidance (N-Back):** "
         "Accuracy and RT on target-match trials index working memory capacity at each load level. "
@@ -320,6 +332,7 @@ _TASK_FAMILY_DEFAULT_INTERESTS = {
     ],
     "flanker": ["rt", "rt_ms", "accuracy", "correct", "congruent", "incongruent"],
     "sart": ["rt", "rt_ms", "commission_error", "omission_error", "correct"],
+    "soc_dashboard": ["rt", "rt_ms", "response", "score", "correct", "choice", "confidence"],
     "nback": ["rt", "rt_ms", "accuracy", "correct", "match"],
     "gabor": ["rt", "rt_ms", "accuracy", "correct", "contrast", "threshold"],
     "wcst": ["rt", "rt_ms", "correct", "perseverative_error"],
@@ -332,6 +345,8 @@ _TRIAL_CATEGORY_DEFAULT_INTERESTS = {
     "all": ["rt", "rt_ms", "accuracy", "correct", "response", "score"],
     "rdm": ["rt", "rt_ms", "accuracy", "correct", "coherence", "correct_side", "response_side", "response_angle_deg", "response_angle_error_deg"],
     "drt": ["drt_rt_ms", "drt_correct", "drt_responded", "rt", "rt_ms"],
+    "sart": ["rt", "rt_ms", "commission_error", "omission_error", "correct", "response"],
+    "soc_dashboard": ["rt", "rt_ms", "response", "score", "choice", "confidence"],
     "mind_probe": ["rt", "rt_ms", "response", "responses", "q1", "q2"],
     "survey": ["rt", "rt_ms", "response", "responses", "q1", "q2"],
     "other": ["rt", "rt_ms", "accuracy", "correct", "response"],
@@ -347,6 +362,10 @@ def _categorize_trial_payload(payload: dict) -> str:
 
     if plugin in {"rdm-trial", "rdm-continuous", "rdm"} or task in {"rdm", "rdk"} or trial_type in {"rdm", "rdm-continuous"}:
         return "rdm"
+    if task in {"sart", "go-nogo", "go_nogo"} or "sart" in plugin or "sart" in trial_type:
+        return "sart"
+    if task in {"soc_dashboard", "soc-dashboard", "soc"} or "soc-dashboard" in plugin or "soc_dashboard" in plugin:
+        return "soc_dashboard"
     if plugin == "drt" or task == "drt" or plugin in {"drt-start", "drt-stop"}:
         return "drt"
     if plugin == "survey-response":
@@ -366,6 +385,8 @@ def _detect_task_family_from_metadata(study_slug: str, task_types: set[str], plu
         return "rdm"
     if any(t in {"sart", "go-nogo", "go_nogo"} for t in task_values):
         return "sart"
+    if any(t in {"soc_dashboard", "soc-dashboard", "soc"} for t in task_values):
+        return "soc_dashboard"
     if any(t in {"flanker"} for t in task_values):
         return "flanker"
     if any(t in {"nback", "n-back", "n_back"} for t in task_values):
@@ -378,6 +399,8 @@ def _detect_task_family_from_metadata(study_slug: str, task_types: set[str], plu
         return "wcst"
     if any("rdm" in p or "dot" in p for p in plugin_values):
         return "rdm"
+    if any("soc-dashboard" in p or "soc_dashboard" in p for p in plugin_values):
+        return "soc_dashboard"
     if "drt" in task_values or any(p == "drt" for p in plugin_values):
         return "drt"
 

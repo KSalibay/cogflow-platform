@@ -1358,6 +1358,8 @@
       if (c === "all") return "All trial categories";
       if (c === "rdm") return "RDM";
       if (c === "drt") return "DRT";
+      if (c === "sart") return "SART";
+      if (c === "soc_dashboard") return "SOC Dashboard";
       if (c === "mind_probe") return "Mind probes";
       if (c === "survey") return "Surveys";
       if (c === "other") return "Other";
