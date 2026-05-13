@@ -10,6 +10,7 @@ from markdown import markdown as markdown_to_html
 
 logger = logging.getLogger(__name__)
 
+from apps.audit.models import AuditEvent
 from apps.results.services import get_decrypted_trial
 from apps.studies.models import StudyAnalysisReportArtifact, StudyAnalysisReportJob
 from project.constants import RUN_STATUS_COMPLETED
@@ -151,6 +152,34 @@ def _build_config_variant_lookup(study):
             # Keep first mapping if a config appears in multiple variants.
             lookup.setdefault(cfg_id, {"variant_id": variant_id, "variant_label": variant_label})
     return lookup
+
+
+def _build_run_variant_lookup_from_audit(study, run_ids):
+    run_id_values = [str(rid or "").strip() for rid in (run_ids or []) if str(rid or "").strip()]
+    if not run_id_values:
+        return {}
+
+    events_qs = AuditEvent.objects.filter(
+        action="start_run",
+        resource_type="run_session",
+        metadata_json__study_slug=study.slug,
+        resource_id__in=run_id_values,
+    ).order_by("-created_at")
+
+    out = {}
+    for event in events_qs:
+        run_id = str(getattr(event, "resource_id", "") or "").strip()
+        if not run_id or run_id in out:
+            continue
+        metadata = event.metadata_json if isinstance(getattr(event, "metadata_json", None), dict) else {}
+        variant_label = str(metadata.get("flow_variant_label") or "").strip()
+        variant_id = str(metadata.get("flow_variant_id") or "").strip()
+        if variant_label or variant_id:
+            out[run_id] = {
+                "variant_id": variant_id,
+                "variant_label": variant_label or variant_id,
+            }
+    return out
 
 
 def _render_r_markdown(study, overview, summary_rows):
@@ -708,6 +737,7 @@ def build_study_analysis_outputs(study, engine, options, include_completed_only=
         runs_qs = runs_qs.filter(status=RUN_STATUS_COMPLETED)
 
     run_count = runs_qs.count()
+    run_batch = list(runs_qs[:500])
     with_result = 0
     trial_count = 0
     numeric_values_by_field = {}
@@ -717,6 +747,7 @@ def build_study_analysis_outputs(study, engine, options, include_completed_only=
     variant_numeric_trial_counts = {}
     participant_label_by_key = {}
     config_variant_lookup = _build_config_variant_lookup(study)
+    audit_variant_lookup = _build_run_variant_lookup_from_audit(study, [run.id for run in run_batch])
 
     def get_participant_label(run_obj):
         participant_key = str(getattr(run_obj, "participant_key", "") or "").strip()
@@ -726,14 +757,15 @@ def build_study_analysis_outputs(study, engine, options, include_completed_only=
             participant_label_by_key[participant_key] = f"P{len(participant_label_by_key) + 1:03d}"
         return participant_label_by_key[participant_key]
 
-    for run in runs_qs[:500]:
+    for run in run_batch:
         envelope = getattr(run, "result_envelope", None)
         if not envelope:
             continue
         with_result += 1
         participant_label = get_participant_label(run)
+        run_id = str(getattr(run, "id", "") or "")
         config_version_id = str(getattr(run, "config_version_id", "") or "")
-        variant_info = config_variant_lookup.get(config_version_id, {})
+        variant_info = audit_variant_lookup.get(run_id) or config_variant_lookup.get(config_version_id, {})
         variant_id = str(variant_info.get("variant_id") or "").strip()
         variant_label = str(variant_info.get("variant_label") or "").strip()
         for trial in run.trial_results.all().order_by("trial_index"):
