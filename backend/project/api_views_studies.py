@@ -193,13 +193,39 @@ class StudyRunsView(APIView):
         if not perms.get("can_view_run_rows"):
             return Response({"error": "Run-level access is not enabled for this study"}, status=status.HTTP_403_FORBIDDEN)
 
+        run_batch = list(
+            study.run_sessions.select_related("owner_user", "result_envelope", "config_version").order_by("-started_at")[:20]
+        )
+        run_ids = [str(getattr(run, "id", "") or "").strip() for run in run_batch if str(getattr(run, "id", "") or "").strip()]
+        variant_by_run_id = {}
+        if run_ids:
+            events = AuditEvent.objects.filter(
+                action="start_run",
+                resource_type="run_session",
+                metadata_json__study_slug=study.slug,
+                resource_id__in=run_ids,
+            ).order_by("-created_at")
+            for event in events:
+                run_id = str(getattr(event, "resource_id", "") or "").strip()
+                if not run_id or run_id in variant_by_run_id:
+                    continue
+                metadata = event.metadata_json if isinstance(getattr(event, "metadata_json", None), dict) else {}
+                variant_id = str(metadata.get("flow_variant_id") or "").strip()
+                variant_label = str(metadata.get("flow_variant_label") or "").strip()
+                variant_by_run_id[run_id] = {
+                    "flow_variant_id": variant_id or None,
+                    "flow_variant_label": variant_label or (variant_id or None),
+                    "has_flow_variant": bool(variant_id or variant_label),
+                }
+
         runs = []
-        for run in study.run_sessions.select_related("owner_user", "result_envelope", "config_version").order_by("-started_at")[:20]:
+        for run in run_batch:
             envelope = getattr(run, "result_envelope", None)
             cfg = getattr(run, "config_version", None)
             cfg_json = cfg.config_json if cfg and isinstance(cfg.config_json, dict) else {}
             task_type = (cfg_json.get("task_type") or cfg_json.get("taskType") or "")
             task_type = str(task_type).strip().lower() or None
+            variant_meta = variant_by_run_id.get(str(getattr(run, "id", "") or "").strip(), {})
             runs.append(
                 {
                     "run_session_id": run.id,
@@ -215,6 +241,9 @@ class StudyRunsView(APIView):
                     "task_type": task_type,
                     "config_version_id": cfg.id if cfg else None,
                     "config_version_label": cfg.version_label if cfg else None,
+                    "flow_variant_id": variant_meta.get("flow_variant_id"),
+                    "flow_variant_label": variant_meta.get("flow_variant_label"),
+                    "has_flow_variant": bool(variant_meta.get("has_flow_variant", False)),
                     "has_result": bool(envelope),
                     "trial_count": envelope.trial_count if envelope else 0,
                     "result_created_at": envelope.created_at if envelope else None,

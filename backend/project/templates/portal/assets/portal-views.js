@@ -485,6 +485,7 @@
                     ${metaB("Started",     fmt(run.started_at))}
                     ${metaB("Completed",   fmt(run.completed_at))}
                     ${metaB("Trials",      String(run.trial_count || 0))}
+                    ${metaB("Variant",     run.flow_variant_label || (run.has_flow_variant ? (run.flow_variant_id || "Tagged") : "No variant"))}
                     ${metaB("Participant", run.participant_key_preview || "—")}
                   </div>
                   <div class="result-actions">

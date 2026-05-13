@@ -1616,9 +1616,11 @@
       const note = document.createElement("p");
       note.className = "inline-note";
       note.style.cssText = "margin:6px 0 0;font-size:.76rem;";
-      note.textContent = withErrorBars
-        ? `Error bars = ±1 SD across all trials. Computed from ${job.overview?.runs_considered ?? "?"} run(s), ${job.overview?.trials_with_numeric_payload ?? "?"} trial(s).`
-        : `Metric = ${yTitle}. Computed from ${job.overview?.runs_considered ?? "?"} run(s), ${job.overview?.trials_with_numeric_payload ?? "?"} trial(s).`;
+      note.textContent = chartMode === "variant"
+        ? `Variant mode uses only runs tagged with flow-variant metadata. Metric = ${yTitle}. Source window: ${job.overview?.runs_considered ?? "?"} run(s), ${job.overview?.trials_with_numeric_payload ?? "?"} trial(s).`
+        : (withErrorBars
+          ? `Error bars = ±1 SD across all trials. Computed from ${job.overview?.runs_considered ?? "?"} run(s), ${job.overview?.trials_with_numeric_payload ?? "?"} trial(s).`
+          : `Metric = ${yTitle}. Computed from ${job.overview?.runs_considered ?? "?"} run(s), ${job.overview?.trials_with_numeric_payload ?? "?"} trial(s).`);
       panel.appendChild(note);
 
       _setAnalysisChartsHint(`Rendered ${pickedRows.length} variable(s) from job #${Number(job.id)}.`);
