@@ -46,6 +46,8 @@
     const studyUiState = {};
     let studiesRefreshTimer = null;
     let analysisJobsRefreshTimer = null;
+    let analysisFieldsTouched = false;
+    let analysisDefaultsStudySlug = "";
     let activeView = "studiesManagement";
 
     function getStudyState(slug) {
@@ -1348,6 +1350,47 @@
       };
     }
 
+    function renderAnalysisTaskHint(defaults) {
+      const hintEl = document.getElementById("analysisTaskHint");
+      if (!hintEl) return;
+
+      if (!defaults || typeof defaults !== "object") {
+        hintEl.textContent = "Task-family defaults will be detected from result metadata.";
+        return;
+      }
+
+      const familyLabel = String(defaults.task_family_label || defaults.task_family || "Generic").trim();
+      const sampledRuns = Number(defaults.sampled_runs || 0);
+      const sampledTrials = Number(defaults.sampled_trials || 0);
+      const taskTypes = Array.isArray(defaults.observed_task_types)
+        ? defaults.observed_task_types.map((x) => String(x || "").trim()).filter(Boolean)
+        : [];
+
+      hintEl.textContent = `Detected task family: ${familyLabel}. Sampled ${sampledRuns} run(s), ${sampledTrials} trial(s) from result metadata${taskTypes.length ? ` • task types: ${taskTypes.join(", ")}` : ""}.`;
+    }
+
+    function applyAnalysisDefaults(defaults, options = {}) {
+      const force = !!options.force;
+      const inputEl = document.getElementById("analysisFieldsOfInterestInput");
+      if (!inputEl) return;
+
+      renderAnalysisTaskHint(defaults);
+
+      const suggested = Array.isArray(defaults?.suggested_fields_of_interest)
+        ? defaults.suggested_fields_of_interest.map((x) => String(x || "").trim().toLowerCase()).filter(Boolean)
+        : [];
+      if (!suggested.length) return;
+
+      const currentRaw = String(inputEl.value || "").trim();
+      const defaultRaw = "rt,rt_ms,accuracy,correct,error,score,points,response";
+      const isStillDefault = currentRaw.toLowerCase() === defaultRaw;
+      const shouldApply = force || !analysisFieldsTouched || !currentRaw || isStillDefault;
+      if (!shouldApply) return;
+
+      inputEl.value = suggested.join(",");
+      analysisFieldsTouched = false;
+    }
+
     function renderAnalysisJobs(jobs) {
       const listEl = document.getElementById("analysisJobsList");
       if (!listEl) return;
@@ -1528,6 +1571,8 @@
       const slug = String(studySlug || document.getElementById("analysisStudySelect")?.value || "").trim();
       renderAnalysisJobs([]);
       if (!slug) {
+        analysisDefaultsStudySlug = "";
+        renderAnalysisTaskHint(null);
         if (statusEl) {
           statusEl.className = "status-bar";
           statusEl.textContent = "Pick a study and generate a report.";
@@ -1535,9 +1580,12 @@
         return;
       }
       try {
-        const r = await fetch(`${API}/api/v1/studies/analysis/jobs?study_slug=${encodeURIComponent(slug)}`, { credentials: "include" });
+        const r = await fetch(`${API}/api/v1/studies/analysis/jobs?study_slug=${encodeURIComponent(slug)}&include_defaults=1`, { credentials: "include" });
         const d = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+        const changedStudy = slug !== analysisDefaultsStudySlug;
+        if (changedStudy) analysisDefaultsStudySlug = slug;
+        applyAnalysisDefaults(d?.analysis_defaults || null, { force: changedStudy });
         const jobs = Array.isArray(d.jobs) ? d.jobs : [];
         renderAnalysisJobs(jobs);
         const latestSucceeded = jobs.find((job) => String(job?.status || "") === "succeeded");
@@ -1605,6 +1653,10 @@
       // Do not auto-reload analysis jobs from studies refresh; analysis loading is
       // driven by explicit user actions and analysis-specific job polling.
     }
+
+    document.getElementById("analysisFieldsOfInterestInput")?.addEventListener("input", () => {
+      analysisFieldsTouched = true;
+    });
 
     function getCreditsTaskScopeMap() {
       const map = new Map();

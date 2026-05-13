@@ -301,6 +301,100 @@ _TASK_INTERPRETATION_NOTES = {
 }
 
 
+_TASK_FAMILY_DEFAULT_INTERESTS = {
+    "rdm": [
+        "rt", "rt_ms", "accuracy", "correct", "coherence", "correct_side",
+        "response_side", "response_angle_deg", "response_angle_error_deg",
+    ],
+    "flanker": ["rt", "rt_ms", "accuracy", "correct", "congruent", "incongruent"],
+    "sart": ["rt", "rt_ms", "commission_error", "omission_error", "correct"],
+    "nback": ["rt", "rt_ms", "accuracy", "correct", "match"],
+    "gabor": ["rt", "rt_ms", "accuracy", "correct", "contrast", "threshold"],
+    "wcst": ["rt", "rt_ms", "correct", "perseverative_error"],
+    "stroop": ["rt", "rt_ms", "accuracy", "correct", "congruent", "incongruent"],
+    "drt": ["drt_rt_ms", "drt_correct", "drt_responded", "rt", "rt_ms"],
+    "generic": ["rt", "rt_ms", "accuracy", "correct", "response", "score"],
+}
+
+
+def _detect_task_family_from_metadata(study_slug: str, task_types: set[str], plugin_types: set[str], numeric_fields: set[str]) -> str:
+    task_values = {str(x or "").strip().lower() for x in (task_types or set()) if str(x or "").strip()}
+    plugin_values = {str(x or "").strip().lower() for x in (plugin_types or set()) if str(x or "").strip()}
+    field_rows = [{"field": f} for f in sorted(numeric_fields or set())]
+
+    if any(t in {"rdm", "rdk"} for t in task_values):
+        return "rdm"
+    if any("rdm" in p or "dot" in p for p in plugin_values):
+        return "rdm"
+    if "drt" in task_values or any(p == "drt" for p in plugin_values):
+        return "drt"
+
+    # Reuse existing slug/field heuristic as fallback.
+    return _detect_task_family(study_slug, field_rows)
+
+
+def infer_study_analysis_defaults(study, include_completed_only=True, max_runs=40, max_trials_per_run=2000):
+    runs_qs = study.run_sessions.select_related("result_envelope").prefetch_related("trial_results").order_by("-started_at")
+    if include_completed_only:
+        runs_qs = runs_qs.filter(status=RUN_STATUS_COMPLETED)
+
+    task_types = set()
+    plugin_types = set()
+    experiment_types = set()
+    numeric_fields = set()
+    sampled_runs = 0
+    sampled_trials = 0
+
+    for run in runs_qs[:max_runs]:
+        envelope = getattr(run, "result_envelope", None)
+        if not envelope:
+            continue
+        sampled_runs += 1
+
+        for trial in run.trial_results.all().order_by("trial_index")[:max_trials_per_run]:
+            payload = get_decrypted_trial(trial)
+            if not isinstance(payload, dict):
+                continue
+
+            task_type = str(payload.get("task_type") or "").strip().lower()
+            plugin_type = str(payload.get("plugin_type") or "").strip().lower()
+            experiment_type = str(payload.get("experiment_type") or "").strip().lower()
+
+            if task_type:
+                task_types.add(task_type)
+            if plugin_type:
+                plugin_types.add(plugin_type)
+            if experiment_type:
+                experiment_types.add(experiment_type)
+
+            flat_numeric = _flatten_numeric_fields(payload)
+            if flat_numeric:
+                numeric_fields.update(flat_numeric.keys())
+
+            sampled_trials += 1
+
+    family = _detect_task_family_from_metadata(study.slug, task_types, plugin_types, numeric_fields)
+    label = _TASK_FAMILY_LABELS.get(family) or "Generic"
+    suggested = list(_TASK_FAMILY_DEFAULT_INTERESTS.get(family, _TASK_FAMILY_DEFAULT_INTERESTS["generic"]))
+
+    # Continuous RDM often includes DRT side-channel telemetry in the same run.
+    if family == "rdm" and ("drt" in task_types or "drt" in plugin_types):
+        for extra in ["drt_rt_ms", "drt_correct", "drt_responded"]:
+            if extra not in suggested:
+                suggested.append(extra)
+
+    return {
+        "task_family": family,
+        "task_family_label": label,
+        "suggested_fields_of_interest": suggested,
+        "observed_task_types": sorted(task_types),
+        "observed_plugin_types": sorted(plugin_types),
+        "observed_experiment_types": sorted(experiment_types),
+        "sampled_runs": sampled_runs,
+        "sampled_trials": sampled_trials,
+    }
+
+
 def _render_task_section(task_family: str, summary_rows: list) -> str:
     """Return a markdown section with task-specific key metrics and interpretation notes."""
     label = _TASK_FAMILY_LABELS.get(task_family)

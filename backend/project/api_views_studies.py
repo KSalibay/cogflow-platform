@@ -3,7 +3,7 @@ from django.utils import timezone
 from django.db.models.deletion import ProtectedError
 
 from .api_views_common import *
-from .study_report_jobs import build_study_analysis_outputs
+from .study_report_jobs import build_study_analysis_outputs, infer_study_analysis_defaults
 
 
 def _require_study_analysis_access(request, study_slug: str):
@@ -275,6 +275,7 @@ class StudyAnalysisReportJobsView(APIView):
             return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
 
         study_slug = (request.query_params.get("study_slug") or "").strip()
+        include_defaults = str(request.query_params.get("include_defaults") or "").strip().lower() in {"1", "true", "yes"}
         jobs_qs = StudyAnalysisReportJob.objects.select_related("study", "requested_by").prefetch_related("artifacts")
 
         if study_slug:
@@ -282,10 +283,18 @@ class StudyAnalysisReportJobsView(APIView):
             if error:
                 return error
             jobs_qs = jobs_qs.filter(study=study)
+            defaults = infer_study_analysis_defaults(study=study, include_completed_only=True) if include_defaults else None
         else:
             jobs_qs = jobs_qs.filter(requested_by=request.user)
+            defaults = None
 
-        return Response({"jobs": [_serialize_report_job(job) for job in jobs_qs[:25]]}, status=status.HTTP_200_OK)
+        return Response(
+            {
+                "jobs": [_serialize_report_job(job) for job in jobs_qs[:25]],
+                "analysis_defaults": defaults,
+            },
+            status=status.HTTP_200_OK,
+        )
 
     @transaction.atomic
     def post(self, request):
