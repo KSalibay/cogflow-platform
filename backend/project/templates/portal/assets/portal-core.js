@@ -1357,6 +1357,7 @@
       const c = String(category || "").trim().toLowerCase();
       if (c === "all") return "All trial categories";
       if (c === "rdm") return "RDM";
+      if (c === "gabor") return "Gabor";
       if (c === "drt") return "DRT";
       if (c === "sart") return "SART";
       if (c === "soc_dashboard") return "SOC Dashboard";

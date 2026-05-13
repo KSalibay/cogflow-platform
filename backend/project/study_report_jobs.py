@@ -344,6 +344,7 @@ _TASK_FAMILY_DEFAULT_INTERESTS = {
 _TRIAL_CATEGORY_DEFAULT_INTERESTS = {
     "all": ["rt", "rt_ms", "accuracy", "correct", "response", "score"],
     "rdm": ["rt", "rt_ms", "accuracy", "correct", "coherence", "correct_side", "response_side", "response_angle_deg", "response_angle_error_deg"],
+    "gabor": ["rt", "rt_ms", "accuracy", "correct", "contrast", "threshold", "orientation"],
     "drt": ["drt_rt_ms", "drt_correct", "drt_responded", "rt", "rt_ms"],
     "sart": ["rt", "rt_ms", "commission_error", "omission_error", "correct", "response"],
     "soc_dashboard": ["rt", "rt_ms", "response", "score", "choice", "confidence"],
@@ -362,6 +363,8 @@ def _categorize_trial_payload(payload: dict) -> str:
 
     if plugin in {"rdm-trial", "rdm-continuous", "rdm"} or task in {"rdm", "rdk"} or trial_type in {"rdm", "rdm-continuous"}:
         return "rdm"
+    if task in {"gabor", "gabor-patch", "gabor_patch"} or "gabor" in plugin or "gabor" in trial_type:
+        return "gabor"
     if task in {"sart", "go-nogo", "go_nogo"} or "sart" in plugin or "sart" in trial_type:
         return "sart"
     if task in {"soc_dashboard", "soc-dashboard", "soc"} or "soc-dashboard" in plugin or "soc_dashboard" in plugin:
@@ -399,6 +402,8 @@ def _detect_task_family_from_metadata(study_slug: str, task_types: set[str], plu
         return "wcst"
     if any("rdm" in p or "dot" in p for p in plugin_values):
         return "rdm"
+    if any("gabor" in p for p in plugin_values):
+        return "gabor"
     if any("soc-dashboard" in p or "soc_dashboard" in p for p in plugin_values):
         return "soc_dashboard"
     if "drt" in task_values or any(p == "drt" for p in plugin_values):
