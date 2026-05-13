@@ -316,6 +316,34 @@ _TASK_FAMILY_DEFAULT_INTERESTS = {
     "generic": ["rt", "rt_ms", "accuracy", "correct", "response", "score"],
 }
 
+_TRIAL_CATEGORY_DEFAULT_INTERESTS = {
+    "all": ["rt", "rt_ms", "accuracy", "correct", "response", "score"],
+    "rdm": ["rt", "rt_ms", "accuracy", "correct", "coherence", "correct_side", "response_side", "response_angle_deg", "response_angle_error_deg"],
+    "drt": ["drt_rt_ms", "drt_correct", "drt_responded", "rt", "rt_ms"],
+    "mind_probe": ["rt", "rt_ms", "response", "responses", "q1", "q2"],
+    "survey": ["rt", "rt_ms", "response", "responses", "q1", "q2"],
+    "other": ["rt", "rt_ms", "accuracy", "correct", "response"],
+}
+
+
+def _categorize_trial_payload(payload: dict) -> str:
+    if not isinstance(payload, dict):
+        return "other"
+    plugin = str(payload.get("plugin_type") or "").strip().lower()
+    task = str(payload.get("task_type") or "").strip().lower()
+    trial_type = str(payload.get("trial_type") or "").strip().lower()
+
+    if plugin in {"rdm-trial", "rdm-continuous", "rdm"} or task in {"rdm", "rdk"} or trial_type in {"rdm", "rdm-continuous"}:
+        return "rdm"
+    if plugin == "drt" or task == "drt" or plugin in {"drt-start", "drt-stop"}:
+        return "drt"
+    if plugin == "survey-response":
+        q1 = str(((payload.get("responses") or {}).get("q1") if isinstance(payload.get("responses"), dict) else "") or "").strip().lower()
+        if any(tok in q1 for tok in ["on task", "mind", "off-task", "task-related interference"]):
+            return "mind_probe"
+        return "survey"
+    return "other"
+
 
 def _detect_task_family_from_metadata(study_slug: str, task_types: set[str], plugin_types: set[str], numeric_fields: set[str]) -> str:
     task_values = {str(x or "").strip().lower() for x in (task_types or set()) if str(x or "").strip()}
@@ -324,6 +352,18 @@ def _detect_task_family_from_metadata(study_slug: str, task_types: set[str], plu
 
     if any(t in {"rdm", "rdk"} for t in task_values):
         return "rdm"
+    if any(t in {"sart", "go-nogo", "go_nogo"} for t in task_values):
+        return "sart"
+    if any(t in {"flanker"} for t in task_values):
+        return "flanker"
+    if any(t in {"nback", "n-back", "n_back"} for t in task_values):
+        return "nback"
+    if any(t in {"gabor"} for t in task_values):
+        return "gabor"
+    if any(t in {"stroop"} for t in task_values):
+        return "stroop"
+    if any(t in {"wcst"} for t in task_values):
+        return "wcst"
     if any("rdm" in p or "dot" in p for p in plugin_values):
         return "rdm"
     if "drt" in task_values or any(p == "drt" for p in plugin_values):
@@ -342,6 +382,7 @@ def infer_study_analysis_defaults(study, include_completed_only=True, max_runs=4
     plugin_types = set()
     experiment_types = set()
     numeric_fields = set()
+    category_counts = {}
     sampled_runs = 0
     sampled_trials = 0
 
@@ -371,6 +412,9 @@ def infer_study_analysis_defaults(study, include_completed_only=True, max_runs=4
             if flat_numeric:
                 numeric_fields.update(flat_numeric.keys())
 
+            category = _categorize_trial_payload(payload)
+            category_counts[category] = int(category_counts.get(category, 0)) + 1
+
             sampled_trials += 1
 
     family = _detect_task_family_from_metadata(study.slug, task_types, plugin_types, numeric_fields)
@@ -383,10 +427,33 @@ def infer_study_analysis_defaults(study, include_completed_only=True, max_runs=4
             if extra not in suggested:
                 suggested.append(extra)
 
+    observed_categories = [
+        key for key, _count in sorted(category_counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    ]
+    if "all" not in observed_categories:
+        observed_categories = ["all", *observed_categories]
+
+    suggested_by_category = {}
+    for category in observed_categories:
+        base = list(_TRIAL_CATEGORY_DEFAULT_INTERESTS.get(category, _TRIAL_CATEGORY_DEFAULT_INTERESTS["other"]))
+        # For "all", prefer family defaults first.
+        if category == "all":
+            merged = []
+            for token in [*suggested, *base]:
+                t = str(token or "").strip().lower()
+                if t and t not in merged:
+                    merged.append(t)
+            suggested_by_category[category] = merged
+        else:
+            suggested_by_category[category] = [str(x).strip().lower() for x in base if str(x).strip()]
+
     return {
         "task_family": family,
         "task_family_label": label,
         "suggested_fields_of_interest": suggested,
+        "suggested_fields_by_category": suggested_by_category,
+        "observed_trial_categories": observed_categories,
+        "observed_trial_category_counts": {k: int(v) for k, v in category_counts.items()},
         "observed_task_types": sorted(task_types),
         "observed_plugin_types": sorted(plugin_types),
         "observed_experiment_types": sorted(experiment_types),
@@ -530,6 +597,9 @@ def build_study_analysis_outputs(study, engine, options, include_completed_only=
     options = options or {}
     include_config_fields = bool(options.get("include_config_fields", False))
     fields_of_interest = [str(x).strip().lower() for x in (options.get("fields_of_interest") or []) if str(x).strip()]
+    selected_categories = [str(x).strip().lower() for x in (options.get("trial_categories") or []) if str(x).strip()]
+    if not selected_categories or "all" in selected_categories:
+        selected_categories = ["all"]
 
     runs_qs = study.run_sessions.select_related("result_envelope", "config_version").prefetch_related("trial_results").order_by("-started_at")
     if include_completed_only:
@@ -547,6 +617,9 @@ def build_study_analysis_outputs(study, engine, options, include_completed_only=
         with_result += 1
         for trial in run.trial_results.all().order_by("trial_index"):
             payload = get_decrypted_trial(trial)
+            category = _categorize_trial_payload(payload if isinstance(payload, dict) else {})
+            if selected_categories != ["all"] and category not in selected_categories:
+                continue
             flat = _flatten_numeric_fields(payload)
             if not flat:
                 continue
@@ -600,6 +673,7 @@ def build_study_analysis_outputs(study, engine, options, include_completed_only=
         "numeric_variables_reported": len(summary_rows),
         "fields_of_interest": fields_of_interest,
         "include_config_fields": include_config_fields,
+        "trial_categories": selected_categories,
     }
 
     r_markdown_document = _render_r_markdown(study, overview, summary_rows) if engine == "r" else None

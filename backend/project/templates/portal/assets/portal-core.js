@@ -48,6 +48,7 @@
     let analysisJobsRefreshTimer = null;
     let analysisFieldsTouched = false;
     let analysisDefaultsStudySlug = "";
+    let analysisDefaultsCache = null;
     let activeView = "studiesManagement";
 
     function getStudyState(slug) {
@@ -1332,6 +1333,7 @@
         .split(",")
         .map((x) => x.trim().toLowerCase())
         .filter(Boolean);
+      const selectedSlice = String(document.getElementById("analysisSliceSelect")?.value || "all").trim().toLowerCase() || "all";
       const requestedFormats = ["markdown", "html", "pdf", "snapshot"];
       if (engine === "r") requestedFormats.push("rmd");
       return {
@@ -1345,9 +1347,21 @@
           include_numeric_summary: includeNumericSummary,
           include_config_fields: includeConfigFields,
           fields_of_interest: fieldsOfInterest,
+          trial_categories: selectedSlice === "all" ? ["all"] : [selectedSlice],
           max_variables: maxVariables,
         },
       };
+    }
+
+    function analysisSliceLabel(category) {
+      const c = String(category || "").trim().toLowerCase();
+      if (c === "all") return "All trial categories";
+      if (c === "rdm") return "RDM";
+      if (c === "drt") return "DRT";
+      if (c === "mind_probe") return "Mind probes";
+      if (c === "survey") return "Surveys";
+      if (c === "other") return "Other";
+      return c.replace(/_/g, " ");
     }
 
     function renderAnalysisTaskHint(defaults) {
@@ -1369,15 +1383,42 @@
       hintEl.textContent = `Detected task family: ${familyLabel}. Sampled ${sampledRuns} run(s), ${sampledTrials} trial(s) from result metadata${taskTypes.length ? ` • task types: ${taskTypes.join(", ")}` : ""}.`;
     }
 
+    function populateAnalysisSliceOptions(defaults) {
+      const sel = document.getElementById("analysisSliceSelect");
+      if (!sel) return;
+
+      const prev = String(sel.value || "all").trim().toLowerCase() || "all";
+      const categories = Array.isArray(defaults?.observed_trial_categories)
+        ? defaults.observed_trial_categories.map((x) => String(x || "").trim().toLowerCase()).filter(Boolean)
+        : ["all"];
+      const unique = Array.from(new Set(["all", ...categories]));
+
+      sel.innerHTML = unique.map((category) => (
+        `<option value="${esc(category)}">${esc(analysisSliceLabel(category))}</option>`
+      )).join("");
+      sel.value = unique.includes(prev) ? prev : "all";
+    }
+
     function applyAnalysisDefaults(defaults, options = {}) {
       const force = !!options.force;
       const inputEl = document.getElementById("analysisFieldsOfInterestInput");
       if (!inputEl) return;
 
-      renderAnalysisTaskHint(defaults);
+      analysisDefaultsCache = defaults || null;
 
-      const suggested = Array.isArray(defaults?.suggested_fields_of_interest)
-        ? defaults.suggested_fields_of_interest.map((x) => String(x || "").trim().toLowerCase()).filter(Boolean)
+      renderAnalysisTaskHint(defaults);
+      populateAnalysisSliceOptions(defaults);
+
+      const selectedSlice = String(document.getElementById("analysisSliceSelect")?.value || "all").trim().toLowerCase() || "all";
+      const byCategory = (defaults && typeof defaults === "object" && defaults.suggested_fields_by_category && typeof defaults.suggested_fields_by_category === "object")
+        ? defaults.suggested_fields_by_category
+        : null;
+
+      const suggestedRaw = (byCategory && Array.isArray(byCategory[selectedSlice]))
+        ? byCategory[selectedSlice]
+        : defaults?.suggested_fields_of_interest;
+      const suggested = Array.isArray(suggestedRaw)
+        ? suggestedRaw.map((x) => String(x || "").trim().toLowerCase()).filter(Boolean)
         : [];
       if (!suggested.length) return;
 
@@ -1572,7 +1613,9 @@
       renderAnalysisJobs([]);
       if (!slug) {
         analysisDefaultsStudySlug = "";
+        analysisDefaultsCache = null;
         renderAnalysisTaskHint(null);
+        populateAnalysisSliceOptions(null);
         if (statusEl) {
           statusEl.className = "status-bar";
           statusEl.textContent = "Pick a study and generate a report.";
@@ -1627,7 +1670,8 @@
         const job = d?.job || {};
         if (statusEl) {
           statusEl.className = "status-bar ok";
-          statusEl.textContent = `Queued report job #${job.id} (${String(payload.engine || "python").toUpperCase()}). HTML and PDF artifacts will appear when rendering finishes.`;
+          const sliceLabel = analysisSliceLabel((payload.options?.trial_categories || ["all"])[0] || "all");
+          statusEl.textContent = `Queued report job #${job.id} (${String(payload.engine || "python").toUpperCase()}) for slice: ${sliceLabel}. HTML and PDF artifacts will appear when rendering finishes.`;
         }
         await loadAnalysisJobs(payload.study_slug);
       } catch (err) {
@@ -1656,6 +1700,17 @@
 
     document.getElementById("analysisFieldsOfInterestInput")?.addEventListener("input", () => {
       analysisFieldsTouched = true;
+    });
+
+    document.getElementById("analysisResetDefaultsBtn")?.addEventListener("click", () => {
+      analysisFieldsTouched = false;
+      applyAnalysisDefaults(analysisDefaultsCache || null, { force: true });
+    });
+
+    document.getElementById("analysisSliceSelect")?.addEventListener("change", () => {
+      if (!analysisDefaultsCache) return;
+      analysisFieldsTouched = false;
+      applyAnalysisDefaults(analysisDefaultsCache, { force: true });
     });
 
     function getCreditsTaskScopeMap() {

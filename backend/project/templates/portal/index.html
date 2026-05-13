@@ -1264,7 +1264,6 @@
         </div>
 
         <div id="loginError" class="login-error hidden"></div>
-                  <div id="analysisTaskHint" class="inline-note" style="margin-top:6px;">Task-family defaults will be detected from result metadata.</div>
 
         <!-- Step 1: credentials -->
         <form id="loginStep1" onsubmit="return false;">
@@ -1639,6 +1638,17 @@
                 <div class="account-field" style="margin-top:12px;margin-bottom:0;">
                   <label for="analysisFieldsOfInterestInput">Behavioral variables of interest (comma-separated keywords)</label>
                   <input id="analysisFieldsOfInterestInput" type="text" value="rt,rt_ms,accuracy,correct,error,score,points,response" />
+                  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;">
+                    <button class="btn btn-ghost btn-xs" id="analysisResetDefaultsBtn" type="button">Reset To Detected Defaults</button>
+                    <div id="analysisTaskHint" class="inline-note" style="margin-top:0;">Task-family defaults will be detected from result metadata.</div>
+                  </div>
+                </div>
+                <div class="account-field" style="margin-top:12px;margin-bottom:0;">
+                  <label for="analysisSliceSelect">Report slice</label>
+                  <select id="analysisSliceSelect" style="border:1.5px solid var(--line);border-radius:8px;padding:7px 11px;font-size:.88rem;font-family:inherit;outline:none;background:var(--bg);color:var(--ink);">
+                    <option value="all" selected>All trial categories</option>
+                  </select>
+                  <div class="inline-note" style="margin-top:6px;">Use slices to generate separate reports for RDM, DRT, mind probes, and surveys when a study mixes task types.</div>
                 </div>
               </div>
 
