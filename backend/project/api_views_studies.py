@@ -56,6 +56,7 @@ def _serialize_report_job(job: StudyAnalysisReportJob):
         "options": job.options,
         "permissions_snapshot": job.permissions_snapshot,
         "overview": (job.snapshot_json or {}).get("overview", {}),
+        "numeric_summary": (job.snapshot_json or {}).get("numeric_summary", []),
         "error_message": job.error_message,
         "worker_log": job.worker_log,
         "started_at": job.started_at,

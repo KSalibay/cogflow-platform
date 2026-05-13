@@ -1437,6 +1437,106 @@
       analysisFieldsTouched = false;
     }
 
+    // ── Descriptive Charts ──────────────────────────────────────────────────
+    // Field groups define which numeric_summary fields to map to which chart
+    // for each task category.  Keys are matched against job.options.trial_categories.
+    const _CHART_FIELD_GROUPS = {
+      rdm:          { rt: ["rt_ms", "rt"],                         acc: ["accuracy", "correct"] },
+      gabor:        { rt: ["rt_ms", "rt"],                         acc: ["accuracy", "correct"] },
+      sart:         { rt: ["rt_ms", "rt"],                         acc: ["commission_error", "omission_error", "correct"] },
+      drt:          { rt: ["drt_rt_ms", "rt_ms", "rt"],            acc: ["drt_correct", "drt_responded"] },
+      soc_dashboard:{ rt: ["rt_ms", "rt"],                         acc: ["score", "correct", "choice"] },
+      mind_probe:   {                                               acc: ["q1", "q2", "response"] },
+      survey:       {                                               acc: ["q1", "q2", "response"] },
+    };
+
+    function _jobPrimaryCategory(job) {
+      const cats = job?.options?.trial_categories || job?.overview?.trial_categories || [];
+      return (Array.isArray(cats) ? cats : []).find((c) => c && c !== "all") || "all";
+    }
+
+    function renderAnalysisCharts(job) {
+      const panel = document.getElementById("analysisChartsPanel");
+      if (!panel) return;
+      const rows = Array.isArray(job?.numeric_summary) ? job.numeric_summary : [];
+      if (!rows.length || !job || job.status !== "succeeded") {
+        panel.style.display = "none";
+        panel.innerHTML = "";
+        return;
+      }
+
+      const cat = _jobPrimaryCategory(job);
+      const groups = _CHART_FIELD_GROUPS[cat] || {};
+      const byField = Object.fromEntries(rows.map((r) => [r.field, r]));
+      const allFieldNames = rows.map((r) => r.field);
+
+      const rtFields  = (groups.rt  || []).filter((f) => byField[f]);
+      const accFields = (groups.acc || []).filter((f) => byField[f]);
+      const usedSet   = new Set([...rtFields, ...accFields]);
+      const otherFields = allFieldNames.filter((f) => !usedSet.has(f));
+      const showGeneric = !rtFields.length && !accFields.length;
+
+      panel.innerHTML = "";
+      panel.style.display = "block";
+
+      const hd = document.createElement("h3");
+      hd.style.cssText = "margin:14px 0 8px;font-size:.95rem;";
+      hd.textContent = `${analysisSliceLabel(cat)} — Descriptive Charts (Job #${Number(job.id)})`;
+      panel.appendChild(hd);
+
+      const chartsRow = document.createElement("div");
+      chartsRow.style.cssText = "display:flex;gap:12px;flex-wrap:wrap;";
+      panel.appendChild(chartsRow);
+
+      function _plotBar(fieldNames, yTitle, chartTitle) {
+        const present = fieldNames.filter((f) => byField[f]);
+        if (!present.length) return;
+        const r = present.map((f) => byField[f]);
+        const div = document.createElement("div");
+        div.style.cssText = "flex:1;min-width:240px;max-width:420px;";
+        chartsRow.appendChild(div);
+        if (typeof Plotly === "undefined") {
+          div.style.cssText += "display:flex;align-items:center;justify-content:center;height:295px;color:var(--muted);font-size:.82rem;";
+          div.textContent = "Plotly unavailable — charts require an internet connection.";
+          return;
+        }
+        Plotly.newPlot(div, [{
+          x: r.map((row) => row.field),
+          y: r.map((row) => Number(row.mean)),
+          error_y: { type: "data", array: r.map((row) => Number(row.sd)), visible: true },
+          type: "bar",
+          marker: { color: "#5b7cf6", opacity: 0.85 },
+          hovertemplate: "<b>%{x}</b><br>mean = %{y:.4f}<br>±SD = %{error_y.array:.4f}<br>n = %{customdata}<extra></extra>",
+          customdata: r.map((row) => row.n),
+        }], {
+          title: { text: chartTitle, font: { size: 12 } },
+          yaxis: { title: { text: yTitle, font: { size: 11 } } },
+          xaxis: { tickangle: present.length > 3 ? -35 : 0 },
+          margin: { t: 40, b: 70, l: 56, r: 14 },
+          height: 295,
+          paper_bgcolor: "rgba(0,0,0,0)",
+          plot_bgcolor: "rgba(0,0,0,0)",
+          font: { family: "inherit", size: 11 },
+        }, { responsive: true, displaylogo: false, displayModeBar: false });
+      }
+
+      if (showGeneric) {
+        _plotBar(allFieldNames.slice(0, 10), "value", "Numeric summary (mean ± 1 SD)");
+      } else {
+        _plotBar(rtFields,  "ms",          "Response time (mean ± 1 SD)");
+        _plotBar(accFields, "proportion",  "Accuracy / performance (mean ± 1 SD)");
+        if (otherFields.length && (rtFields.length + accFields.length) < 5) {
+          _plotBar(otherFields.slice(0, 6), "value", "Other fields (mean ± 1 SD)");
+        }
+      }
+
+      const note = document.createElement("p");
+      note.className = "inline-note";
+      note.style.cssText = "margin:6px 0 0;font-size:.76rem;";
+      note.textContent = `Error bars = ±1 SD across all trials. Computed from ${job.overview?.runs_considered ?? "?"} run(s), ${job.overview?.trials_with_numeric_payload ?? "?"} trial(s).`;
+      panel.appendChild(note);
+    }
+
     function renderAnalysisJobs(jobs) {
       const listEl = document.getElementById("analysisJobsList");
       if (!listEl) return;
@@ -1568,6 +1668,7 @@
         patchAnalysisJobs(jobs);
         const latestSucceeded = jobs.find((job) => String(job?.status || "") === "succeeded");
         if (latestSucceeded) await loadAnalysisPreview(latestSucceeded);
+        renderAnalysisCharts(latestSucceeded || null);
         scheduleAnalysisJobsRefresh(slug, jobs);
       } catch { /* ignore */ }
     }
@@ -1638,6 +1739,7 @@
         renderAnalysisJobs(jobs);
         const latestSucceeded = jobs.find((job) => String(job?.status || "") === "succeeded");
         if (latestSucceeded) await loadAnalysisPreview(latestSucceeded);
+        renderAnalysisCharts(latestSucceeded || null);
         scheduleAnalysisJobsRefresh(slug, jobs);
       } catch (err) {
         if (statusEl) {
