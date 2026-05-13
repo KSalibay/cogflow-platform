@@ -1662,39 +1662,41 @@
                 <div style="margin-top:12px;border:1px solid var(--line);border-radius:10px;padding:10px;">
                   <h3 style="margin:0 0 8px;">Chart Builder (On Request)</h3>
                   <div class="inline-note" style="margin-bottom:8px;">Charts are generated only when requested and are separate from report artifacts.</div>
-                  <div style="display:grid;grid-template-columns:minmax(240px,1fr) repeat(2,minmax(180px,220px));gap:10px;align-items:end;">
-                    <div class="account-field" style="margin:0;">
+                  <div style="display:grid;grid-template-columns:1fr;gap:10px;align-items:end;">
+                    <div class="account-field" style="margin:0;min-width:0;">
                       <label for="analysisChartVarsSelect">Variables (multi-select)</label>
-                      <select id="analysisChartVarsSelect" multiple size="7" style="border:1.5px solid var(--line);border-radius:8px;padding:7px 8px;font-size:.85rem;font-family:inherit;outline:none;background:var(--bg);color:var(--ink);"></select>
+                      <select id="analysisChartVarsSelect" multiple size="7" style="width:100%;box-sizing:border-box;border:1.5px solid var(--line);border-radius:8px;padding:7px 8px;font-size:.85rem;font-family:inherit;outline:none;background:var(--bg);color:var(--ink);"></select>
                       <div style="display:flex;gap:8px;margin-top:6px;">
                         <button class="btn btn-ghost btn-xs" id="analysisChartSelectAllBtn" type="button">Select all</button>
                         <button class="btn btn-ghost btn-xs" id="analysisChartClearSelectionBtn" type="button">Clear selection</button>
                       </div>
                     </div>
-                    <div class="account-field" style="margin:0;">
-                      <label for="analysisChartMetricSelect">Metric</label>
-                      <select id="analysisChartMetricSelect" style="border:1.5px solid var(--line);border-radius:8px;padding:7px 11px;font-size:.88rem;font-family:inherit;outline:none;background:var(--bg);color:var(--ink);">
-                        <option value="mean" selected>Mean (with SD error bars)</option>
-                        <option value="sd">SD</option>
-                        <option value="min">Min</option>
-                        <option value="max">Max</option>
-                        <option value="n">Count (N)</option>
-                      </select>
-                    </div>
-                    <div class="account-field" style="margin:0;">
-                      <label for="analysisChartSortSelect">Sort</label>
-                      <select id="analysisChartSortSelect" style="border:1.5px solid var(--line);border-radius:8px;padding:7px 11px;font-size:.88rem;font-family:inherit;outline:none;background:var(--bg);color:var(--ink);">
-                        <option value="none" selected>No sorting</option>
-                        <option value="desc">Metric descending</option>
-                        <option value="asc">Metric ascending</option>
-                      </select>
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                      <div class="account-field" style="margin:0;flex:1 1 220px;min-width:180px;max-width:280px;">
+                        <label for="analysisChartMetricSelect">Metric</label>
+                        <select id="analysisChartMetricSelect" style="width:100%;box-sizing:border-box;border:1.5px solid var(--line);border-radius:8px;padding:7px 11px;font-size:.88rem;font-family:inherit;outline:none;background:var(--bg);color:var(--ink);">
+                          <option value="mean" selected>Mean (with SD error bars)</option>
+                          <option value="sd">SD</option>
+                          <option value="min">Min</option>
+                          <option value="max">Max</option>
+                          <option value="n">Count (N)</option>
+                        </select>
+                      </div>
+                      <div class="account-field" style="margin:0;flex:1 1 220px;min-width:180px;max-width:280px;">
+                        <label for="analysisChartSortSelect">Sort</label>
+                        <select id="analysisChartSortSelect" style="width:100%;box-sizing:border-box;border:1.5px solid var(--line);border-radius:8px;padding:7px 11px;font-size:.88rem;font-family:inherit;outline:none;background:var(--bg);color:var(--ink);">
+                          <option value="none" selected>No sorting</option>
+                          <option value="desc">Metric descending</option>
+                          <option value="asc">Metric ascending</option>
+                        </select>
+                      </div>
                     </div>
                   </div>
                   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;">
                     <button class="btn btn-primary btn-sm" id="analysisGenerateChartsBtn" type="button">Generate Charts</button>
                     <button class="btn btn-ghost btn-sm" id="analysisClearChartsBtn" type="button">Clear Chart</button>
-                    <div id="analysisChartsHint" class="inline-note">Generate a report first, then choose variables and click Generate Charts.</div>
                   </div>
+                  <div id="analysisChartsHint" class="inline-note" style="margin-top:8px;">Generate a report first, then choose variables and click Generate Charts.</div>
                 </div>
                 <div id="analysisChartsPanel" style="margin-top:10px;display:none;"></div>
                 <textarea id="analysisReportOutput" rows="24" readonly style="margin-top:10px;width:100%;border:1px solid var(--line);border-radius:8px;padding:10px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.82rem;line-height:1.45;background:var(--bg);color:var(--ink);"></textarea>
