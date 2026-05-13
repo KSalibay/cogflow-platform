@@ -1636,7 +1636,7 @@
       _setAnalysisChartsHint(`Rendered ${pickedRows.length} variable(s) from job #${Number(job.id)}.`);
     }
 
-    function generateAnalysisChartsOnDemand() {
+    async function generateAnalysisChartsOnDemand() {
       const statusEl = document.getElementById("analysisStatus");
       if (!analysisLatestSucceededJob) {
         if (statusEl) {
@@ -1659,15 +1659,45 @@
       }
 
       if (chartMode === "variant") {
-        const hasVariantRows = Array.isArray(analysisLatestSucceededJob?.variant_numeric_summary) && analysisLatestSucceededJob.variant_numeric_summary.length > 0;
-        if (!hasVariantRows) {
-          analysisPendingChartRequest = { selectedFields, chartMode, metric, sortMode };
-          if (statusEl) {
-            statusEl.className = "status-bar";
-            statusEl.textContent = "Regenerating the latest report to capture variant-level summaries…";
+        if (statusEl) {
+          statusEl.className = "status-bar";
+          statusEl.textContent = "Loading fresh variant comparison data…";
+        }
+        _setAnalysisChartsHint("Fetching a fresh analysis preview so the variant comparison uses current run-level variant flags.");
+        try {
+          const preview = await fetchAnalysisPreviewData({
+            study_slug: analysisLatestSucceededJob?.study_slug || String(document.getElementById("analysisStudySelect")?.value || "").trim(),
+            engine: analysisLatestSucceededJob?.engine || String(document.getElementById("analysisEngineSelect")?.value || "python").trim().toLowerCase(),
+            include_completed_only: true,
+            options: {
+              ...(analysisLatestSucceededJob?.options || {}),
+              trial_categories: Array.isArray(analysisLatestSucceededJob?.options?.trial_categories) ? analysisLatestSucceededJob.options.trial_categories : ["all"],
+            },
+          });
+          const previewJob = {
+            id: `preview-${Date.now()}`,
+            status: "succeeded",
+            study_slug: preview.study_slug || analysisLatestSucceededJob.study_slug,
+            engine: preview.engine || analysisLatestSucceededJob.engine,
+            options: preview.options || analysisLatestSucceededJob.options || {},
+            overview: preview.overview || {},
+            numeric_summary: Array.isArray(preview.numeric_summary) ? preview.numeric_summary : [],
+            variant_numeric_summary: Array.isArray(preview.variant_numeric_summary) ? preview.variant_numeric_summary : [],
+          };
+          setAnalysisChartSourceJob(previewJob);
+          if (!previewJob.variant_numeric_summary.length) {
+            _setAnalysisChartsHint("The fresh preview still has no variant rows. Check that the study has variant-tagged runs.");
+            _clearAnalysisCharts();
+            return;
           }
-          _setAnalysisChartsHint("The current report snapshot predates variant summaries. Regenerating now; the chart will render automatically when the new report is ready.");
-          runAnalysisReport();
+          renderAnalysisCharts(previewJob, { selectedFields, chartMode, metric, sortMode });
+          return;
+        } catch (err) {
+          if (statusEl) {
+            statusEl.className = "status-bar error";
+            statusEl.textContent = `Variant chart data load failed: ${err?.message || err}`;
+          }
+          _setAnalysisChartsHint("Could not load fresh analysis preview for variant comparison.");
           return;
         }
       }
@@ -1678,6 +1708,23 @@
     function clearAnalysisChartsOnDemand() {
       _clearAnalysisCharts();
       _setAnalysisChartsHint("Chart cleared. Select variables and click Generate Charts.");
+    }
+
+    async function fetchAnalysisPreviewData(payload) {
+      const r = await fetch(`${API}/api/v1/studies/analysis/report`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": getCsrf() },
+        body: JSON.stringify({
+          study_slug: payload.study_slug,
+          engine: payload.engine,
+          include_completed_only: payload.include_completed_only,
+          options: payload.options,
+        }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+      return d;
     }
 
     function renderAnalysisJobs(jobs) {
