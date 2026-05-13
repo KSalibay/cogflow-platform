@@ -1471,7 +1471,9 @@
         opt.textContent = `${row.field} (n=${row.n}, mean=${Number(row.mean || 0).toFixed(3)})`;
         selectEl.appendChild(opt);
       });
-      _setAnalysisChartsHint(`Loaded ${rows.length} numeric variables from job #${Number(job.id)}. Select 1-10 variables, then click Generate Charts.`);
+      const variantRows = Array.isArray(job?.variant_numeric_summary) ? job.variant_numeric_summary : [];
+      const variantCount = new Set(variantRows.map((row) => String(row?.variant_label || "").trim()).filter(Boolean)).size;
+      _setAnalysisChartsHint(`Loaded ${rows.length} numeric variables from job #${Number(job.id)}${variantCount ? ` (${variantCount} variant${variantCount === 1 ? "" : "s"} available)` : ""}. Select 1-10 variables, then click Generate Charts.`);
     }
 
     function setAnalysisChartSourceJob(job) {
@@ -1489,6 +1491,7 @@
       }
 
       const metric = String(options.metric || "mean").trim().toLowerCase();
+      const chartMode = String(options.chartMode || "aggregate").trim().toLowerCase();
       const selectedFields = Array.isArray(options.selectedFields)
         ? options.selectedFields.map((x) => String(x || "").trim()).filter(Boolean)
         : [];
@@ -1500,13 +1503,12 @@
 
       const byField = Object.fromEntries(rows.map((r) => [String(r.field || ""), r]));
       const pickedRows = selectedFields.map((f) => byField[f]).filter(Boolean).slice(0, 10);
+      const sortMode = String(options.sortMode || "none").trim().toLowerCase();
       if (!pickedRows.length) {
         _setAnalysisChartsHint("Selected variables were not found in the latest report output.");
         _clearAnalysisCharts();
         return;
       }
-
-      const sortMode = String(options.sortMode || "none").trim().toLowerCase();
       if (sortMode === "desc") {
         pickedRows.sort((a, b) => Number(b?.[metric] ?? 0) - Number(a?.[metric] ?? 0));
       } else if (sortMode === "asc") {
@@ -1534,31 +1536,82 @@
         return;
       }
 
-      const yValues = pickedRows.map((row) => Number(row?.[metric] ?? 0));
       const metricTitleMap = { mean: "mean", sd: "sd", min: "min", max: "max", n: "count" };
       const yTitle = metricTitleMap[metric] || metric;
       const withErrorBars = metric === "mean";
 
-      Plotly.newPlot(chartHost, [{
-        x: pickedRows.map((row) => String(row.field || "")),
-        y: yValues,
-        error_y: withErrorBars ? { type: "data", array: pickedRows.map((row) => Number(row.sd ?? 0)), visible: true } : undefined,
-        type: "bar",
-        marker: { color: "#5b7cf6", opacity: 0.85 },
-        hovertemplate: withErrorBars
-          ? "<b>%{x}</b><br>mean = %{y:.4f}<br>±SD = %{error_y.array:.4f}<br>n = %{customdata}<extra></extra>"
-          : `<b>%{x}</b><br>${yTitle} = %{y:.4f}<br>n = %{customdata}<extra></extra>`,
-        customdata: pickedRows.map((row) => Number(row.n ?? 0)),
-      }], {
-        title: { text: `Variables (${yTitle})`, font: { size: 12 } },
-        yaxis: { title: { text: yTitle, font: { size: 11 } } },
-        xaxis: { tickangle: pickedRows.length > 3 ? -35 : 0 },
-        margin: { t: 40, b: 80, l: 56, r: 14 },
-        height: 320,
-        paper_bgcolor: "rgba(0,0,0,0)",
-        plot_bgcolor: "rgba(0,0,0,0)",
-        font: { family: "inherit", size: 11 },
-      }, { responsive: true, displaylogo: false, displayModeBar: false });
+      const xFields = pickedRows.map((row) => String(row.field || ""));
+      if (chartMode === "variant") {
+        const variantRows = Array.isArray(job?.variant_numeric_summary) ? job.variant_numeric_summary : [];
+        const variantLabels = Array.from(new Set(
+          variantRows.map((row) => String(row?.variant_label || "").trim()).filter(Boolean)
+        ));
+        if (!variantLabels.length) {
+          _setAnalysisChartsHint("No variant mappings were found for this study. Use Aggregate mode or configure flow variants in Study Properties.");
+          _clearAnalysisCharts();
+          return;
+        }
+
+        const cell = new Map();
+        variantRows.forEach((row) => {
+          const v = String(row?.variant_label || "").trim();
+          const f = String(row?.field || "").trim();
+          if (!v || !f) return;
+          cell.set(`${v}||${f}`, row);
+        });
+
+        const traces = variantLabels.map((variantLabel) => {
+          const vals = xFields.map((field) => Number(cell.get(`${variantLabel}||${field}`)?.[metric] ?? 0));
+          const sds = xFields.map((field) => Number(cell.get(`${variantLabel}||${field}`)?.sd ?? 0));
+          const ns = xFields.map((field) => Number(cell.get(`${variantLabel}||${field}`)?.n ?? 0));
+          return {
+            name: variantLabel,
+            x: xFields,
+            y: vals,
+            type: "bar",
+            error_y: withErrorBars ? { type: "data", array: sds, visible: true } : undefined,
+            customdata: ns,
+            hovertemplate: withErrorBars
+              ? `<b>${variantLabel}</b><br>%{x}<br>mean = %{y:.4f}<br>±SD = %{error_y.array:.4f}<br>n = %{customdata}<extra></extra>`
+              : `<b>${variantLabel}</b><br>%{x}<br>${yTitle} = %{y:.4f}<br>n = %{customdata}<extra></extra>`,
+          };
+        });
+
+        Plotly.newPlot(chartHost, traces, {
+          title: { text: `Variant comparison (${yTitle})`, font: { size: 12 } },
+          barmode: "group",
+          yaxis: { title: { text: yTitle, font: { size: 11 } } },
+          xaxis: { tickangle: xFields.length > 3 ? -35 : 0 },
+          legend: { orientation: "h", y: 1.15, x: 0 },
+          margin: { t: 60, b: 80, l: 56, r: 14 },
+          height: 360,
+          paper_bgcolor: "rgba(0,0,0,0)",
+          plot_bgcolor: "rgba(0,0,0,0)",
+          font: { family: "inherit", size: 11 },
+        }, { responsive: true, displaylogo: false, displayModeBar: false });
+      } else {
+        const yValues = pickedRows.map((row) => Number(row?.[metric] ?? 0));
+        Plotly.newPlot(chartHost, [{
+          x: xFields,
+          y: yValues,
+          error_y: withErrorBars ? { type: "data", array: pickedRows.map((row) => Number(row.sd ?? 0)), visible: true } : undefined,
+          type: "bar",
+          marker: { color: "#5b7cf6", opacity: 0.85 },
+          hovertemplate: withErrorBars
+            ? "<b>%{x}</b><br>mean = %{y:.4f}<br>±SD = %{error_y.array:.4f}<br>n = %{customdata}<extra></extra>"
+            : `<b>%{x}</b><br>${yTitle} = %{y:.4f}<br>n = %{customdata}<extra></extra>`,
+          customdata: pickedRows.map((row) => Number(row.n ?? 0)),
+        }], {
+          title: { text: `Variables (${yTitle})`, font: { size: 12 } },
+          yaxis: { title: { text: yTitle, font: { size: 11 } } },
+          xaxis: { tickangle: xFields.length > 3 ? -35 : 0 },
+          margin: { t: 40, b: 80, l: 56, r: 14 },
+          height: 320,
+          paper_bgcolor: "rgba(0,0,0,0)",
+          plot_bgcolor: "rgba(0,0,0,0)",
+          font: { family: "inherit", size: 11 },
+        }, { responsive: true, displaylogo: false, displayModeBar: false });
+      }
 
       const note = document.createElement("p");
       note.className = "inline-note";
@@ -1584,6 +1637,7 @@
       }
       const selectEl = document.getElementById("analysisChartVarsSelect");
       const selectedFields = Array.from(selectEl?.selectedOptions || []).map((opt) => String(opt.value || "").trim()).filter(Boolean);
+      const chartMode = String(document.getElementById("analysisChartModeSelect")?.value || "aggregate").trim().toLowerCase();
       const metric = String(document.getElementById("analysisChartMetricSelect")?.value || "mean").trim().toLowerCase();
       const sortMode = String(document.getElementById("analysisChartSortSelect")?.value || "none").trim().toLowerCase();
       if (!selectedFields.length) {
@@ -1591,7 +1645,7 @@
         _clearAnalysisCharts();
         return;
       }
-      renderAnalysisCharts(analysisLatestSucceededJob, { selectedFields, metric, sortMode });
+      renderAnalysisCharts(analysisLatestSucceededJob, { selectedFields, chartMode, metric, sortMode });
     }
 
     function clearAnalysisChartsOnDemand() {

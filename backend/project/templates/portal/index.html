@@ -1673,6 +1673,13 @@
                     </div>
                     <div style="display:flex;gap:10px;flex-wrap:wrap;">
                       <div style="display:flex;align-items:center;gap:8px;flex:0 1 auto;min-width:0;">
+                        <label for="analysisChartModeSelect" style="font-size:.84rem;font-weight:600;color:var(--muted);white-space:nowrap;">Chart mode</label>
+                        <select id="analysisChartModeSelect" style="width:auto;min-width:170px;box-sizing:border-box;border:1.5px solid var(--line);border-radius:8px;padding:7px 11px;font-size:.88rem;font-family:inherit;outline:none;background:var(--bg);color:var(--ink);">
+                          <option value="aggregate" selected>Aggregate</option>
+                          <option value="variant">Compare variants</option>
+                        </select>
+                      </div>
+                      <div style="display:flex;align-items:center;gap:8px;flex:0 1 auto;min-width:0;">
                         <label for="analysisChartMetricSelect" style="font-size:.84rem;font-weight:600;color:var(--muted);white-space:nowrap;">Metric</label>
                         <select id="analysisChartMetricSelect" style="width:auto;min-width:170px;box-sizing:border-box;border:1.5px solid var(--line);border-radius:8px;padding:7px 11px;font-size:.88rem;font-family:inherit;outline:none;background:var(--bg);color:var(--ink);">
                           <option value="mean" selected>Mean (with SD error bars)</option>
@@ -2042,7 +2049,7 @@
     <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-    <script src="/portal/assets/portal-core.js?v=20260514-2"></script>
-    <script src="/portal/assets/portal-views.js?v=20260514-2"></script>
+    <script src="/portal/assets/portal-core.js?v=20260514-3"></script>
+    <script src="/portal/assets/portal-views.js?v=20260514-3"></script>
   </body>
 </html>

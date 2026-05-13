@@ -134,6 +134,25 @@ def _field_priority(field_name: str, fields_of_interest: list[str]):
     return score
 
 
+def _build_config_variant_lookup(study):
+    raw = study.launch_properties_json if isinstance(getattr(study, "launch_properties_json", None), dict) else {}
+    variants = raw.get("flow_variants") if isinstance(raw.get("flow_variants"), list) else []
+    lookup = {}
+    for idx, variant in enumerate(variants, start=1):
+        if not isinstance(variant, dict):
+            continue
+        variant_id = str(variant.get("id") or "").strip() or f"variant-{idx}"
+        variant_label = str(variant.get("label") or variant_id).strip() or variant_id
+        task_order = variant.get("task_order") if isinstance(variant.get("task_order"), list) else []
+        for raw_cfg_id in task_order:
+            cfg_id = str(raw_cfg_id or "").strip()
+            if not cfg_id:
+                continue
+            # Keep first mapping if a config appears in multiple variants.
+            lookup.setdefault(cfg_id, {"variant_id": variant_id, "variant_label": variant_label})
+    return lookup
+
+
 def _render_r_markdown(study, overview, summary_rows):
     lines = [
         "---",
@@ -693,8 +712,11 @@ def build_study_analysis_outputs(study, engine, options, include_completed_only=
     trial_count = 0
     numeric_values_by_field = {}
     participant_values_by_field = {}
+    variant_values_by_field = {}
     participant_numeric_trial_counts = {}
+    variant_numeric_trial_counts = {}
     participant_label_by_key = {}
+    config_variant_lookup = _build_config_variant_lookup(study)
 
     def get_participant_label(run_obj):
         participant_key = str(getattr(run_obj, "participant_key", "") or "").strip()
@@ -710,6 +732,10 @@ def build_study_analysis_outputs(study, engine, options, include_completed_only=
             continue
         with_result += 1
         participant_label = get_participant_label(run)
+        config_version_id = str(getattr(run, "config_version_id", "") or "")
+        variant_info = config_variant_lookup.get(config_version_id, {})
+        variant_id = str(variant_info.get("variant_id") or "").strip()
+        variant_label = str(variant_info.get("variant_label") or "").strip()
         for trial in run.trial_results.all().order_by("trial_index"):
             payload = _safe_get_decrypted_trial(trial)
             if payload is None:
@@ -722,9 +748,13 @@ def build_study_analysis_outputs(study, engine, options, include_completed_only=
                 continue
             trial_count += 1
             participant_numeric_trial_counts[participant_label] = int(participant_numeric_trial_counts.get(participant_label, 0)) + 1
+            if variant_label:
+                variant_numeric_trial_counts[variant_label] = int(variant_numeric_trial_counts.get(variant_label, 0)) + 1
             for field, value in flat.items():
                 numeric_values_by_field.setdefault(field, []).append(value)
                 participant_values_by_field.setdefault(participant_label, {}).setdefault(field, []).append(value)
+                if variant_label:
+                    variant_values_by_field.setdefault(variant_label, {}).setdefault(field, []).append(value)
 
     scored_fields = []
     for field in numeric_values_by_field.keys():
@@ -791,6 +821,33 @@ def build_study_analysis_outputs(study, engine, options, include_completed_only=
                     }
                 )
 
+    variant_summary_rows = []
+    variant_order = [
+        variant
+        for variant, _n_trials in sorted(
+            variant_numeric_trial_counts.items(),
+            key=lambda kv: (-int(kv[1]), str(kv[0])),
+        )
+    ]
+    for variant_label in variant_order:
+        per_variant_fields = variant_values_by_field.get(variant_label, {})
+        for (field, field_type, _priority, _count) in selected_fields:
+            desc = _describe_series(per_variant_fields.get(field, []))
+            if desc["n"] == 0:
+                continue
+            variant_summary_rows.append(
+                {
+                    "variant_label": variant_label,
+                    "field": field,
+                    "field_type": field_type,
+                    "n": desc["n"],
+                    "mean": desc["mean"],
+                    "sd": desc["sd"],
+                    "min": desc["min"],
+                    "max": desc["max"],
+                }
+            )
+
     overview = {
         "study_slug": study.slug,
         "study_name": study.name,
@@ -800,6 +857,8 @@ def build_study_analysis_outputs(study, engine, options, include_completed_only=
         "numeric_variables_reported": len(summary_rows),
         "participant_count_with_numeric_payload": len(participant_numeric_trial_counts),
         "participant_rows_reported": len(participant_summary_rows),
+        "variant_count_with_numeric_payload": len(variant_numeric_trial_counts),
+        "variant_rows_reported": len(variant_summary_rows),
         "fields_of_interest": fields_of_interest,
         "include_config_fields": include_config_fields,
         "include_participant_summary": include_participant_summary,
@@ -828,6 +887,7 @@ def build_study_analysis_outputs(study, engine, options, include_completed_only=
         "coverage": coverage_rows,
         "numeric_summary": summary_rows,
         "participant_numeric_summary": participant_summary_rows,
+        "variant_numeric_summary": variant_summary_rows,
         "report_markdown": report_markdown,
         "r_markdown_document": r_markdown_document,
         "report_html": report_html,
@@ -891,6 +951,7 @@ def process_report_job(job: StudyAnalysisReportJob):
         "coverage": outputs["coverage"],
         "numeric_summary": outputs["numeric_summary"],
         "participant_numeric_summary": outputs.get("participant_numeric_summary") or [],
+        "variant_numeric_summary": outputs.get("variant_numeric_summary") or [],
         "options": outputs["options"],
         "engine": outputs["engine"],
     }
