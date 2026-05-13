@@ -42,6 +42,18 @@ def _flatten_numeric_fields(payload, prefix=""):
     return out
 
 
+def _safe_get_decrypted_trial(trial):
+    try:
+        payload = get_decrypted_trial(trial)
+        return payload if isinstance(payload, dict) else None
+    except Exception as exc:
+        logger.warning(
+            "analysis: failed to decrypt trial payload",
+            extra={"trial_result_id": getattr(trial, "id", None), "error": str(exc)},
+        )
+        return None
+
+
 def _describe_series(values):
     clean = [float(v) for v in values if isinstance(v, (int, float)) and not (isinstance(v, float) and (math.isnan(v) or math.isinf(v)))]
     n = len(clean)
@@ -393,8 +405,8 @@ def infer_study_analysis_defaults(study, include_completed_only=True, max_runs=4
         sampled_runs += 1
 
         for trial in run.trial_results.all().order_by("trial_index")[:max_trials_per_run]:
-            payload = get_decrypted_trial(trial)
-            if not isinstance(payload, dict):
+            payload = _safe_get_decrypted_trial(trial)
+            if payload is None:
                 continue
 
             task_type = str(payload.get("task_type") or "").strip().lower()
@@ -416,6 +428,19 @@ def infer_study_analysis_defaults(study, include_completed_only=True, max_runs=4
             category_counts[category] = int(category_counts.get(category, 0)) + 1
 
             sampled_trials += 1
+
+    # Fallback hints when payload decryption is unavailable or sparse.
+    slug = str(study.slug or "").lower()
+    if sampled_trials == 0:
+        if "rdm" in slug or "rdk" in slug:
+            category_counts["rdm"] = max(1, int(category_counts.get("rdm", 0)))
+            task_types.add("rdm")
+        if "drt" in slug:
+            category_counts["drt"] = max(1, int(category_counts.get("drt", 0)))
+            task_types.add("drt")
+        if "mw" in slug or "mind" in slug:
+            category_counts["mind_probe"] = max(1, int(category_counts.get("mind_probe", 0)))
+            category_counts["survey"] = max(1, int(category_counts.get("survey", 0)))
 
     family = _detect_task_family_from_metadata(study.slug, task_types, plugin_types, numeric_fields)
     label = _TASK_FAMILY_LABELS.get(family) or "Generic"
@@ -616,7 +641,9 @@ def build_study_analysis_outputs(study, engine, options, include_completed_only=
             continue
         with_result += 1
         for trial in run.trial_results.all().order_by("trial_index"):
-            payload = get_decrypted_trial(trial)
+            payload = _safe_get_decrypted_trial(trial)
+            if payload is None:
+                continue
             category = _categorize_trial_payload(payload if isinstance(payload, dict) else {})
             if selected_categories != ["all"] and category not in selected_categories:
                 continue
