@@ -50,6 +50,7 @@
     let analysisDefaultsStudySlug = "";
     let analysisDefaultsCache = null;
     let analysisLatestSucceededJob = null;
+    let analysisPendingChartRequest = null;
     let activeView = "studiesManagement";
 
     function getStudyState(slug) {
@@ -1480,6 +1481,15 @@
       analysisLatestSucceededJob = (job && job.status === "succeeded") ? job : null;
       _populateAnalysisChartVariables(analysisLatestSucceededJob);
       _clearAnalysisCharts();
+      if (analysisPendingChartRequest && analysisLatestSucceededJob) {
+        const pending = analysisPendingChartRequest;
+        const needsVariantRows = String(pending.chartMode || "aggregate").trim().toLowerCase() === "variant";
+        const hasVariantRows = Array.isArray(analysisLatestSucceededJob?.variant_numeric_summary) && analysisLatestSucceededJob.variant_numeric_summary.length > 0;
+        if (!needsVariantRows || hasVariantRows) {
+          analysisPendingChartRequest = null;
+          renderAnalysisCharts(analysisLatestSucceededJob, pending);
+        }
+      }
     }
 
     function renderAnalysisCharts(job, options = {}) {
@@ -1647,6 +1657,21 @@
         _clearAnalysisCharts();
         return;
       }
+
+      if (chartMode === "variant") {
+        const hasVariantRows = Array.isArray(analysisLatestSucceededJob?.variant_numeric_summary) && analysisLatestSucceededJob.variant_numeric_summary.length > 0;
+        if (!hasVariantRows) {
+          analysisPendingChartRequest = { selectedFields, chartMode, metric, sortMode };
+          if (statusEl) {
+            statusEl.className = "status-bar";
+            statusEl.textContent = "Regenerating the latest report to capture variant-level summaries…";
+          }
+          _setAnalysisChartsHint("The current report snapshot predates variant summaries. Regenerating now; the chart will render automatically when the new report is ready.");
+          runAnalysisReport();
+          return;
+        }
+      }
+
       renderAnalysisCharts(analysisLatestSucceededJob, { selectedFields, chartMode, metric, sortMode });
     }
 
