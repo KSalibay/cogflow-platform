@@ -239,14 +239,21 @@ class StudyAnalysisReportView(APIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        study, _profile, _perms, error = _require_study_analysis_access(request, data["study_slug"])
+        study, _profile, perms, error = _require_study_analysis_access(request, data["study_slug"])
         if error:
             return error
+
+        options = dict(data.get("options") or {})
+        if options.get("include_participant_summary") and not perms.get("can_view_run_rows"):
+            return Response(
+                {"error": "Per-participant summaries require run-level access (can_view_run_rows). Contact the study owner to request this permission."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         outputs = build_study_analysis_outputs(
             study=study,
             engine=data["engine"],
-            options=data.get("options") or {},
+            options=options,
             include_completed_only=bool(data.get("include_completed_only", True)),
         )
         return Response(
@@ -258,6 +265,7 @@ class StudyAnalysisReportView(APIView):
                 "overview": outputs["overview"],
                 "coverage": outputs["coverage"],
                 "numeric_summary": outputs["numeric_summary"],
+                "participant_numeric_summary": outputs.get("participant_numeric_summary") or [],
                 "report_markdown": outputs["report_markdown"],
                 "r_markdown_document": outputs["r_markdown_document"],
                 "can_knit_on_platform": True,
@@ -306,6 +314,13 @@ class StudyAnalysisReportJobsView(APIView):
         if error:
             return error
 
+        options = dict(data.get("options") or {})
+        if options.get("include_participant_summary") and not perms.get("can_view_run_rows"):
+            return Response(
+                {"error": "Per-participant summaries require run-level access (can_view_run_rows). Contact the study owner to request this permission."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         # Rate limit: max 5 queued/running jobs per user per study in the last hour
         one_hour_ago = timezone.now() - timedelta(hours=1)
         recent_active = StudyAnalysisReportJob.objects.filter(
@@ -331,7 +346,7 @@ class StudyAnalysisReportJobsView(APIView):
             engine=data["engine"],
             requested_formats=requested_formats,
             include_completed_only=bool(data.get("include_completed_only", True)),
-            options=data.get("options") or {},
+            options=options,
             permissions_snapshot=perms,
         )
         record_audit(

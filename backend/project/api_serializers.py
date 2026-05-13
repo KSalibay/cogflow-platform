@@ -217,15 +217,28 @@ class StudyAnalysisReportRequestSerializer(serializers.Serializer):
             fields_of_interest = []
         fields_of_interest = [str(x).strip().lower() for x in fields_of_interest if str(x).strip()]
 
+        trial_categories = opts.get("trial_categories", ["all"])
+        if isinstance(trial_categories, str):
+            trial_categories = [trial_categories]
+        if not isinstance(trial_categories, list):
+            trial_categories = ["all"]
+        trial_categories = [str(x).strip().lower() for x in trial_categories if str(x).strip()]
+        if not trial_categories or "all" in trial_categories:
+            trial_categories = ["all"]
+
         normalized = {
             "include_overview": bool(opts.get("include_overview", True)),
             "include_numeric_summary": bool(opts.get("include_numeric_summary", True)),
             "include_field_coverage": bool(opts.get("include_field_coverage", True)),
             "include_config_fields": bool(opts.get("include_config_fields", False)),
+            "include_participant_summary": bool(opts.get("include_participant_summary", False)),
             "fields_of_interest": fields_of_interest,
+            "trial_categories": trial_categories,
             "max_variables": int(opts.get("max_variables", 20) or 20),
+            "max_participants": int(opts.get("max_participants", 25) or 25),
         }
         normalized["max_variables"] = max(1, min(200, normalized["max_variables"]))
+        normalized["max_participants"] = max(1, min(200, normalized["max_participants"]))
         return normalized
 
 

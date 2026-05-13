@@ -545,7 +545,16 @@ def _render_task_section(task_family: str, summary_rows: list) -> str:
     return "\n".join(lines)
 
 
-def _render_markdown_report(study, engine, options, overview, coverage_rows, summary_rows, r_markdown_document=None):
+def _render_markdown_report(
+    study,
+    engine,
+    options,
+    overview,
+    coverage_rows,
+    summary_rows,
+    participant_summary_rows=None,
+    r_markdown_document=None,
+):
     lines = [
         f"# Study Analysis Report: {study.name} ({study.slug})",
         "",
@@ -576,6 +585,21 @@ def _render_markdown_report(study, engine, options, overview, coverage_rows, sum
             for row in summary_rows:
                 lines.append(
                     f"| {row['field']} | {row.get('field_type', 'unknown')} | {row['n']} | {row['mean']:.4f} | {row['sd']:.4f} | {row['min']:.4f} | {row['max']:.4f} |"
+                )
+        lines.append("")
+    if options.get("include_participant_summary", False):
+        lines.extend(["## Participant-Level Numeric Summary", ""])
+        if not participant_summary_rows:
+            lines.append("No participant-level numeric variables were available for descriptive statistics.")
+        else:
+            lines.extend([
+                "| Participant | Variable | Type | N | Mean | SD | Min | Max |",
+                "|---|---|---|---:|---:|---:|---:|---:|",
+            ])
+            for row in participant_summary_rows:
+                lines.append(
+                    f"| {row['participant_id']} | {row['field']} | {row.get('field_type', 'unknown')} | {row['n']}"
+                    f" | {row['mean']:.4f} | {row['sd']:.4f} | {row['min']:.4f} | {row['max']:.4f} |"
                 )
         lines.append("")
     if engine == "r" and r_markdown_document:
@@ -649,6 +673,9 @@ def _render_pdf_reportlab_fallback(study, report_html: str) -> bytes:
 def build_study_analysis_outputs(study, engine, options, include_completed_only=True):
     options = options or {}
     include_config_fields = bool(options.get("include_config_fields", False))
+    include_participant_summary = bool(options.get("include_participant_summary", False))
+    max_participants = int(options.get("max_participants", 25) or 25)
+    max_participants = max(1, min(200, max_participants))
     fields_of_interest = [str(x).strip().lower() for x in (options.get("fields_of_interest") or []) if str(x).strip()]
     selected_categories = [str(x).strip().lower() for x in (options.get("trial_categories") or []) if str(x).strip()]
     if not selected_categories or "all" in selected_categories:
@@ -662,12 +689,24 @@ def build_study_analysis_outputs(study, engine, options, include_completed_only=
     with_result = 0
     trial_count = 0
     numeric_values_by_field = {}
+    participant_values_by_field = {}
+    participant_numeric_trial_counts = {}
+    participant_label_by_key = {}
+
+    def get_participant_label(run_obj):
+        participant_key = str(getattr(run_obj, "participant_key", "") or "").strip()
+        if not participant_key:
+            participant_key = f"run-{getattr(run_obj, 'id', 'unknown')}"
+        if participant_key not in participant_label_by_key:
+            participant_label_by_key[participant_key] = f"P{len(participant_label_by_key) + 1:03d}"
+        return participant_label_by_key[participant_key]
 
     for run in runs_qs[:500]:
         envelope = getattr(run, "result_envelope", None)
         if not envelope:
             continue
         with_result += 1
+        participant_label = get_participant_label(run)
         for trial in run.trial_results.all().order_by("trial_index"):
             payload = _safe_get_decrypted_trial(trial)
             if payload is None:
@@ -679,8 +718,10 @@ def build_study_analysis_outputs(study, engine, options, include_completed_only=
             if not flat:
                 continue
             trial_count += 1
+            participant_numeric_trial_counts[participant_label] = int(participant_numeric_trial_counts.get(participant_label, 0)) + 1
             for field, value in flat.items():
                 numeric_values_by_field.setdefault(field, []).append(value)
+                participant_values_by_field.setdefault(participant_label, {}).setdefault(field, []).append(value)
 
     scored_fields = []
     for field in numeric_values_by_field.keys():
@@ -719,6 +760,34 @@ def build_study_analysis_outputs(study, engine, options, include_completed_only=
             }
         )
 
+    participant_summary_rows = []
+    if include_participant_summary:
+        participant_order = [
+            pid
+            for pid, _n_trials in sorted(
+                participant_numeric_trial_counts.items(),
+                key=lambda kv: (-int(kv[1]), str(kv[0])),
+            )[:max_participants]
+        ]
+        for participant_id in participant_order:
+            per_participant_fields = participant_values_by_field.get(participant_id, {})
+            for (field, field_type, _priority, _count) in selected_fields:
+                desc = _describe_series(per_participant_fields.get(field, []))
+                if desc["n"] == 0:
+                    continue
+                participant_summary_rows.append(
+                    {
+                        "participant_id": participant_id,
+                        "field": field,
+                        "field_type": field_type,
+                        "n": desc["n"],
+                        "mean": desc["mean"],
+                        "sd": desc["sd"],
+                        "min": desc["min"],
+                        "max": desc["max"],
+                    }
+                )
+
     overview = {
         "study_slug": study.slug,
         "study_name": study.name,
@@ -726,8 +795,12 @@ def build_study_analysis_outputs(study, engine, options, include_completed_only=
         "runs_with_results": with_result,
         "trials_with_numeric_payload": trial_count,
         "numeric_variables_reported": len(summary_rows),
+        "participant_count_with_numeric_payload": len(participant_numeric_trial_counts),
+        "participant_rows_reported": len(participant_summary_rows),
         "fields_of_interest": fields_of_interest,
         "include_config_fields": include_config_fields,
+        "include_participant_summary": include_participant_summary,
+        "max_participants": max_participants,
         "trial_categories": selected_categories,
     }
 
@@ -739,6 +812,7 @@ def build_study_analysis_outputs(study, engine, options, include_completed_only=
         overview=overview,
         coverage_rows=coverage_rows,
         summary_rows=summary_rows,
+        participant_summary_rows=participant_summary_rows,
         r_markdown_document=r_markdown_document,
     )
     report_html = _render_html_document(study, report_markdown)
@@ -750,6 +824,7 @@ def build_study_analysis_outputs(study, engine, options, include_completed_only=
         "overview": overview,
         "coverage": coverage_rows,
         "numeric_summary": summary_rows,
+        "participant_numeric_summary": participant_summary_rows,
         "report_markdown": report_markdown,
         "r_markdown_document": r_markdown_document,
         "report_html": report_html,
@@ -786,10 +861,22 @@ def _upsert_binary_artifact(job, artifact_format, file_name, mime_type, binary_c
 
 
 def process_report_job(job: StudyAnalysisReportJob):
+    # Defense in depth: strip per-participant summary if the permissions snapshot
+    # stored at job creation time does not include can_view_run_rows.  This protects
+    # against permission changes between job queuing and job execution.
+    stored_perms = job.permissions_snapshot or {}
+    job_options = dict(job.options or {})
+    if job_options.get("include_participant_summary") and not stored_perms.get("can_view_run_rows"):
+        job_options["include_participant_summary"] = False
+        logger.warning(
+            "process_report_job: stripped include_participant_summary due to missing can_view_run_rows",
+            extra={"job_id": job.id, "study_slug": job.study.slug},
+        )
+
     outputs = build_study_analysis_outputs(
         study=job.study,
         engine=job.engine,
-        options=job.options,
+        options=job_options,
         include_completed_only=job.include_completed_only,
     )
     formats = set(job.requested_formats or ["markdown", "html", "pdf", "snapshot"])
@@ -800,6 +887,7 @@ def process_report_job(job: StudyAnalysisReportJob):
         "overview": outputs["overview"],
         "coverage": outputs["coverage"],
         "numeric_summary": outputs["numeric_summary"],
+        "participant_numeric_summary": outputs.get("participant_numeric_summary") or [],
         "options": outputs["options"],
         "engine": outputs["engine"],
     }

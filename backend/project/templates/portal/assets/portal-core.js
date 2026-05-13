@@ -1327,6 +1327,7 @@
       const includeOverview = !!document.getElementById("analysisIncludeOverview")?.checked;
       const includeFieldCoverage = !!document.getElementById("analysisIncludeCoverage")?.checked;
       const includeNumericSummary = !!document.getElementById("analysisIncludeSummary")?.checked;
+      const includeParticipantSummary = !!document.getElementById("analysisIncludeParticipantSummary")?.checked;
       const includeConfigFields = !!document.getElementById("analysisIncludeConfigFields")?.checked;
       const fieldsOfInterestRaw = String(document.getElementById("analysisFieldsOfInterestInput")?.value || "");
       const fieldsOfInterest = fieldsOfInterestRaw
@@ -1345,6 +1346,7 @@
           include_overview: includeOverview,
           include_field_coverage: includeFieldCoverage,
           include_numeric_summary: includeNumericSummary,
+          include_participant_summary: includeParticipantSummary,
           include_config_fields: includeConfigFields,
           fields_of_interest: fieldsOfInterest,
           trial_categories: selectedSlice === "all" ? ["all"] : [selectedSlice],
