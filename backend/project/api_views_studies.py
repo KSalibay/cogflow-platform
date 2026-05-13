@@ -197,8 +197,12 @@ class StudyRunsView(APIView):
             study.run_sessions.select_related("owner_user", "result_envelope", "config_version").order_by("-started_at")[:20]
         )
         run_ids = [str(getattr(run, "id", "") or "").strip() for run in run_batch if str(getattr(run, "id", "") or "").strip()]
-        variant_by_run_id = {}
-        if run_ids:
+        variant_by_run_id = {str(run.id): {
+            "flow_variant_id": str(getattr(run, "flow_variant_id", "") or "").strip() or None,
+            "flow_variant_label": str(getattr(run, "flow_variant_label", "") or "").strip() or None,
+            "has_flow_variant": bool(getattr(run, "has_flow_variant", False)),
+        } for run in run_batch if bool(getattr(run, "has_flow_variant", False)) or str(getattr(run, "flow_variant_id", "") or "").strip() or str(getattr(run, "flow_variant_label", "") or "").strip()}
+        if run_ids and len(variant_by_run_id) < len(run_batch):
             events = AuditEvent.objects.filter(
                 action="start_run",
                 resource_type="run_session",
@@ -212,11 +216,12 @@ class StudyRunsView(APIView):
                 metadata = event.metadata_json if isinstance(getattr(event, "metadata_json", None), dict) else {}
                 variant_id = str(metadata.get("flow_variant_id") or "").strip()
                 variant_label = str(metadata.get("flow_variant_label") or "").strip()
-                variant_by_run_id[run_id] = {
-                    "flow_variant_id": variant_id or None,
-                    "flow_variant_label": variant_label or (variant_id or None),
-                    "has_flow_variant": bool(variant_id or variant_label),
-                }
+                if variant_id or variant_label:
+                    variant_by_run_id[run_id] = {
+                        "flow_variant_id": variant_id or None,
+                        "flow_variant_label": variant_label or (variant_id or None),
+                        "has_flow_variant": True,
+                    }
 
         runs = []
         for run in run_batch:

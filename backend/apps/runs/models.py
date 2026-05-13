@@ -16,6 +16,9 @@ class RunSession(models.Model):
         blank=True,
         related_name="owned_run_sessions",
     )
+    flow_variant_id = models.CharField(max_length=128, blank=True, default="")
+    flow_variant_label = models.CharField(max_length=255, blank=True, default="")
+    has_flow_variant = models.BooleanField(default=False)
     participant_key = models.CharField(max_length=128)
     status = models.CharField(max_length=20, choices=RUN_STATUS_CHOICES, default=RUN_STATUS_STARTED)
     started_at = models.DateTimeField(auto_now_add=True)

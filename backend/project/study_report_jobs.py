@@ -154,6 +154,22 @@ def _build_config_variant_lookup(study):
     return lookup
 
 
+def _build_run_variant_lookup_from_runs(runs):
+    out = {}
+    for run in runs or []:
+        run_id = str(getattr(run, "id", "") or "").strip()
+        if not run_id:
+            continue
+        variant_id = str(getattr(run, "flow_variant_id", "") or "").strip()
+        variant_label = str(getattr(run, "flow_variant_label", "") or "").strip()
+        if bool(getattr(run, "has_flow_variant", False)) or variant_id or variant_label:
+            out[run_id] = {
+                "variant_id": variant_id or None,
+                "variant_label": variant_label or variant_id or None,
+            }
+    return out
+
+
 def _build_run_variant_lookup_from_audit(study, run_ids):
     run_id_values = [str(rid or "").strip() for rid in (run_ids or []) if str(rid or "").strip()]
     if not run_id_values:
@@ -747,6 +763,7 @@ def build_study_analysis_outputs(study, engine, options, include_completed_only=
     variant_numeric_trial_counts = {}
     participant_label_by_key = {}
     config_variant_lookup = _build_config_variant_lookup(study)
+    run_variant_lookup = _build_run_variant_lookup_from_runs(run_batch)
     audit_variant_lookup = _build_run_variant_lookup_from_audit(study, [run.id for run in run_batch])
 
     def get_participant_label(run_obj):
@@ -765,7 +782,7 @@ def build_study_analysis_outputs(study, engine, options, include_completed_only=
         participant_label = get_participant_label(run)
         run_id = str(getattr(run, "id", "") or "")
         config_version_id = str(getattr(run, "config_version_id", "") or "")
-        variant_info = audit_variant_lookup.get(run_id) or config_variant_lookup.get(config_version_id, {})
+        variant_info = run_variant_lookup.get(run_id) or audit_variant_lookup.get(run_id) or config_variant_lookup.get(config_version_id, {})
         variant_id = str(variant_info.get("variant_id") or "").strip()
         variant_label = str(variant_info.get("variant_label") or "").strip()
         for trial in run.trial_results.all().order_by("trial_index"):

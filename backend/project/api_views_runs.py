@@ -159,6 +159,9 @@ class StartRunView(APIView):
             study=study,
             config_version=config_version,
             owner_user=owner_user,
+            flow_variant_id=selected_flow_variant["id"] if selected_flow_variant else "",
+            flow_variant_label=selected_flow_variant["label"] if selected_flow_variant else "",
+            has_flow_variant=bool(selected_flow_variant),
             participant_key=participant_key,
             status="started",
         )
