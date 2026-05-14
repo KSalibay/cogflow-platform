@@ -1489,8 +1489,12 @@ class JsonBuilder {
 
         const getCsrfToken = () => {
             try {
-                const fromCookie = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
-                if (fromCookie && fromCookie[1]) return decodeURIComponent(fromCookie[1]);
+                // If duplicate csrftoken cookies exist, use the last one to align
+                // with browser cookie header ordering.
+                const matches = Array.from(document.cookie.matchAll(/(?:^|;\s*)csrftoken=([^;]+)/g));
+                if (matches.length > 0) {
+                    return decodeURIComponent(matches[matches.length - 1][1]);
+                }
                 return '';
             } catch {
                 return '';
@@ -14341,13 +14345,27 @@ class JsonBuilder {
 
         const getCsrfToken = () => {
             try {
-                const fromCookie = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
-                if (fromCookie && fromCookie[1]) return decodeURIComponent(fromCookie[1]);
+                // If duplicate csrftoken cookies exist, use the last one to align
+                // with browser cookie header ordering.
+                const matches = Array.from(document.cookie.matchAll(/(?:^|;\s*)csrftoken=([^;]+)/g));
+                if (matches.length > 0) {
+                    return decodeURIComponent(matches[matches.length - 1][1]);
+                }
                 const fromMeta = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
                 return (fromMeta || '').trim();
             } catch {
                 return '';
             }
+        };
+
+        const ensureCsrfReady = async () => {
+            if (getCsrfToken()) return true;
+            try {
+                await fetch(`${platformUrl}/api/v1/auth/csrf`, { credentials: 'include' });
+            } catch {
+                // Ignore network issues here; publish will surface the real error.
+            }
+            return !!getCsrfToken();
         };
 
         const safePrompt = (message, defaultValue = '') => {
@@ -14611,18 +14629,32 @@ class JsonBuilder {
         this.showValidationResult('success', `Publishing to ${platformUrl}…`);
 
         try {
-            const csrfToken = getCsrfToken();
-            const response = await fetch(`${platformUrl}/api/v1/configs/publish`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {})
-                },
-                body: JSON.stringify(payload),
-            });
+            await ensureCsrfReady();
 
-            const data = await response.json().catch(() => ({}));
+            const doPublish = async () => {
+                const csrfToken = getCsrfToken();
+                const resp = await fetch(`${platformUrl}/api/v1/configs/publish`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {})
+                    },
+                    body: JSON.stringify(payload),
+                });
+                const body = await resp.json().catch(() => ({}));
+                return { resp, body };
+            };
+
+            let { resp: response, body: data } = await doPublish();
+
+            if (!response.ok && response.status === 403) {
+                const maybeCsrf = String(data?.detail || data?.error || '');
+                if (/csrf/i.test(maybeCsrf)) {
+                    await fetch(`${platformUrl}/api/v1/auth/csrf`, { credentials: 'include' }).catch(() => {});
+                    ({ resp: response, body: data } = await doPublish());
+                }
+            }
 
             if (response.ok) {
                 const dashUrl = data.dashboard_url || `${platformUrl}/studies/${data.study_slug || studySlug}/`;
