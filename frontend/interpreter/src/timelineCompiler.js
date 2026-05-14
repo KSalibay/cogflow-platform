@@ -4212,11 +4212,12 @@
         : null;
 
         if (type === 'html-keyboard-response' || type === 'instructions') {
+        const stimulus = (item.stimulus !== undefined && item.stimulus !== null) ? item.stimulus : item.stimulus_html;
         timeline.push({
           type: HtmlKeyboard,
-          stimulus: wrapMaybeFunctionStimulus(item.stimulus, item.prompt),
+          stimulus: wrapMaybeFunctionStimulus(stimulus, item.prompt),
           prompt: null,
-          choices: item.choices === 'ALL_KEYS' ? 'ALL_KEYS' : (Array.isArray(item.choices) ? item.choices : 'ALL_KEYS'),
+          choices: normalizeKeyChoices(item.choices),
           stimulus_duration: (item.stimulus_duration === undefined ? null : item.stimulus_duration),
           trial_duration: (item.trial_duration === undefined ? null : item.trial_duration),
           response_ends_trial: (item.response_ends_trial === undefined ? true : item.response_ends_trial),
@@ -4248,7 +4249,7 @@
           type: HtmlKeyboard,
           stimulus: wrapMaybeFunctionStimulus(stimulusHtml, item.prompt),
           prompt: null,
-          choices: item.choices === 'ALL_KEYS' ? 'ALL_KEYS' : (Array.isArray(item.choices) ? item.choices : 'ALL_KEYS'),
+          choices: normalizeKeyChoices(item.choices),
           stimulus_duration: (item.stimulus_duration === undefined ? null : item.stimulus_duration),
           trial_duration: (item.trial_duration === undefined ? null : item.trial_duration),
           response_ends_trial: (item.response_ends_trial === undefined ? true : item.response_ends_trial),
