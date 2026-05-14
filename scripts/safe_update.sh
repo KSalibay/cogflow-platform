@@ -82,6 +82,15 @@ else
   docker compose run --rm api python manage.py migrate studies 0006_study_launch_properties_json --noinput
 fi
 
+echo "==> Reconciling runs.0003 (flow variant fields)"
+if docker compose run --rm api python manage.py shell -c "from django.db import connection; c=connection.cursor(); cols=('flow_variant_id','flow_variant_label','has_flow_variant'); c.execute(\"SELECT column_name FROM information_schema.columns WHERE table_name='runs_runsession' AND column_name IN ('flow_variant_id','flow_variant_label','has_flow_variant')\"); found={r[0] for r in c.fetchall()}; raise SystemExit(0 if all(col in found for col in cols) else 1)"; then
+  echo "    Detected existing runs_runsession flow-variant columns; faking runs.0003"
+  docker compose run --rm api python manage.py migrate runs 0003_runsession_flow_variant_fields --fake
+else
+  echo "    Columns not fully present; applying runs.0003 normally"
+  docker compose run --rm api python manage.py migrate runs 0003_runsession_flow_variant_fields --noinput
+fi
+
 echo "==> Applying remaining migrations"
 docker compose run --rm api python manage.py migrate --noinput
 
