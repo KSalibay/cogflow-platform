@@ -44,10 +44,50 @@
     /** @returns {string} CSRF token from Django's csrftoken cookie, if present. */
     _getCsrfToken: function () {
       try {
-        const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
-        return match ? decodeURIComponent(match[1]) : '';
+        const cookie = (typeof document !== 'undefined' ? document.cookie : '') || '';
+        const re = /(?:^|;\s*)csrftoken=([^;]+)/g;
+        let token = '';
+        for (const match of cookie.matchAll(re)) {
+          token = decodeURIComponent(match[1] || '');
+        }
+        return token;
       } catch (_) {
         return '';
+      }
+    },
+
+    _readErrorMessage: async function (resp) {
+      try {
+        const contentType = (resp && resp.headers && resp.headers.get('content-type')) || '';
+        if (contentType.includes('application/json')) {
+          const data = await resp.json().catch(() => ({}));
+          return (
+            data.error ||
+            data.detail ||
+            data.message ||
+            JSON.stringify(data)
+          );
+        }
+        const text = await resp.text().catch(() => '');
+        if (resp && resp.status === 403 && /csrf/i.test(text)) {
+          return 'CSRF validation failed';
+        }
+        const trimmed = (text || '').replace(/\s+/g, ' ').trim();
+        if (!trimmed) return String(resp && resp.status);
+        return trimmed.length > 400 ? trimmed.slice(0, 400) + '...' : trimmed;
+      } catch (_) {
+        return String((resp && resp.status) || 'request failed');
+      }
+    },
+
+    _refreshCsrfCookie: async function () {
+      try {
+        await fetch(this._baseUrl() + '/api/v1/auth/csrf', {
+          method: 'GET',
+          credentials: 'include',
+        });
+      } catch (_) {
+        // ignore refresh failures; caller will surface the original request error
       }
     },
 
@@ -99,16 +139,24 @@
       const url = this._baseUrl() + '/api/v1/runs/start';
       let resp;
       try {
-        const csrfToken = this._getCsrfToken();
-        resp = await fetch(url, {
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
-          },
-          body: JSON.stringify(body),
-        });
+        const sendRequest = async () => {
+          const csrfToken = this._getCsrfToken();
+          return fetch(url, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+            },
+            body: JSON.stringify(body),
+          });
+        };
+
+        resp = await sendRequest();
+        if (resp && resp.status === 403) {
+          await this._refreshCsrfCookie();
+          resp = await sendRequest();
+        }
       } catch (networkErr) {
         throw new Error(
           '[DjangoRuntimeBackend] Network error calling startRun: ' +
@@ -117,7 +165,7 @@
       }
 
       if (!resp.ok) {
-        const errText = await resp.text().catch(() => String(resp.status));
+        const errText = await this._readErrorMessage(resp);
         throw new Error(
           '[DjangoRuntimeBackend] startRun returned ' + resp.status + ': ' + errText
         );
@@ -151,22 +199,32 @@
 
       let resp;
       try {
-        const csrfToken = this._getCsrfToken();
-        resp = await fetch(url, {
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
-          },
-          body: JSON.stringify({
-            run_session_id: this._runSessionId,
-            status: 'completed',
-            trial_count: trials.length,
-            result_payload: payload || {},
-            trials: trials,
-          }),
+        const requestBody = JSON.stringify({
+          run_session_id: this._runSessionId,
+          status: 'completed',
+          trial_count: trials.length,
+          result_payload: payload || {},
+          trials: trials,
         });
+
+        const sendRequest = async () => {
+          const csrfToken = this._getCsrfToken();
+          return fetch(url, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+            },
+            body: requestBody,
+          });
+        };
+
+        resp = await sendRequest();
+        if (resp && resp.status === 403) {
+          await this._refreshCsrfCookie();
+          resp = await sendRequest();
+        }
       } catch (networkErr) {
         throw new Error(
           '[DjangoRuntimeBackend] Network error calling submitResult: ' +
@@ -175,7 +233,7 @@
       }
 
       if (!resp.ok) {
-        const errText = await resp.text().catch(() => String(resp.status));
+        const errText = await this._readErrorMessage(resp);
         throw new Error(
           '[DjangoRuntimeBackend] submitResult returned ' + resp.status + ': ' + errText
         );

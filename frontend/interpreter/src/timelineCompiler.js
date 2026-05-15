@@ -2202,6 +2202,31 @@
     const estimateTrialDurationMs = (trial) => {
       if (!isObject(trial)) return 0;
 
+      const estimatePostGapMs = (t) => {
+        if (!isObject(t)) return 0;
+        const candidates = [
+          t.post_trial_gap,
+          t.post_trial_gap_ms,
+          t.iti_ms,
+          t.iti,
+          t.inter_trial_interval_ms,
+          t.inter_trial_interval
+        ];
+        for (const raw of candidates) {
+          const n = Number(raw);
+          if (Number.isFinite(n) && n > 0) return n;
+        }
+
+        // Generated block trials often inherit ITI globally at compile-time
+        // (e.g., via config timing/default_iti) rather than carrying explicit
+        // per-item gap fields during expandTimeline scheduling.
+        if (t._generated_from_block === true) {
+          const defaultGap = Number(opts && opts.defaultGeneratedTrialPostGapMs);
+          if (Number.isFinite(defaultGap) && defaultGap > 0) return defaultGap;
+        }
+        return 0;
+      };
+
       if ((trial.type ?? '').toString() === 'mot-trial') {
         const cueMs = Number(trial.cue_duration_ms);
         const trackingMs = Number(trial.tracking_duration_ms);
@@ -2219,6 +2244,7 @@
         return cue + tracking + probe + feedback + iti;
       }
 
+      let coreMs = 0;
       const candidates = [
         trial.trial_duration_ms,
         trial.trial_duration,
@@ -2229,19 +2255,27 @@
 
       for (const raw of candidates) {
         const n = Number(raw);
-        if (Number.isFinite(n) && n > 0) return n;
+        if (Number.isFinite(n) && n > 0) {
+          coreMs = n;
+          break;
+        }
       }
 
-      const stimMs = Number(trial.stimulus_duration_ms);
-      const isiMs = Number(trial.isi_duration_ms);
-      if (Number.isFinite(stimMs) && stimMs > 0 && Number.isFinite(isiMs) && isiMs >= 0) {
-        return stimMs + isiMs;
+      if (!(coreMs > 0)) {
+        const stimMs = Number(trial.stimulus_duration_ms);
+        const isiMs = Number(trial.isi_duration_ms);
+        if (Number.isFinite(stimMs) && stimMs > 0 && Number.isFinite(isiMs) && isiMs >= 0) {
+          coreMs = stimMs + isiMs;
+        }
       }
 
-      const fallback = Number(opts && opts.defaultGeneratedTrialDurationMs);
-      if (Number.isFinite(fallback) && fallback > 0) return fallback;
+      if (!(coreMs > 0)) {
+        const fallback = Number(opts && opts.defaultGeneratedTrialDurationMs);
+        if (Number.isFinite(fallback) && fallback > 0) coreMs = fallback;
+      }
 
-      return 0;
+      if (!(coreMs > 0)) return 0;
+      return coreMs + estimatePostGapMs(trial);
     };
 
     const chunkItemsForShuffle = (items, options = {}) => {
@@ -2598,7 +2632,7 @@
         ? Math.max(1, Math.min(100, Math.round(requestedProbeCountRaw)))
         : 1;
 
-      const targetOffsetsMs = [];
+      let targetOffsetsMs = [];
       if (requestedProbeCount <= 1) {
         let targetMs;
         if (maxMs > 0) {
@@ -2622,8 +2656,28 @@
           nextMs += sampleMwProbeGapMs(probe);
         }
 
-        if (targetOffsetsMs.length === 0 && totalDurationMs > 0) {
-          targetOffsetsMs.push(Math.round(totalDurationMs * 0.5));
+        if (targetOffsetsMs.length < requestedProbeCount && totalDurationMs > 0) {
+          const fallbackOffsets = [];
+          for (let p = 0; p < requestedProbeCount; p++) {
+            const frac = (p + 1) / (requestedProbeCount + 1);
+            fallbackOffsets.push(Math.round(totalDurationMs * frac));
+          }
+          const merged = [...targetOffsetsMs, ...fallbackOffsets]
+            .map((v) => Number(v))
+            .filter((v) => Number.isFinite(v) && v > 0)
+            .sort((a, b) => a - b);
+
+          const deduped = [];
+          for (const v of merged) {
+            if (deduped.length === 0 || deduped[deduped.length - 1] !== v) deduped.push(v);
+            if (deduped.length >= requestedProbeCount) break;
+          }
+
+          while (deduped.length < requestedProbeCount && totalDurationMs > 0) {
+            deduped.push(totalDurationMs);
+          }
+
+          targetOffsetsMs = deduped.slice(0, requestedProbeCount);
         }
       }
 
@@ -2931,6 +2985,7 @@
       preserveBlocksForComponentTypes: preserveBlocksFor,
       expandNbackSequences: experimentType === 'trial-based',
       defaultGeneratedTrialDurationMs,
+      defaultGeneratedTrialPostGapMs: baseIti,
       globalRandomizeOrder: config.randomize_order === true,
       nbackDefaults,
       taskSwitchingDefaults,

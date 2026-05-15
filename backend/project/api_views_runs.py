@@ -101,11 +101,15 @@ class StartRunView(APIView):
         selected_flow_variant = None
 
         if use_flow_variants:
-            selected_flow_variant, study_properties, permutation_index = _select_study_flow_variant(
-                study,
-                config_versions,
-                launch_token_digest,
-            )
+            try:
+                selected_flow_variant, study_properties, permutation_index = _select_study_flow_variant(
+                    study,
+                    config_versions,
+                    launch_token_digest,
+                )
+            except ValueError as err:
+                return Response({"error": str(err)}, status=status.HTTP_400_BAD_REQUEST)
+
             if not selected_flow_variant:
                 return Response({"error": "No saved study variants are available for this link"}, status=status.HTTP_400_BAD_REQUEST)
 

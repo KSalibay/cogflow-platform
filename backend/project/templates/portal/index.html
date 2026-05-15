@@ -1585,8 +1585,18 @@
                         style="border:1.5px solid var(--line);border-radius:8px;padding:5px 10px;font-size:.82rem;font-family:inherit;cursor:pointer;background:var(--bg);color:var(--ink);min-width:180px;">
                   <option value="">All subtasks</option>
                 </select>
+                <select id="previewVariantSelect"
+                        style="border:1.5px solid var(--line);border-radius:8px;padding:5px 10px;font-size:.82rem;font-family:inherit;cursor:pointer;background:var(--bg);color:var(--ink);min-width:220px;"
+                        title="Choose a specific saved variant for Preview, or keep automatic balancing.">
+                  <option value="">Variant: Auto assignment</option>
+                </select>
                 <button class="btn btn-primary btn-sm" id="previewLaunchBtn">Launch Preview</button>
               </div>
+              <div id="previewVariantBadge" style="display:inline-flex;align-items:center;gap:6px;margin-top:8px;padding:5px 10px;border-radius:999px;border:1px solid var(--line);background:#f3f8ff;color:var(--ink);font-size:.78rem;font-weight:600;letter-spacing:.01em;max-width:100%;width:fit-content;">
+                <span style="opacity:.7;">Preview variant</span>
+                <span id="previewVariantBadgeText">Auto assignment</span>
+              </div>
+              <div id="previewVariantHint" class="inline-note" style="margin-top:8px;">Variants can be selected when the study has saved flow variants.</div>
             </div>
             <iframe id="previewFrame" class="view-iframe"
                     src="about:blank" title="Experiment Preview"

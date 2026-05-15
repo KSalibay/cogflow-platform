@@ -116,10 +116,24 @@
 
     async function populatePreviewTaskSelect(slug, preferredTaskType = "") {
       const taskSel = document.getElementById("previewTaskSelect");
+      const variantSel = document.getElementById("previewVariantSelect");
+      const variantHint = document.getElementById("previewVariantHint");
+      const variantBadgeText = document.getElementById("previewVariantBadgeText");
       if (!taskSel) return;
 
       const pref = String(preferredTaskType || "").trim().toLowerCase();
+      const prevVariant = String(variantSel?.value || "").trim();
       taskSel.innerHTML = '<option value="">All subtasks</option>';
+      if (variantSel) {
+        variantSel.innerHTML = '<option value="">Variant: Auto assignment</option>';
+        variantSel.disabled = true;
+      }
+      if (variantHint) {
+        variantHint.textContent = 'Variants can be selected when the study has saved flow variants.';
+      }
+      if (variantBadgeText) {
+        variantBadgeText.textContent = 'Auto assignment';
+      }
 
       const key = String(slug || "").trim();
       if (!key) return;
@@ -128,8 +142,21 @@
         const payload = await fetchStudyLatestConfig(key);
         const cfgs = Array.isArray(payload?.configs) ? payload.configs : [];
         const st = getStudyState(key);
-        const profile = normalizeTaskProfileForConfigs(st.taskProfile || loadStudyTaskProfile(key), cfgs);
+        const serverStudyProps = payload?.study_properties && typeof payload.study_properties === 'object'
+          ? payload.study_properties
+          : {
+              task_profile: st.taskProfile || loadStudyTaskProfile(key),
+              flow_variants: st.flowVariants || [],
+            };
+        const normalizedProps = normalizeStudyPropertiesForConfigs(
+          serverStudyProps,
+          cfgs,
+          st.taskProfile || loadStudyTaskProfile(key)
+        );
+        const profile = normalizedProps.task_profile;
+        const flowVariants = Array.isArray(normalizedProps.flow_variants) ? normalizedProps.flow_variants : [];
         st.taskProfile = profile;
+        st.flowVariants = flowVariants;
 
         const cfgById = new Map(cfgs.map((c) => [String(c?.config_version_id || "").trim(), c]));
         const subtasks = [];
@@ -149,9 +176,36 @@
         if (pref && subtasks.includes(pref)) {
           taskSel.value = pref;
         }
+
+        if (variantSel) {
+          if (flowVariants.length > 0) {
+            flowVariants.forEach((variant) => {
+              const o = document.createElement('option');
+              o.value = (variant?.id || '').toString();
+              o.textContent = `Variant: ${variant?.label || variant?.id || 'Unnamed'}`;
+              variantSel.appendChild(o);
+            });
+            variantSel.disabled = taskSel.value !== '';
+            if (!variantSel.disabled && prevVariant) {
+              const hasPrev = flowVariants.some((variant) => (variant?.id || '').toString() === prevVariant);
+              if (hasPrev) variantSel.value = prevVariant;
+            }
+            if (variantHint) {
+              variantHint.textContent = `${flowVariants.length} saved variant${flowVariants.length === 1 ? '' : 's'} available for Preview testing.`;
+            }
+          } else if (variantHint) {
+            variantHint.textContent = 'No saved variants detected for this study.';
+          }
+        }
       } catch {
         // Keep fallback option only when latest-config can't be loaded.
       }
+    }
+
+    function setPreviewVariantBadge(text) {
+      const variantBadgeText = document.getElementById('previewVariantBadgeText');
+      if (!variantBadgeText) return;
+      variantBadgeText.textContent = (text || '').toString().trim() || 'Auto assignment';
     }
 
     function populateIntegrationsStudySelect(studies) {
@@ -244,9 +298,10 @@
       tbody.querySelectorAll("[data-action='open-preview']").forEach(b =>
         b.addEventListener("click", () => {
           const slug = b.getAttribute("data-slug");
-          const taskType = (b.getAttribute("data-task-type") || '').toString().trim().toLowerCase();
           document.getElementById("previewStudySelect").value = slug;
-          populatePreviewTaskSelect(slug, taskType);
+          // Default to "All subtasks" so study-level Preview matches link behavior,
+          // including saved flow-variant assignment.
+          populatePreviewTaskSelect(slug);
           activateView("preview");
         })
       );
@@ -1496,6 +1551,8 @@
     document.getElementById("previewLaunchBtn").addEventListener("click", async () => {
       const slug = document.getElementById("previewStudySelect").value;
       const taskType = (document.getElementById("previewTaskSelect")?.value || '').toString().trim().toLowerCase();
+      const selectedVariantId = (document.getElementById("previewVariantSelect")?.value || '').toString().trim();
+      const variantBadgeText = document.getElementById("previewVariantBadgeText");
       if (!slug) return;
       const btn = document.getElementById("previewLaunchBtn");
       btn.disabled = true; btn.textContent = "Generating…";
@@ -1505,8 +1562,21 @@
         const latest = await fetchStudyLatestConfig(slug);
         const cfgs = Array.isArray(latest?.configs) ? latest.configs : [];
         const st = getStudyState(slug);
-        const profile = normalizeTaskProfileForConfigs(st.taskProfile || loadStudyTaskProfile(slug), cfgs);
+        const serverStudyProps = latest?.study_properties && typeof latest.study_properties === 'object'
+          ? latest.study_properties
+          : {
+              task_profile: st.taskProfile || loadStudyTaskProfile(slug),
+              flow_variants: st.flowVariants || [],
+            };
+        const normalizedProps = normalizeStudyPropertiesForConfigs(
+          serverStudyProps,
+          cfgs,
+          st.taskProfile || loadStudyTaskProfile(slug)
+        );
+        const profile = normalizedProps.task_profile;
+        const flowVariants = Array.isArray(normalizedProps.flow_variants) ? normalizedProps.flow_variants : [];
         st.taskProfile = profile;
+        st.flowVariants = flowVariants;
 
         const cfgById = new Map(cfgs.map((c) => [String(c?.config_version_id || '').trim(), c]));
         let selectedIds = profile.items
@@ -1531,7 +1601,36 @@
         const strictNeeded = selectedIds.length > 0 && (
           selectedIds.length !== allIds.length || selectedIds.some((id, idx) => allIds[idx] !== id)
         );
-        if (strictNeeded || taskType) {
+        const selectedVariant = !taskType
+          ? flowVariants.find((variant) => (variant?.id || '').toString() === selectedVariantId)
+          : null;
+        if (variantBadgeText) {
+          variantBadgeText.textContent = selectedVariant
+            ? `Forced variant: ${selectedVariant.label || selectedVariant.id || 'Unnamed'}`
+            : (taskType ? 'Manual task order' : 'Auto assignment');
+        }
+
+        // Keep Preview aligned with generated links semantics:
+        // if saved flow variants exist and no explicit subtask filter is chosen,
+        // launch in flow-variant mode rather than manual task-order mode.
+        const canUseFlowVariants = !taskType && flowVariants.length > 0 && !selectedVariant;
+        if (selectedVariant) {
+          const forcedOrder = Array.isArray(selectedVariant.task_order)
+            ? selectedVariant.task_order.map((id) => String(id || '').trim()).filter(Boolean)
+            : [];
+          if (!forcedOrder.length) {
+            throw new Error(`Selected variant ${selectedVariant.label || selectedVariant.id} has no valid task order.`);
+          }
+          launchPayload.counterbalance_enabled = false;
+          launchPayload.use_flow_variants = false;
+          launchPayload.task_order = forcedOrder;
+          launchPayload.task_order_strict = true;
+        } else if (canUseFlowVariants) {
+          launchPayload.counterbalance_enabled = false;
+          launchPayload.use_flow_variants = true;
+          launchPayload.task_order = [];
+          launchPayload.task_order_strict = false;
+        } else if (strictNeeded || taskType) {
           launchPayload.counterbalance_enabled = false;
           launchPayload.task_order = selectedIds;
           launchPayload.task_order_strict = true;
@@ -1558,6 +1657,62 @@
     document.getElementById("previewStudySelect").addEventListener("change", (e) => {
       const slug = (e.target?.value || '').toString().trim();
       populatePreviewTaskSelect(slug);
+    });
+
+    document.getElementById("previewTaskSelect")?.addEventListener("change", (e) => {
+      const taskType = (e.target?.value || '').toString().trim().toLowerCase();
+      const variantSel = document.getElementById('previewVariantSelect');
+      const variantHint = document.getElementById('previewVariantHint');
+      const variantBadgeText = document.getElementById('previewVariantBadgeText');
+      if (!variantSel) return;
+
+      if (taskType) {
+        variantSel.disabled = true;
+        variantSel.value = '';
+        if (variantHint) variantHint.textContent = 'Variant selection is available only when Preview is set to All subtasks.';
+        if (variantBadgeText) variantBadgeText.textContent = `All subtasks${taskType ? ` · ${taskType}` : ''}`;
+      } else {
+        const hasSavedVariants = variantSel.options.length > 1;
+        variantSel.disabled = !hasSavedVariants;
+        if (variantHint && hasSavedVariants) {
+          variantHint.textContent = `${variantSel.options.length - 1} saved variant${variantSel.options.length - 1 === 1 ? '' : 's'} available for Preview testing.`;
+        }
+        if (variantBadgeText) {
+          variantBadgeText.textContent = variantSel.value
+            ? `Forced variant: ${variantSel.options[variantSel.selectedIndex]?.textContent?.replace(/^Variant:\s*/, '') || variantSel.value}`
+            : 'Auto assignment';
+        }
+      }
+    });
+
+    document.getElementById("previewVariantSelect")?.addEventListener("change", (e) => {
+      const variantSel = e.target;
+      const variantBadgeText = document.getElementById('previewVariantBadgeText');
+      if (!variantBadgeText) return;
+      if (variantSel?.value) {
+        variantBadgeText.textContent = `Forced variant: ${variantSel.options[variantSel.selectedIndex]?.textContent?.replace(/^Variant:\s*/, '') || variantSel.value}`;
+      } else {
+        variantBadgeText.textContent = 'Auto assignment';
+      }
+    });
+
+    window.addEventListener('message', (e) => {
+      if (e.origin !== location.origin) return;
+      const data = e.data || {};
+      if (data.type !== 'cogflow:run-started' || data.source !== 'interpreter-preview') return;
+
+      const flowVariantLabel = String(data.flow_variant_label || '').trim();
+      const flowVariantId = String(data.flow_variant_id || '').trim();
+      const counterbalanceMode = String(data.counterbalance_mode || '').trim();
+      const taskType = String(document.getElementById('previewTaskSelect')?.value || '').trim().toLowerCase();
+
+      if (flowVariantLabel || flowVariantId) {
+        setPreviewVariantBadge(`Running variant: ${flowVariantLabel || flowVariantId}`);
+      } else if (counterbalanceMode === 'manual_order_strict' || taskType) {
+        setPreviewVariantBadge('Manual task order');
+      } else {
+        setPreviewVariantBadge('Auto assignment');
+      }
     });
 
     document.getElementById("integrationStudySelect")?.addEventListener("change", (e) => {

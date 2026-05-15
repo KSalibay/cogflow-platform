@@ -464,35 +464,111 @@
         const lo = Math.min(minMs, maxMs);
         const hi = Math.max(minMs, maxMs);
 
+        const requestedProbeCountRaw = Number(
+          subtask.global_probe_count_per_block
+          ?? subtask.probe_count_per_block
+          ?? 0
+        );
+        const requestedProbeCount = Number.isFinite(requestedProbeCountRaw)
+          ? Math.max(0, Math.min(100, Math.round(requestedProbeCountRaw)))
+          : 0;
+
         const durRaw = Number(subtask.duration_ms);
         const probeDurationMs = (Number.isFinite(durRaw) && durRaw > 0)
           ? Math.max(1, Math.floor(durRaw))
           : null;
 
-        let nextAt = Math.round(lo + Math.random() * (hi - lo));
-        let emitted = 0;
-        while (nextAt < trialMs && emitted < 100) {
-          const endAt = Number.isFinite(probeDurationMs)
-            ? Math.min(trialMs, nextAt + probeDurationMs)
-            : null;
+        const scheduleFromOffsets = (offsetsMs) => {
+          let emittedLocal = 0;
+          for (const nextAt of offsetsMs) {
+            if (!(nextAt < trialMs) || emittedLocal >= 100) continue;
 
+            const endAt = Number.isFinite(probeDurationMs)
+              ? Math.min(trialMs, nextAt + probeDurationMs)
+              : null;
+
+            expanded.push({
+              ...w,
+              schedule: {
+                has_schedule: true,
+                start_at_ms: nextAt,
+                end_at_ms: endAt,
+                _source: 'explicit'
+              }
+            });
+
+            emittedLocal += 1;
+          }
+          return emittedLocal;
+        };
+
+        let emitted = 0;
+        if (requestedProbeCount > 0) {
+          let offsetsMs = [];
+          if (requestedProbeCount === 1) {
+            offsetsMs = [Math.round(lo + Math.random() * (hi - lo))];
+          } else {
+            let nextAt = Math.round(lo + Math.random() * (hi - lo));
+            for (let p = 0; p < requestedProbeCount; p++) {
+              if (!(nextAt < trialMs)) break;
+              offsetsMs.push(nextAt);
+              const step = Math.round(lo + Math.random() * (hi - lo));
+              nextAt += Math.max(1, step);
+            }
+
+            if (offsetsMs.length < requestedProbeCount && trialMs > 0) {
+              const fallbackOffsets = [];
+              for (let p = 0; p < requestedProbeCount; p++) {
+                const frac = (p + 1) / (requestedProbeCount + 1);
+                fallbackOffsets.push(Math.round(trialMs * frac));
+              }
+              const merged = [...offsetsMs, ...fallbackOffsets]
+                .map((v) => Number(v))
+                .filter((v) => Number.isFinite(v) && v > 0)
+                .sort((a, b) => a - b);
+
+              const deduped = [];
+              for (const v of merged) {
+                if (deduped.length === 0 || deduped[deduped.length - 1] !== v) deduped.push(v);
+                if (deduped.length >= requestedProbeCount) break;
+              }
+              while (deduped.length < requestedProbeCount && trialMs > 0) {
+                deduped.push(Math.max(1, trialMs - 1));
+              }
+              offsetsMs = deduped.slice(0, requestedProbeCount);
+            }
+          }
+
+          emitted = scheduleFromOffsets(offsetsMs);
+        } else {
+          let nextAt = Math.round(lo + Math.random() * (hi - lo));
+          const offsetsMs = [];
+          while (nextAt < trialMs && offsetsMs.length < 100) {
+            offsetsMs.push(nextAt);
+            const step = Math.round(lo + Math.random() * (hi - lo));
+            nextAt += Math.max(1, step);
+          }
+          emitted = scheduleFromOffsets(offsetsMs);
+        }
+
+        if (emitted === 0) {
+          const midpoint = Math.max(1, Math.round(trialMs * 0.5));
+          emitted = scheduleFromOffsets([midpoint]);
+        }
+
+        if (emitted === 0) {
+          const endAt = Number.isFinite(probeDurationMs)
+            ? Math.min(trialMs, Math.max(1, probeDurationMs))
+            : null;
           expanded.push({
             ...w,
             schedule: {
               has_schedule: true,
-              start_at_ms: nextAt,
+              start_at_ms: 0,
               end_at_ms: endAt,
               _source: 'explicit'
             }
           });
-
-          const step = Math.round(lo + Math.random() * (hi - lo));
-          nextAt += Math.max(1, step);
-          emitted += 1;
-        }
-
-        if (emitted === 0) {
-          expanded.push(w);
         }
       }
       windowsSpec = expanded;

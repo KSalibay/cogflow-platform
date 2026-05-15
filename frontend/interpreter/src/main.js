@@ -2485,6 +2485,24 @@
           launchToken,
           participantExternalId: participantId,
         });
+
+        try {
+          if (window.parent && window.parent !== window) {
+            window.parent.postMessage({
+              type: 'cogflow:run-started',
+              source: 'interpreter-preview',
+              study_slug: (startData.study_slug || '').toString().trim(),
+              run_session_id: (startData.run_session_id || '').toString().trim(),
+              flow_variant_id: (startData?.counterbalance?.flow_variant_id || startData.flow_variant_id || '').toString().trim(),
+              flow_variant_label: (startData?.counterbalance?.flow_variant_label || startData.flow_variant_label || '').toString().trim(),
+              counterbalance_mode: (startData?.counterbalance?.mode || startData.counterbalance_mode || '').toString().trim(),
+              use_flow_variants: !!(startData?.counterbalance?.use_flow_variants ?? startData.use_flow_variants),
+            }, location.origin);
+          }
+        } catch {
+          // ignore postMessage failures; launch should continue regardless
+        }
+
         const cfg = startData ? normalizeLaunchConfig(startData.config) : null;
         const cfgEntries = (startData && Array.isArray(startData.configs)) ? startData.configs : null;
 

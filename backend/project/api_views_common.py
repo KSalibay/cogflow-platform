@@ -680,6 +680,17 @@ def _normalize_study_launch_properties(study: Study | None, config_versions: lis
 def _select_study_flow_variant(study: Study, config_versions: list, launch_token_digest: str | None):
     properties = _normalize_study_launch_properties(study, config_versions)
     variants = properties.get("flow_variants") or []
+    raw_launch_props = study.launch_properties_json if isinstance(study.launch_properties_json, dict) else {}
+    raw_variants = raw_launch_props.get("flow_variants") if isinstance(raw_launch_props.get("flow_variants"), list) else []
+    raw_variants_with_tasks = any(
+        isinstance(raw_variant, dict)
+        and any(str(raw_id or "").strip() for raw_id in (raw_variant.get("task_order") or []))
+        for raw_variant in raw_variants
+    )
+
+    if raw_variants_with_tasks and not variants:
+        raise ValueError("Saved study variants no longer match the current published tasks. Update Study Properties and regenerate links.")
+
     if not variants:
         return None, properties, 0
 

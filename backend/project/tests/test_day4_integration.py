@@ -839,6 +839,47 @@ class Day7PortalMvpLinkPipelineTests(APITestCase):
             [third_cfg.id, fourth_cfg.id, first_cfg.id, second_cfg.id],
         )
 
+    def test_start_run_rejects_stale_saved_flow_variants(self):
+        self._publish_as(self.researcher, slug="variant-stale-study")
+        study = Study.objects.get(slug="variant-stale-study")
+        cfg = study.config_versions.first()
+
+        study.launch_properties_json = {
+            "task_profile": {
+                "items": [
+                    {
+                        "config_version_id": str(cfg.id),
+                        "task_type": "rdm",
+                        "label": "RDM",
+                        "enabled": True,
+                    }
+                ]
+            },
+            "flow_variants": [
+                {
+                    "id": "variant-stale",
+                    "label": "Variant Stale",
+                    "task_order": ["missing-config-id-1"],
+                }
+            ],
+        }
+        study.save(update_fields=["launch_properties_json", "updated_at"])
+
+        self.client.force_authenticate(user=self.researcher)
+        link_resp = self.client.post(
+            reverse("studies-participant-links", kwargs={"study_slug": "variant-stale-study"}),
+            data={"participant_external_id": "P-VARIANT-STALE", "use_flow_variants": True},
+            format="json",
+        )
+        self.client.force_authenticate(user=None)
+        self.assertEqual(link_resp.status_code, status.HTTP_201_CREATED)
+
+        token = link_resp.data["launch_options"]["multi_use"]["launch_token"]
+        start_resp = self.client.post(reverse("runs-start"), data={"launch_token": token}, format="json")
+
+        self.assertEqual(start_resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("Saved study variants no longer match", str(start_resp.data.get("error") or ""))
+
     def test_platform_admin_can_reassign_study_owner(self):
         self._publish_as(self.researcher, slug="owner-reassign")
 
