@@ -839,6 +839,58 @@ class Day7PortalMvpLinkPipelineTests(APITestCase):
             [third_cfg.id, fourth_cfg.id, first_cfg.id, second_cfg.id],
         )
 
+    def test_exact_task_order_launch_is_tagged_as_matching_variant(self):
+        self._publish_as(self.researcher, slug="variant-preview-study")
+        study = Study.objects.get(slug="variant-preview-study")
+        first_cfg = study.config_versions.first()
+        second_cfg = ConfigVersion.objects.create(
+            study=study,
+            version_label="v2",
+            config_json={"task_type": "mot", "task_name": "MOT-1", "experiment_type": "trial-based"},
+            builder_version="test",
+        )
+
+        study.launch_properties_json = {
+            "task_profile": {
+                "items": [
+                    {"config_version_id": str(first_cfg.id), "task_type": "rdm", "label": "RDM-1", "enabled": True},
+                    {"config_version_id": str(second_cfg.id), "task_type": "mot", "label": "MOT-1", "enabled": True},
+                ]
+            },
+            "flow_variants": [
+                {
+                    "id": "rdm_then_mot",
+                    "label": "RDM then MOT",
+                    "task_order": [str(first_cfg.id), str(second_cfg.id)],
+                }
+            ],
+        }
+        study.save(update_fields=["launch_properties_json", "updated_at"])
+
+        self.client.force_authenticate(user=self.researcher)
+        link_resp = self.client.post(
+            reverse("studies-participant-links", kwargs={"study_slug": "variant-preview-study"}),
+            data={
+                "participant_external_id": "P-PREVIEW-VARIANT",
+                "use_flow_variants": False,
+                "task_order": [str(first_cfg.id), str(second_cfg.id)],
+                "task_order_strict": True,
+                "counterbalance_enabled": False,
+            },
+            format="json",
+        )
+        self.client.force_authenticate(user=None)
+        self.assertEqual(link_resp.status_code, status.HTTP_201_CREATED)
+
+        token = link_resp.data["launch_options"]["multi_use"]["launch_token"]
+        start_resp = self.client.post(reverse("runs-start"), data={"launch_token": token}, format="json")
+
+        self.assertEqual(start_resp.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(start_resp.data["counterbalance"]["mode"], "manual_order_strict")
+        self.assertEqual(start_resp.data["counterbalance"]["flow_variant_id"], "rdm_then_mot")
+        self.assertEqual(start_resp.data["counterbalance"]["flow_variant_label"], "RDM then MOT")
+        self.assertTrue(start_resp.data["counterbalance"]["task_order_strict"])
+
     def test_start_run_rejects_stale_saved_flow_variants(self):
         self._publish_as(self.researcher, slug="variant-stale-study")
         study = Study.objects.get(slug="variant-stale-study")

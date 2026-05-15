@@ -100,6 +100,26 @@ class StartRunView(APIView):
         counterbalance_mode = "fixed"
         selected_flow_variant = None
 
+        study_properties = _normalize_study_launch_properties(study, config_versions)
+
+        def _same_order(left_ids, right_ids):
+            if len(left_ids) != len(right_ids):
+                return False
+            return all(str(left).strip() == str(right).strip() for left, right in zip(left_ids, right_ids))
+
+        if task_order_strict and requested_ids:
+            for candidate in study_properties.get("flow_variants") or []:
+                if not isinstance(candidate, dict):
+                    continue
+                candidate_order = [str(raw_id or "").strip() for raw_id in (candidate.get("task_order") or []) if str(raw_id or "").strip()]
+                if _same_order(candidate_order, requested_ids):
+                    selected_flow_variant = {
+                        "id": str(candidate.get("id") or "").strip(),
+                        "label": str(candidate.get("label") or candidate.get("id") or "").strip() or None,
+                        "task_order": candidate_order,
+                    }
+                    break
+
         if use_flow_variants:
             try:
                 selected_flow_variant, study_properties, permutation_index = _select_study_flow_variant(
