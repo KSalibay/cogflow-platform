@@ -378,8 +378,8 @@
         // If no explicit schedule is set, respect min/max interval as the delay
         // from SOC session start before the probe window appears.
         if (subtaskType === 'mw-probe') {
-          const minRaw = Number(o.min_interval_ms);
-          const maxRaw = Number(o.max_interval_ms);
+          const minRaw = Number(o.global_interval_min_ms ?? o.min_interval_ms);
+          const maxRaw = Number(o.global_interval_max_ms ?? o.max_interval_ms);
           const hasMwInterval = (
             (Number.isFinite(minRaw) && minRaw > 0)
             || (Number.isFinite(maxRaw) && maxRaw > 0)
@@ -448,8 +448,8 @@
         }
 
         const subtask = (w?.subtask && typeof w.subtask === 'object') ? w.subtask : {};
-        const minRaw = Number(subtask.min_interval_ms);
-        const maxRaw = Number(subtask.max_interval_ms);
+        const minRaw = Number(subtask.global_interval_min_ms ?? subtask.min_interval_ms);
+        const maxRaw = Number(subtask.global_interval_max_ms ?? subtask.max_interval_ms);
         const hasInterval = (
           (Number.isFinite(minRaw) && minRaw > 0)
           || (Number.isFinite(maxRaw) && maxRaw > 0)

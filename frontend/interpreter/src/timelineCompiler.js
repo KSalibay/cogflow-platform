@@ -2527,8 +2527,8 @@
       const probe = out[i];
       if (!isObject(probe) || probe.type !== 'mw-probe') continue;
 
-      const maxRaw = Number(probe.max_interval_ms);
-      const minRaw = Number(probe.min_interval_ms);
+      const minRaw = Number(probe.global_interval_min_ms ?? probe.min_interval_ms);
+      const maxRaw = Number(probe.global_interval_max_ms ?? probe.max_interval_ms);
       const maxMs = Number.isFinite(maxRaw) ? Math.max(0, maxRaw) : (Number.isFinite(minRaw) ? Math.max(0, minRaw) : 0);
 
       // Anchor each probe to ONE neighboring generated run so probes are not

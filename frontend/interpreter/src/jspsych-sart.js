@@ -32,6 +32,11 @@
       show_fixation_dot: { type: PT.BOOL, default: false },
       show_fixation_cross_between_trials: { type: PT.BOOL, default: false },
 
+      show_feedback: { type: PT.BOOL, default: false },
+      feedback_duration_ms: { type: PT.INT, default: 300 },
+      feedback_text_correct: { type: PT.STRING, default: 'Correct' },
+      feedback_text_incorrect: { type: PT.STRING, default: 'Incorrect' },
+
       detection_response_task_enabled: { type: PT.BOOL, default: false }
     },
     data: {
@@ -92,6 +97,12 @@
       const goKey = normalizeKeyName(trial.go_key || 'space');
       const drtEnabled = trial.detection_response_task_enabled === true;
       const drtKey = ' ';
+      const showFeedback = trial.show_feedback === true;
+      const feedbackDurationMs = Number.isFinite(Number(trial.feedback_duration_ms))
+        ? Math.max(0, Number(trial.feedback_duration_ms))
+        : 300;
+      const feedbackTextCorrect = (trial.feedback_text_correct ?? 'Correct').toString();
+      const feedbackTextIncorrect = (trial.feedback_text_incorrect ?? 'Incorrect').toString();
 
       const stimMs = Number.isFinite(Number(trial.stimulus_duration_ms)) ? Number(trial.stimulus_duration_ms) : 250;
       const maskMs = Number.isFinite(Number(trial.mask_duration_ms)) ? Number(trial.mask_duration_ms) : 900;
@@ -107,12 +118,14 @@
           <div style="height:88px; display:flex; align-items:center; justify-content:center;">
             <div id="sart-stim" style="font-size:72px; line-height:1; width:1.2ch; min-width:1.2ch; min-height:1em; font-weight:800; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; font-variant-numeric: tabular-nums; text-align:center;">${esc(String(digit))}</div>
           </div>
+          <div id="sart-feedback" style="min-height:20px; font-size:14px; font-weight:700; opacity:0.95;"></div>
           <div style="opacity:0.65; font-size: 12px;">Press ${esc(goKey === ' ' ? 'space' : goKey)} for GO (do not press for ${esc(String(nogoDigit))})</div>
         </div>
       `;
 
       const stimEl = display_element.querySelector('#sart-stim');
       const wrapEl = display_element.querySelector('#sart-wrap');
+      const feedbackEl = display_element.querySelector('#sart-feedback');
 
       let responded = false;
       let responseKey = null;
@@ -168,6 +181,17 @@
         responded = true;
         responseKey = k;
         rt = Number.isFinite(info && info.rt) ? Math.round(info.rt) : null;
+
+        if (showFeedback && feedbackEl) {
+          const isCorrect = (!isNoGo && k === goKey);
+          feedbackEl.textContent = isCorrect ? feedbackTextCorrect : feedbackTextIncorrect;
+          feedbackEl.style.color = isCorrect ? '#86efac' : '#fca5a5';
+          if (feedbackDurationMs > 0) {
+            this.jsPsych.pluginAPI.setTimeout(() => {
+              if (feedbackEl) feedbackEl.textContent = '';
+            }, feedbackDurationMs);
+          }
+        }
       };
 
       // Stimulus -> mask transition

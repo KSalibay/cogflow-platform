@@ -1090,6 +1090,28 @@ class JSPsychSchemas {
                         default: 1150,
                         description: 'Total trial duration (ms)'
                     },
+                    show_feedback: {
+                        type: this.parameterTypes.BOOL,
+                        default: false,
+                        description: 'Show brief Correct/Incorrect feedback after responses'
+                    },
+                    feedback_duration_ms: {
+                        type: this.parameterTypes.INT,
+                        default: 300,
+                        min: 0,
+                        max: 10000,
+                        description: 'Feedback display duration (ms)'
+                    },
+                    feedback_text_correct: {
+                        type: this.parameterTypes.STRING,
+                        default: 'Correct',
+                        description: 'Feedback text for correct responses'
+                    },
+                    feedback_text_incorrect: {
+                        type: this.parameterTypes.STRING,
+                        default: 'Incorrect',
+                        description: 'Feedback text for incorrect responses'
+                    },
                     iti_ms: {
                         type: this.parameterTypes.INT,
                         default: 0,
@@ -3176,6 +3198,24 @@ class JSPsychSchemas {
                         default: 2000,
                         blockTarget: 'sart-trial',
                         description: 'SART: total trial duration max (ms)'
+                    },
+                    sart_show_feedback: {
+                        type: this.parameterTypes.BOOL,
+                        default: false,
+                        blockTarget: 'sart-trial',
+                        description: 'SART: show Correct/Incorrect feedback after responses'
+                    },
+                    sart_feedback_duration_min: {
+                        type: this.parameterTypes.INT,
+                        default: 300,
+                        blockTarget: 'sart-trial',
+                        description: 'SART: feedback duration min (ms)'
+                    },
+                    sart_feedback_duration_max: {
+                        type: this.parameterTypes.INT,
+                        default: 300,
+                        blockTarget: 'sart-trial',
+                        description: 'SART: feedback duration max (ms)'
                     },
                     sart_iti_min: {
                         type: this.parameterTypes.INT,
