@@ -7203,6 +7203,11 @@ class JsonBuilder {
                 sart_mask_duration_max: { type: 'number', default: 1200, min: 0, max: 10000 },
                 sart_trial_duration_min: { type: 'number', default: 800, min: 0, max: 60000 },
                 sart_trial_duration_max: { type: 'number', default: 2000, min: 0, max: 60000 },
+                sart_show_feedback: { type: 'boolean', default: false },
+                sart_feedback_text_correct: { type: 'string', default: 'Correct', description: 'Text shown to participant when their response is correct.' },
+                sart_feedback_text_incorrect: { type: 'string', default: 'Incorrect', description: 'Text shown to participant when their response is incorrect.' },
+                sart_feedback_duration_min: { type: 'number', default: 300, min: 0, max: 10000 },
+                sart_feedback_duration_max: { type: 'number', default: 300, min: 0, max: 10000 },
                 sart_iti_min: { type: 'number', default: 200, min: 0, max: 10000 },
                 sart_iti_max: { type: 'number', default: 800, min: 0, max: 10000 }
             };
@@ -11840,10 +11845,18 @@ class JsonBuilder {
             if (goKey) {
                 values.go_key = goKey;
             }
+            if (blockComponent.sart_show_feedback !== undefined) {
+                values.show_feedback = !!blockComponent.sart_show_feedback;
+            }
+            const sartFbCorrect = (blockComponent.sart_feedback_text_correct ?? '').toString().trim();
+            if (sartFbCorrect) values.feedback_text_correct = sartFbCorrect;
+            const sartFbIncorrect = (blockComponent.sart_feedback_text_incorrect ?? '').toString().trim();
+            if (sartFbIncorrect) values.feedback_text_incorrect = sartFbIncorrect;
 
             addWindow('stimulus_duration_ms', blockComponent.sart_stimulus_duration_min, blockComponent.sart_stimulus_duration_max);
             addWindow('mask_duration_ms', blockComponent.sart_mask_duration_min, blockComponent.sart_mask_duration_max);
             addWindow('trial_duration_ms', blockComponent.sart_trial_duration_min, blockComponent.sart_trial_duration_max);
+            addWindow('feedback_duration_ms', blockComponent.sart_feedback_duration_min, blockComponent.sart_feedback_duration_max);
             addWindow('iti_ms', blockComponent.sart_iti_min, blockComponent.sart_iti_max);
         } else if (resolvedComponentType === 'gabor-trial' || resolvedComponentType === 'gabor-quest' || resolvedComponentType === 'gabor-learning') {
             const parseStringList = (raw) => {

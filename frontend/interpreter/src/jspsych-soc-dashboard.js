@@ -504,38 +504,40 @@
 
         let emitted = 0;
         if (requestedProbeCount > 0) {
-          let offsetsMs = [];
+          const offsetsMs = [];
+          const maxStart = Math.max(1, Math.floor(trialMs) - 1);
+          const gapLo = Math.max(1, Math.floor(lo));
+          const gapHi = Math.max(gapLo, Math.floor(hi));
+
           if (requestedProbeCount === 1) {
-            offsetsMs = [Math.round(lo + Math.random() * (hi - lo))];
+            if (maxStart > 0) {
+              const firstAt = Math.round(lo + Math.random() * (hi - lo));
+              offsetsMs.push(Math.min(maxStart, Math.max(1, firstAt)));
+            }
           } else {
-            let nextAt = Math.round(lo + Math.random() * (hi - lo));
-            for (let p = 0; p < requestedProbeCount; p++) {
-              if (!(nextAt < trialMs)) break;
-              offsetsMs.push(nextAt);
-              const step = Math.round(lo + Math.random() * (hi - lo));
-              nextAt += Math.max(1, step);
+            const firstAt = Math.round(lo + Math.random() * (hi - lo));
+            const firstClamped = Math.min(maxStart, Math.max(1, firstAt));
+            if (firstClamped > 0 && firstClamped < trialMs) {
+              offsetsMs.push(firstClamped);
             }
 
-            if (offsetsMs.length < requestedProbeCount && trialMs > 0) {
-              const fallbackOffsets = [];
-              for (let p = 0; p < requestedProbeCount; p++) {
-                const frac = (p + 1) / (requestedProbeCount + 1);
-                fallbackOffsets.push(Math.round(trialMs * frac));
-              }
-              const merged = [...offsetsMs, ...fallbackOffsets]
-                .map((v) => Number(v))
-                .filter((v) => Number.isFinite(v) && v > 0)
-                .sort((a, b) => a - b);
+            while (offsetsMs.length < requestedProbeCount) {
+              if (offsetsMs.length === 0) break;
+              const prev = offsetsMs[offsetsMs.length - 1];
+              const remainingAfterThis = requestedProbeCount - offsetsMs.length - 1;
+              const minNext = prev + gapLo;
+              const maxNextByGap = prev + gapHi;
+              const latestAllowed = maxStart - Math.max(0, remainingAfterThis * gapLo);
+              const maxNext = Math.min(maxNextByGap, latestAllowed);
 
-              const deduped = [];
-              for (const v of merged) {
-                if (deduped.length === 0 || deduped[deduped.length - 1] !== v) deduped.push(v);
-                if (deduped.length >= requestedProbeCount) break;
+              if (!(minNext <= maxNext) || minNext > maxStart) {
+                break;
               }
-              while (deduped.length < requestedProbeCount && trialMs > 0) {
-                deduped.push(Math.max(1, trialMs - 1));
-              }
-              offsetsMs = deduped.slice(0, requestedProbeCount);
+
+              const nextAt = Math.round(minNext + Math.random() * (maxNext - minNext));
+              const clampedNext = Math.min(maxStart, Math.max(minNext, nextAt));
+              if (clampedNext <= prev) break;
+              offsetsMs.push(clampedNext);
             }
           }
 

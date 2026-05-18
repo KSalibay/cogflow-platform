@@ -3203,7 +3203,19 @@ class JSPsychSchemas {
                         type: this.parameterTypes.BOOL,
                         default: false,
                         blockTarget: 'sart-trial',
-                        description: 'SART: show Correct/Incorrect feedback after responses'
+                        description: 'SART: show feedback text after responses'
+                    },
+                    sart_feedback_text_correct: {
+                        type: this.parameterTypes.STRING,
+                        default: 'Correct',
+                        blockTarget: 'sart-trial',
+                        description: 'SART: text shown when response is correct'
+                    },
+                    sart_feedback_text_incorrect: {
+                        type: this.parameterTypes.STRING,
+                        default: 'Incorrect',
+                        blockTarget: 'sart-trial',
+                        description: 'SART: text shown when response is incorrect'
                     },
                     sart_feedback_duration_min: {
                         type: this.parameterTypes.INT,
