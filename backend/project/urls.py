@@ -39,6 +39,7 @@ from project.api_views import (
     StartRunView,
     StudyLatestConfigView,
     StudyPropertiesView,
+    StudyTakeToGoBundleView,
     DeleteStudyConfigVersionView,
     StudyAnalysisReportView,
     StudyAnalysisReportJobsView,
@@ -165,6 +166,11 @@ urlpatterns = [
         "api/v1/studies/<slug:study_slug>/properties",
         StudyPropertiesView.as_view(),
         name="studies-properties",
+    ),
+    path(
+        "api/v1/studies/<slug:study_slug>/take-to-go",
+        StudyTakeToGoBundleView.as_view(),
+        name="studies-take-to-go",
     ),
     path(
         "api/v1/studies/analysis/report",

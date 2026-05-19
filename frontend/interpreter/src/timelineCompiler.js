@@ -2563,7 +2563,10 @@
 
       const minRaw = Number(probe.global_interval_min_ms ?? probe.min_interval_ms);
       const maxRaw = Number(probe.global_interval_max_ms ?? probe.max_interval_ms);
+      const minMs = Number.isFinite(minRaw) ? Math.max(0, minRaw) : 0;
       const maxMs = Number.isFinite(maxRaw) ? Math.max(0, maxRaw) : (Number.isFinite(minRaw) ? Math.max(0, minRaw) : 0);
+      const gapMinMs = Math.min(minMs, maxMs);
+      const gapMaxMs = Math.max(minMs, maxMs);
 
       // Anchor each probe to ONE neighboring generated run so probes are not
       // pooled across two blocks when the marker sits at a boundary.
@@ -2632,8 +2635,20 @@
         ? Math.max(1, Math.min(100, Math.round(requestedProbeCountRaw)))
         : 1;
 
+      // Note: the compiler only positions probes in the output array for SOC composition.
+      // The SOC dashboard runtime (jspsych-soc-dashboard.js) handles actual probe timing.
+      // Never remove the probe here — even if capacity estimates say 0 fit, the runtime
+      // will emit at least 1 probe when requestedProbeCount > 0.
+      const maxByDuration = (totalDurationMs > 0 && gapMinMs > 0)
+        ? Math.max(0, Math.floor(totalDurationMs / gapMinMs))
+        : requestedProbeCount;
+      const maxByEntries = generatedIdx.length > 0
+        ? generatedIdx.length
+        : requestedProbeCount;
+      const effectiveProbeCount = Math.max(1, Math.min(requestedProbeCount, maxByDuration, maxByEntries));
+
       let targetOffsetsMs = [];
-      if (requestedProbeCount <= 1) {
+      if (effectiveProbeCount <= 1) {
         let targetMs;
         if (maxMs > 0) {
           targetMs = sampleMwProbeIntervalMs(probe);
@@ -2650,16 +2665,16 @@
       } else {
         // Multi-probe scheduling: repeatedly sample interval gaps within this generated run.
         let nextMs = sampleMwProbeGapMs(probe);
-        for (let p = 0; p < requestedProbeCount; p++) {
+        for (let p = 0; p < effectiveProbeCount; p++) {
           if (!(totalDurationMs > 0) || nextMs > totalDurationMs) break;
           targetOffsetsMs.push(nextMs);
           nextMs += sampleMwProbeGapMs(probe);
         }
 
-        if (targetOffsetsMs.length < requestedProbeCount && totalDurationMs > 0) {
+        if (targetOffsetsMs.length < effectiveProbeCount && totalDurationMs > 0) {
           const fallbackOffsets = [];
-          for (let p = 0; p < requestedProbeCount; p++) {
-            const frac = (p + 1) / (requestedProbeCount + 1);
+          for (let p = 0; p < effectiveProbeCount; p++) {
+            const frac = (p + 1) / (effectiveProbeCount + 1);
             fallbackOffsets.push(Math.round(totalDurationMs * frac));
           }
           const merged = [...targetOffsetsMs, ...fallbackOffsets]
@@ -2670,14 +2685,10 @@
           const deduped = [];
           for (const v of merged) {
             if (deduped.length === 0 || deduped[deduped.length - 1] !== v) deduped.push(v);
-            if (deduped.length >= requestedProbeCount) break;
+            if (deduped.length >= effectiveProbeCount) break;
           }
 
-          while (deduped.length < requestedProbeCount && totalDurationMs > 0) {
-            deduped.push(totalDurationMs);
-          }
-
-          targetOffsetsMs = deduped.slice(0, requestedProbeCount);
+          targetOffsetsMs = deduped.slice(0, effectiveProbeCount);
         }
       }
 
@@ -2706,10 +2717,11 @@
         .map((idx) => (idx > i ? idx - 1 : idx))
         .filter((idx) => Number.isFinite(idx))
         .sort((a, b) => a - b);
+      const dedupedInsertIndices = Array.from(new Set(normalizedInsertIndices));
 
-      const probesToInsert = normalizedInsertIndices.length;
+      const probesToInsert = dedupedInsertIndices.length;
       for (let p = 0; p < probesToInsert; p++) {
-        const insertAt = normalizedInsertIndices[p] + p;
+        const insertAt = dedupedInsertIndices[p] + p;
         const probeClone = (p === 0)
           ? probe
           : {
@@ -2720,7 +2732,7 @@
         out.splice(insertAt, 0, probeClone);
       }
 
-      i = normalizedInsertIndices[normalizedInsertIndices.length - 1] + Math.max(0, probesToInsert - 1);
+      i = dedupedInsertIndices[dedupedInsertIndices.length - 1] + Math.max(0, probesToInsert - 1);
     }
 
     // If an MW probe lands inside an active DRT segment, auto-bracket it with

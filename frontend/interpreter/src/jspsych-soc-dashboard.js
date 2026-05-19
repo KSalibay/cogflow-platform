@@ -375,8 +375,9 @@
 
       if (!hasSchedule) {
         // MW-probe fallback schedule:
-        // If no explicit schedule is set, respect min/max interval as the delay
-        // from SOC session start before the probe window appears.
+        // If no explicit schedule (start_at_ms, end_at_ms, duration_ms) is set,
+        // use global_interval_min/max_ms as the gap between probes (including delay to first probe).
+        // The mw-probe expansion logic (below) will interpret these as inter-probe gaps.
         if (subtaskType === 'mw-probe') {
           const minRaw = Number(o.global_interval_min_ms ?? o.min_interval_ms);
           const maxRaw = Number(o.global_interval_max_ms ?? o.max_interval_ms);
@@ -390,6 +391,9 @@
             const maxMs = Number.isFinite(maxRaw) ? Math.max(0, Math.floor(maxRaw)) : minMs;
             const lo = Math.min(minMs, maxMs);
             const hi = Math.max(minMs, maxMs);
+            // First probe scheduled at a random time within the min/max interval.
+            // This is a placeholder; the expansion logic below will use global_probe_count_per_block
+            // to create multiple probes if needed.
             const startAt = Math.round(lo + Math.random() * (hi - lo));
             return { has_schedule: true, start_at_ms: startAt, end_at_ms: null, _source: 'mw_interval_fallback' };
           }
@@ -437,6 +441,8 @@
 
     // Expand MW-probe interval-only subtasks into repeated probes across the SOC session.
     // This supports "probe every X-Y ms" behavior without requiring manual duplication.
+    // SEMANTICS: global_interval_min/max_ms define the gap between consecutive probes.
+    // The first probe is delayed by a random value within this interval from time 0.
     if (Number.isFinite(trialMs) && trialMs > 0) {
       const expanded = [];
       for (const w of windowsSpec) {
@@ -459,10 +465,15 @@
           continue;
         }
 
+        // Normalize interval bounds
         const minMs = Number.isFinite(minRaw) ? Math.max(0, Math.floor(minRaw)) : 0;
         const maxMs = Number.isFinite(maxRaw) ? Math.max(0, Math.floor(maxRaw)) : minMs;
-        const lo = Math.min(minMs, maxMs);
-        const hi = Math.max(minMs, maxMs);
+        const gapMin = Math.min(minMs, maxMs);
+        const gapMax = Math.max(minMs, maxMs);
+
+        // Clamp gap to reasonable bounds to avoid issues
+        const minGap = Math.max(1, gapMin);
+        const maxGap = Math.max(minGap, gapMax);
 
         const requestedProbeCountRaw = Number(
           subtask.global_probe_count_per_block
@@ -472,105 +483,83 @@
         const requestedProbeCount = Number.isFinite(requestedProbeCountRaw)
           ? Math.max(0, Math.min(100, Math.round(requestedProbeCountRaw)))
           : 0;
+        const maxByDuration = (trialMs > 0 && minGap > 0)
+          ? Math.max(0, Math.floor(trialMs / minGap))
+          : requestedProbeCount;
+        // effectiveProbeCount caps the number but never drives the branch logic.
+        // Use requestedProbeCount === 0 to detect "continuous emission" intent.
+        const effectiveProbeCount = (requestedProbeCount > 0)
+          ? Math.max(1, Math.min(requestedProbeCount, maxByDuration))
+          : 0;
 
         const durRaw = Number(subtask.duration_ms);
         const probeDurationMs = (Number.isFinite(durRaw) && durRaw > 0)
           ? Math.max(1, Math.floor(durRaw))
           : null;
 
-        const scheduleFromOffsets = (offsetsMs) => {
-          let emittedLocal = 0;
-          for (const nextAt of offsetsMs) {
-            if (!(nextAt < trialMs) || emittedLocal >= 100) continue;
+        // Helper to emit a probe at a specific time
+        const emitProbeAt = (startAtMs) => {
+          if (!(startAtMs >= 0 && startAtMs < trialMs)) return false;
 
-            const endAt = Number.isFinite(probeDurationMs)
-              ? Math.min(trialMs, nextAt + probeDurationMs)
-              : null;
-
-            expanded.push({
-              ...w,
-              schedule: {
-                has_schedule: true,
-                start_at_ms: nextAt,
-                end_at_ms: endAt,
-                _source: 'explicit'
-              }
-            });
-
-            emittedLocal += 1;
-          }
-          return emittedLocal;
-        };
-
-        let emitted = 0;
-        if (requestedProbeCount > 0) {
-          const offsetsMs = [];
-          const maxStart = Math.max(1, Math.floor(trialMs) - 1);
-          const gapLo = Math.max(1, Math.floor(lo));
-          const gapHi = Math.max(gapLo, Math.floor(hi));
-
-          if (requestedProbeCount === 1) {
-            if (maxStart > 0) {
-              const firstAt = Math.round(lo + Math.random() * (hi - lo));
-              offsetsMs.push(Math.min(maxStart, Math.max(1, firstAt)));
-            }
-          } else {
-            const firstAt = Math.round(lo + Math.random() * (hi - lo));
-            const firstClamped = Math.min(maxStart, Math.max(1, firstAt));
-            if (firstClamped > 0 && firstClamped < trialMs) {
-              offsetsMs.push(firstClamped);
-            }
-
-            while (offsetsMs.length < requestedProbeCount) {
-              if (offsetsMs.length === 0) break;
-              const prev = offsetsMs[offsetsMs.length - 1];
-              const remainingAfterThis = requestedProbeCount - offsetsMs.length - 1;
-              const minNext = prev + gapLo;
-              const maxNextByGap = prev + gapHi;
-              const latestAllowed = maxStart - Math.max(0, remainingAfterThis * gapLo);
-              const maxNext = Math.min(maxNextByGap, latestAllowed);
-
-              if (!(minNext <= maxNext) || minNext > maxStart) {
-                break;
-              }
-
-              const nextAt = Math.round(minNext + Math.random() * (maxNext - minNext));
-              const clampedNext = Math.min(maxStart, Math.max(minNext, nextAt));
-              if (clampedNext <= prev) break;
-              offsetsMs.push(clampedNext);
-            }
-          }
-
-          emitted = scheduleFromOffsets(offsetsMs);
-        } else {
-          let nextAt = Math.round(lo + Math.random() * (hi - lo));
-          const offsetsMs = [];
-          while (nextAt < trialMs && offsetsMs.length < 100) {
-            offsetsMs.push(nextAt);
-            const step = Math.round(lo + Math.random() * (hi - lo));
-            nextAt += Math.max(1, step);
-          }
-          emitted = scheduleFromOffsets(offsetsMs);
-        }
-
-        if (emitted === 0) {
-          const midpoint = Math.max(1, Math.round(trialMs * 0.5));
-          emitted = scheduleFromOffsets([midpoint]);
-        }
-
-        if (emitted === 0) {
           const endAt = Number.isFinite(probeDurationMs)
-            ? Math.min(trialMs, Math.max(1, probeDurationMs))
+            ? Math.min(trialMs, startAtMs + probeDurationMs)
             : null;
+
           expanded.push({
             ...w,
             schedule: {
               has_schedule: true,
-              start_at_ms: 0,
+              start_at_ms: Math.max(0, Math.floor(startAtMs)),
               end_at_ms: endAt,
               _source: 'explicit'
             }
           });
+          return true;
+        };
+
+        // CORE LOGIC: Calculate probe schedule with structured rules
+        let emitted = 0;
+
+        if (requestedProbeCount <= 0) {
+          // No explicit count: emit probes continuously at gapMin-gapMax intervals
+          let currentTime = Math.round(minGap + Math.random() * (maxGap - minGap));
+          while (currentTime < trialMs && emitted < 100) {
+            if (emitProbeAt(currentTime)) {
+              emitted += 1;
+            }
+            // Next probe: current + random jitter in [minGap, maxGap]
+            const step = Math.round(minGap + Math.random() * (maxGap - minGap));
+            currentTime += step;
+          }
+        } else if (effectiveProbeCount === 1) {
+          // Single probe: schedule at a random time within the interval
+          const singleTime = Math.round(minGap + Math.random() * (maxGap - minGap));
+          if (emitProbeAt(singleTime)) {
+            emitted += 1;
+          }
+        } else {
+          // Multiple probes: space them evenly with jitter
+          // Goal: distribute N probes across the available time with roughly equal spacing
+          // and random jitter to avoid rhythmic predictability
+
+          const availableMs = trialMs - minGap; // Leave minGap of safety at the end
+          const idealGapMs = availableMs / effectiveProbeCount;
+
+          // Clamp ideal gap to the user-specified range
+          const effectiveGap = Math.max(minGap, Math.min(maxGap, idealGapMs));
+
+          let currentTime = Math.round(minGap + Math.random() * Math.min(maxGap - minGap, effectiveGap * 0.5));
+          for (let i = 0; i < effectiveProbeCount; i++) {
+            if (currentTime < trialMs && emitProbeAt(currentTime)) {
+              emitted += 1;
+            }
+
+            if (i < effectiveProbeCount - 1) {
+              // Add jitter within the gap range, but stay within the ideal spacing
+              const jitter = Math.round(minGap + Math.random() * (maxGap - minGap));
+              currentTime += jitter;
+            }
+          }
         }
       }
       windowsSpec = expanded;
@@ -1298,6 +1287,7 @@
 
       const showMarkers = (o.show_markers !== undefined) ? !!o.show_markers : false;
       const showActionFeedback = (o.show_action_feedback !== undefined) ? !!o.show_action_feedback : true;
+      const actionFeedbackColor = (o.action_feedback_color ?? '#ffffff').toString();
 
       const highlight = (o.highlight_subdomains !== undefined) ? !!o.highlight_subdomains : true;
       const harmfulColor = (o.harmful_highlight_color ?? o.target_highlight_color ?? '#ff4d4d').toString();
@@ -1327,6 +1317,7 @@
         go_condition: goCondition,
         show_markers: showMarkers,
         show_action_feedback: showActionFeedback,
+        action_feedback_color: actionFeedbackColor,
         highlight_subdomains: highlight,
         harmful_highlight_color: harmfulColor,
         benign_highlight_color: benignColor,
@@ -4473,14 +4464,15 @@
           const actionCell = (() => {
             const actionValue = cfg.show_action_feedback ? (e.triage_action ?? '—') : '------';
             const val = escHtml(actionValue);
+            const colorStyle = cfg.show_action_feedback ? `color: ${escHtml(cfg.action_feedback_color)};` : '';
             if (cfg.response_device !== 'mouse') {
-              return `<span class="soc-log-tag">${val}</span>`;
+              return `<span class="soc-log-tag" style="${colorStyle}">${val}</span>`;
             }
             if (!isCurrent) {
-              return `<span class="soc-log-tag">${val}</span>`;
+              return `<span class="soc-log-tag" style="${colorStyle}">${val}</span>`;
             }
             return `
-              <span class="soc-log-tag" style="margin-right: 6px;">${val}</span>
+              <span class="soc-log-tag" style="margin-right: 6px; ${colorStyle}">${val}</span>
               <button type="button" class="soc-log-go-btn" data-entry-id="${escHtml(e.id)}" ${already ? 'disabled' : ''}>
                 ${escHtml(actionButtonLabel())}
               </button>

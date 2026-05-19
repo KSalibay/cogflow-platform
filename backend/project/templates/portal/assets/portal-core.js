@@ -1095,7 +1095,7 @@
     }
 
     // ── Navigation ─────────────────────────────────────────────
-    const VIEWS = ["studiesManagement","studiesResults","builder","preview","analysis","integrations","ethics","credits","feedback","admin","account"];
+    const VIEWS = ["studiesManagement","studiesResults","builder","preview","analysis","integrations","toGo","ethics","credits","feedback","admin","account"];
     let builderLoaded = false;
     let adminUsersLoaded = false;
     let adminUsers = [];
@@ -1315,7 +1315,7 @@
 
       // Keep study-dependent views fresh without requiring full-page reload.
       // Analysis intentionally excluded to avoid list re-renders every auto-refresh tick.
-      if (isStudiesView || id === "preview" || id === "integrations") {
+      if (isStudiesView || id === "preview" || id === "integrations" || id === "toGo") {
         loadStudies();
       }
     }
@@ -2285,7 +2285,7 @@
       studiesRefreshTimer = window.setInterval(() => {
         if (!currentUser) return;
         if (document.hidden) return;
-        if (!["studiesManagement", "studiesResults", "preview", "integrations"].includes(activeView)) return;
+        if (!["studiesManagement", "studiesResults", "preview", "integrations", "toGo"].includes(activeView)) return;
         loadStudies();
       }, 15000);
     }
@@ -2297,14 +2297,14 @@
     }
 
     window.addEventListener("focus", () => {
-      if (currentUser && ["studiesManagement", "studiesResults", "preview", "integrations"].includes(activeView)) {
+      if (currentUser && ["studiesManagement", "studiesResults", "preview", "integrations", "toGo"].includes(activeView)) {
         loadStudies();
       }
     });
 
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) return;
-      if (currentUser && ["studiesManagement", "studiesResults", "preview", "integrations"].includes(activeView)) {
+      if (currentUser && ["studiesManagement", "studiesResults", "preview", "integrations", "toGo"].includes(activeView)) {
         loadStudies();
       }
     });

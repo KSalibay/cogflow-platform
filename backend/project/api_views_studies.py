@@ -1,6 +1,10 @@
 from django.http import HttpResponse
 from django.utils import timezone
 from django.db.models.deletion import ProtectedError
+from copy import deepcopy
+from datetime import datetime
+import io
+import zipfile
 
 from .api_views_common import *
 from .study_report_jobs import build_study_analysis_outputs, infer_study_analysis_defaults
@@ -66,6 +70,728 @@ def _serialize_report_job(job: StudyAnalysisReportJob):
         "updated_at": job.updated_at,
         "artifacts": artifacts,
     }
+
+
+def _safe_bundle_name(text: str, fallback: str = "item") -> str:
+    raw = (text or "").strip()
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", raw).strip("-._")
+    return cleaned or fallback
+
+
+def _rewrite_builder_asset_urls_for_bundle(value, collected_paths: set[str]):
+    """Rewrite platform asset URLs to local /study_assets paths and collect storage keys."""
+    if isinstance(value, dict):
+        return {k: _rewrite_builder_asset_urls_for_bundle(v, collected_paths) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_rewrite_builder_asset_urls_for_bundle(v, collected_paths) for v in value]
+    if not isinstance(value, str):
+        return value
+
+    out = value
+
+    def _replace_match(m):
+        path = (m.group("path") or "").strip().replace("\\", "/")
+        path = path.split("?", 1)[0].split("#", 1)[0]
+        if not path.startswith("builder-assets/"):
+            return m.group(0)
+        collected_paths.add(path)
+        rel = path[len("builder-assets/"):].lstrip("/")
+        return f"/study_assets/{rel}"
+
+    patterns = [
+        r"https?://[^\s\"']+/(?:api/v1/assets/file|media)/(?P<path>builder-assets/[A-Za-z0-9._\-/]+)(?:\?[^\s\"']*)?",
+        r"/(?:api/v1/assets/file|media)/(?P<path>builder-assets/[A-Za-z0-9._\-/]+)(?:\?[^\s\"']*)?",
+        r"(?P<path>builder-assets/[A-Za-z0-9._\-/]+)(?:\?[^\s\"']*)?",
+    ]
+    for pat in patterns:
+        out = re.sub(pat, _replace_match, out)
+    return out
+
+
+_BUNDLE_CORE_RUNTIME_FILES = {
+    "src/configLoader.js",
+    "src/djangoRuntimeBackend.js",
+    "src/main.js",
+    "src/timelineCompiler.js",
+}
+
+_BUNDLE_OPTIONAL_RUNTIME_FILES = {
+    "src/drtEngine.js",
+}
+
+_BUNDLE_MARKER_TO_FILES = {
+    "continuous-image-presentation": {"src/jspsych-continuous-image-presentation.js"},
+    "flanker": {"src/jspsych-flanker.js"},
+    "gabor": {"src/jspsych-gabor.js"},
+    "gabor-learning": {"src/jspsych-gabor.js"},
+    "gabor-quest": {"src/jspsych-gabor.js"},
+    "gabor-trial": {"src/jspsych-gabor.js"},
+    "mot": {"src/jspsych-mot.js"},
+    "mot-trial": {"src/jspsych-mot.js"},
+    "nback": {"src/jspsych-nback.js", "src/jspsych-nback-continuous.js"},
+    "nback-continuous": {"src/jspsych-nback-continuous.js", "src/jspsych-nback.js"},
+    "nback-trial": {"src/jspsych-nback.js", "src/jspsych-nback-continuous.js"},
+    "pvt": {"src/jspsych-pvt.js"},
+    "pvt-trial": {"src/jspsych-pvt.js"},
+    "rdm": {"src/rdmEngine.js", "src/jspsych-rdm.js", "src/jspsych-rdm-continuous.js"},
+    "rdm-continuous": {"src/rdmEngine.js", "src/jspsych-rdm.js", "src/jspsych-rdm-continuous.js"},
+    "sart": {"src/jspsych-sart.js"},
+    "sart-trial": {"src/jspsych-sart.js"},
+    "simon": {"src/jspsych-simon.js"},
+    "simon-trial": {"src/jspsych-simon.js"},
+    "soc": {
+        "src/jspsych-continuous-image-presentation.js",
+        "src/jspsych-gabor.js",
+        "src/jspsych-rdm.js",
+        "src/jspsych-soc-dashboard.js",
+    },
+    "soc-dashboard": {
+        "src/jspsych-continuous-image-presentation.js",
+        "src/jspsych-gabor.js",
+        "src/jspsych-rdm.js",
+        "src/jspsych-soc-dashboard.js",
+    },
+    "soc-dashboard-icon": {"src/jspsych-soc-dashboard.js"},
+    "soc-subtask-cpt": {"src/jspsych-continuous-image-presentation.js", "src/jspsych-soc-dashboard.js"},
+    "soc-subtask-gabor": {"src/jspsych-gabor.js", "src/jspsych-soc-dashboard.js"},
+    "soc-subtask-rdm": {"src/jspsych-rdm.js", "src/jspsych-soc-dashboard.js", "src/rdmEngine.js"},
+    "stroop": {"src/jspsych-stroop.js"},
+    "stroop-trial": {"src/jspsych-stroop.js"},
+    "survey": {"src/jspsych-survey-response.js"},
+    "survey-response": {"src/jspsych-survey-response.js"},
+    "task-switching": {"src/jspsych-task-switching.js"},
+    "task-switching-trial": {"src/jspsych-task-switching.js"},
+    "visual-angle-calibration": {"src/jspsych-visual-angle-calibration.js"},
+}
+
+
+def _iter_config_markers(value, markers: set[str]) -> None:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            key_norm = str(key or "").strip().lower()
+            if key_norm in {"task_type", "block_component_type", "type", "plugin_type"} and isinstance(child, str):
+                marker = child.strip().lower()
+                if marker:
+                    markers.add(marker)
+            _iter_config_markers(child, markers)
+        return
+    if isinstance(value, list):
+        for child in value:
+            _iter_config_markers(child, markers)
+
+
+def _config_uses_eye_tracking(config_obj) -> bool:
+    if isinstance(config_obj, dict):
+        dc = config_obj.get("data_collection")
+        if isinstance(dc, dict):
+            eye = dc.get("eye_tracking")
+            if eye is True:
+                return True
+            if isinstance(eye, dict) and eye.get("enabled") not in {None, False, 0, "0", "false", "False"}:
+                return True
+        eye = config_obj.get("eye_tracking")
+        if eye is True:
+            return True
+        if isinstance(eye, dict) and eye.get("enabled") not in {None, False, 0, "0", "false", "False"}:
+            return True
+        for child in config_obj.values():
+            if _config_uses_eye_tracking(child):
+                return True
+        return False
+    if isinstance(config_obj, list):
+        return any(_config_uses_eye_tracking(child) for child in config_obj)
+    return False
+
+
+def _collect_required_runtime_files(config_payloads: list[dict], interpreter_dir) -> set[str]:
+    selected = set(_BUNDLE_CORE_RUNTIME_FILES)
+    selected.update(_BUNDLE_OPTIONAL_RUNTIME_FILES)
+    markers: set[str] = set()
+    uses_eye_tracking = False
+
+    for cfg in config_payloads:
+        _iter_config_markers(cfg, markers)
+        uses_eye_tracking = uses_eye_tracking or _config_uses_eye_tracking(cfg)
+
+    matched_any = False
+    for marker in markers:
+        files = _BUNDLE_MARKER_TO_FILES.get(marker)
+        if not files:
+            continue
+        matched_any = True
+        selected.update(files)
+
+    if uses_eye_tracking:
+        selected.add("src/eyeTrackingWebgazer.js")
+        selected.add("src/jspsych-visual-angle-calibration.js")
+
+    if not matched_any:
+        for p in (interpreter_dir / "src").glob("*.js"):
+            selected.add(f"src/{p.name}")
+
+    if uses_eye_tracking:
+        selected.add("vendor/webgazer.min.js")
+        for vendor_name in ("THIRD_PARTY_NOTICES.md", "WEBGAZER_LICENSE.md"):
+            vendor_path = interpreter_dir / "vendor" / vendor_name
+            if vendor_path.exists():
+                selected.add(f"vendor/{vendor_name}")
+
+    selected.add("index.html")
+    return selected
+
+
+def _build_kiosk_index_html(interpreter_dir, runtime_files: set[str]) -> str:
+    source = (interpreter_dir / "index.html").read_text(encoding="utf-8")
+    filtered_lines = []
+    for line in source.splitlines():
+        match = re.search(r'<script\s+src="(?P<src>src/[^"]+)"', line)
+        if match:
+            src_path = match.group("src").split("?", 1)[0]
+            if src_path not in runtime_files:
+                continue
+        filtered_lines.append(line)
+
+    html = "\n".join(filtered_lines)
+    kiosk_snippet = (
+        "  <script>\n"
+        "    window.COGFLOW_KIOSK_MODE = true;\n"
+        "  </script>\n"
+    )
+    html = html.replace("</body>", f"{kiosk_snippet}</body>")
+    return html
+
+
+def _write_zip_text(zf: zipfile.ZipFile, arcname: str, content: str, executable: bool = False) -> None:
+    info = zipfile.ZipInfo(arcname)
+    info.compress_type = zipfile.ZIP_DEFLATED
+    if executable:
+        info.external_attr = 0o755 << 16
+    else:
+        info.external_attr = 0o644 << 16
+    zf.writestr(info, content)
+
+
+_TAKE_TO_GO_SYSTEM_ALIASES = {
+    "generic": "generic",
+    "default": "generic",
+    "lsl": "generic",
+    "biosemi": "biosemi",
+    "brainproducts": "brainproducts",
+    "brain-products": "brainproducts",
+    "brain_products": "brainproducts",
+    "brainvision": "brainproducts",
+}
+
+
+def _normalize_take_to_go_system(value) -> str:
+    raw = str(value or "generic").strip().lower()
+    return _TAKE_TO_GO_SYSTEM_ALIASES.get(raw, "")
+
+
+def _normalize_take_to_go_metadata_payload(value) -> dict:
+    if value in (None, "", {}):
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError("interpreter_metadata must be a JSON object")
+
+    try:
+        raw = json.dumps(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"interpreter_metadata is not JSON-serializable: {exc}")
+
+    if len(raw.encode("utf-8")) > 262_144:
+        raise ValueError("interpreter_metadata is too large (max 256KB)")
+
+    # Re-load to ensure we only carry JSON-native values.
+    return json.loads(raw)
+
+
+def _build_take_to_go_metadata_files(
+    study: Study,
+    config_versions: list[ConfigVersion],
+    include_all_versions: bool,
+    bundle_system: str,
+    request_metadata: dict | None = None,
+) -> dict[str, dict]:
+    normalized_props = _normalize_study_launch_properties(study, config_versions)
+    safe_request_metadata = request_metadata if isinstance(request_metadata, dict) else {}
+    engine_options = safe_request_metadata.get("engine_options")
+    if not isinstance(engine_options, dict):
+        engine_options = {}
+
+    variant_selection = safe_request_metadata.get("variant_selection")
+    if not isinstance(variant_selection, dict):
+        variant_selection = {}
+
+    selected_variant_id = str(variant_selection.get("variant_id") or "").strip()
+    selected_variant = None
+    if selected_variant_id:
+        selected_variant = next(
+            (
+                variant
+                for variant in (normalized_props.get("flow_variants") or [])
+                if str(variant.get("id") or "").strip() == selected_variant_id
+            ),
+            None,
+        )
+
+    files = {
+        "bundle_profile.json": {
+            "study_slug": study.slug,
+            "bundle_system": bundle_system,
+            "include_all_versions": bool(include_all_versions),
+            "config_count": len(config_versions),
+            "generated_at": timezone.now().isoformat(),
+        },
+        "study_properties_snapshot.json": normalized_props,
+        "engine_task_flow.json": {
+            "study_slug": study.slug,
+            "bundle_system": bundle_system,
+            "variant_mode": str(engine_options.get("variant_mode") or "auto").strip() or "auto",
+            "use_saved_flow_variants": bool(engine_options.get("use_saved_flow_variants", False)),
+            "selected_variant_id": selected_variant_id or None,
+            "session_tag": str(engine_options.get("session_tag") or "").strip() or None,
+            "notes": str(engine_options.get("notes") or "").strip() or None,
+            "flow_variant_count": len(normalized_props.get("flow_variants") or []),
+            "task_count": len((normalized_props.get("task_profile") or {}).get("items") or []),
+        },
+    }
+
+    if safe_request_metadata:
+        files["request_payload.json"] = safe_request_metadata
+    if selected_variant:
+        files["selected_variant.json"] = selected_variant
+    return files
+
+
+def _build_take_to_go_bundle_zip(
+    study: Study,
+    config_versions: list[ConfigVersion],
+    bundle_system: str = "generic",
+    metadata_files: dict[str, dict] | None = None,
+) -> tuple[bytes, str, dict]:
+    """Build a downloadable zip for local Interpreter + LSL bridge execution."""
+    from django.conf import settings
+
+    ts = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+    bundle_system = _normalize_take_to_go_system(bundle_system) or "generic"
+    slug_safe = _safe_bundle_name(study.slug, "study")
+    root_dir = f"cogflow-take-to-go-{slug_safe}-{ts}"
+    filename = f"{root_dir}.zip"
+
+    interpreter_dir = settings.BASE_DIR / "frontend" / "interpreter"
+    if not interpreter_dir.exists():
+        interpreter_dir = settings.BASE_DIR.parent / "frontend" / "interpreter"
+
+    if not interpreter_dir.exists():
+        raise FileNotFoundError("Interpreter frontend directory not found")
+
+    all_asset_paths = set()
+    config_manifest = []
+    rewritten_configs: list[dict] = []
+
+    bundle_bytes = io.BytesIO()
+    metadata_files = metadata_files or {}
+
+    with zipfile.ZipFile(bundle_bytes, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        # Add per-config JSON files with local asset URL rewrites.
+        for idx, cv in enumerate(config_versions):
+            cfg_obj = cv.config_json if isinstance(cv.config_json, dict) else {}
+            cfg_copy = deepcopy(cfg_obj)
+            cfg_copy = _rewrite_builder_asset_urls_for_bundle(cfg_copy, all_asset_paths)
+            rewritten_configs.append(cfg_copy)
+
+            id_raw = cv.version_label or f"config-{idx + 1}"
+            config_id = _safe_bundle_name(id_raw, f"config-{idx + 1}")
+            cfg_name = f"{config_id}.json"
+            cfg_json = json.dumps(cfg_copy, indent=2)
+            zf.writestr(f"{root_dir}/interpreter/configs/{cfg_name}", cfg_json)
+            config_manifest.append(cfg_name)
+
+        runtime_files = _collect_required_runtime_files(rewritten_configs, interpreter_dir)
+        filtered_index = _build_kiosk_index_html(interpreter_dir, runtime_files)
+        _write_zip_text(zf, f"{root_dir}/interpreter/index.html", filtered_index)
+
+        for rel in sorted(runtime_files):
+            if rel == "index.html":
+                continue
+            source_path = interpreter_dir / rel
+            if not source_path.exists() or not source_path.is_file():
+                continue
+            zf.write(source_path, arcname=f"{root_dir}/interpreter/{rel}")
+
+        zf.writestr(
+            f"{root_dir}/interpreter/configs/manifest.json",
+            json.dumps(config_manifest, indent=2),
+        )
+
+        metadata_written = 0
+        for metadata_name, payload in sorted(metadata_files.items()):
+            safe_name = _safe_bundle_name(str(metadata_name), "metadata")
+            if not safe_name.endswith(".json"):
+                safe_name = f"{safe_name}.json"
+            zf.writestr(
+                f"{root_dir}/interpreter/metadata/{safe_name}",
+                json.dumps(payload, indent=2),
+            )
+            metadata_written += 1
+
+        # Copy referenced builder assets into local serving path.
+        copied_assets = 0
+        for asset_path in sorted(all_asset_paths):
+            normalized = asset_path.replace("\\", "/").strip("/")
+            if not normalized.startswith("builder-assets/"):
+                continue
+            if not default_storage.exists(normalized):
+                continue
+
+            rel = normalized[len("builder-assets/"):].lstrip("/")
+            target = f"{root_dir}/interpreter/study_assets/{rel}"
+            try:
+                with default_storage.open(normalized, mode="rb") as fh:
+                    zf.writestr(target, fh.read())
+                copied_assets += 1
+            except Exception:
+                # Skip unreadable asset and continue bundle generation.
+                continue
+
+        latest_cfg = config_manifest[0] if config_manifest else ""
+        latest_id = latest_cfg[:-5] if latest_cfg.endswith(".json") else latest_cfg
+
+        launch_url = (
+            f"http://127.0.0.1:8088/index.html?id={latest_id}&lsl=1&lsl_bridge=http://127.0.0.1:8765"
+            if latest_id else
+            "http://127.0.0.1:8088/index.html?lsl=1&lsl_bridge=http://127.0.0.1:8765"
+        )
+
+        readme = "# CogFlow Take-To-Go Bundle\n\n"
+        readme += "This package runs your CogFlow study locally with a PyLSL bridge for marker streaming.\n\n"
+        readme += "## Included\n"
+        readme += "- Study-specific interpreter runtime and study configs/assets\n"
+        readme += "- Interpreter metadata files for task-flow/variant engine options (`interpreter/metadata/*.json`)\n"
+        readme += "- Local LSL bridge (FastAPI + pylsl)\n"
+        readme += "- Docker Compose setup\n"
+        readme += "- One-click kiosk launch scripts\n\n"
+        readme += f"## Target System Profile\n- `{bundle_system}`\n\n"
+        readme += "## Quick Start\n"
+        readme += "1. Install Docker Desktop / Docker Engine + Compose plugin.\n"
+        readme += "2. Double-click one of these files from the bundle root:\n"
+        readme += "   - `run-kiosk.sh` on Linux\n"
+        readme += "   - `Run Kiosk.command` on macOS\n"
+        readme += "   - `run-kiosk.bat` on Windows\n"
+        readme += f"3. The launcher waits for Docker services and opens: {launch_url}\n"
+        readme += "\n"
+        readme += "## Manual Fallback\n"
+        readme += "- `docker compose up --build -d`\n"
+        readme += f"- Open {launch_url}\n\n"
+        readme += "## LSL Bridge\n"
+        readme += "- Health: http://localhost:8765/healthz\n"
+        readme += "- Marker endpoint: POST http://localhost:8765/v1/markers\n"
+        readme += "- Behavioral result endpoint: POST http://localhost:8765/v1/results\n"
+        readme += "- Persisted result files: `local_results/` in the bundle root\n"
+        readme += "\n"
+        readme += "## Notes\n"
+        readme += "- Default stream type/name can be changed via docker-compose environment values.\n"
+        readme += "- This bundle includes a system profile file at `lsl-bridge/system_profile.json`.\n"
+        readme += "- For hardware-specific integrations (e.g., BrainVision/BioSemi TTL), extend `lsl-bridge/app.py` adapter hooks.\n"
+        zf.writestr(f"{root_dir}/README.md", readme)
+
+        system_guidance = {
+            "generic": (
+                "Generic LSL mode: publish event markers to LSL only.\n"
+                "Use this when your acquisition stack consumes LSL markers directly."
+            ),
+            "biosemi": (
+                "BioSemi prep mode: keep LSL markers enabled and plan TTL trigger-line wiring for production recordings.\n"
+                "BioSemi timing-critical workflows are typically validated via hardware trigger/status channels."
+            ),
+            "brainproducts": (
+                "Brain Products prep mode: keep LSL markers enabled and align connector setup with BrainVision LSL tooling\n"
+                "(e.g., BrainVision RDA/LiveAmp/BrainAmp connector family) depending on your amplifier."
+            ),
+        }
+        zf.writestr(
+            f"{root_dir}/lsl-bridge/system_profile.json",
+            json.dumps(
+                {
+                    "target_system": bundle_system,
+                    "target_system_label": {
+                        "generic": "Generic LSL",
+                        "biosemi": "BioSemi",
+                        "brainproducts": "Brain Products",
+                    }.get(bundle_system, "Generic LSL"),
+                    "notes": system_guidance.get(bundle_system, system_guidance["generic"]),
+                },
+                indent=2,
+            ),
+        )
+
+        compose_yml = """services:
+  interpreter:
+    build:
+      context: ./interpreter
+    container_name: cogflow-interpreter-local
+    ports:
+      - "8088:8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/index.html')"]
+      interval: 5s
+      timeout: 4s
+      retries: 30
+    restart: unless-stopped
+
+  lsl-bridge:
+    build:
+      context: ./lsl-bridge
+    container_name: cogflow-lsl-bridge
+    ports:
+      - "8765:8765"
+    environment:
+      - LSL_STREAM_NAME=CogFlowMarkers
+      - LSL_STREAM_TYPE=Markers
+      - LSL_SOURCE_ID=cogflow-local
+            - COGFLOW_TARGET_SYSTEM={bundle_system}
+            - COGFLOW_RESULTS_DIR=/data/results
+        volumes:
+            - ./local_results:/data/results
+        healthcheck:
+            test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/healthz')"]
+            interval: 5s
+            timeout: 4s
+            retries: 30
+    restart: unless-stopped
+"""
+        zf.writestr(f"{root_dir}/docker-compose.yml", compose_yml)
+
+        interpreter_dockerfile = """FROM python:3.12-slim
+WORKDIR /app
+COPY . /app
+EXPOSE 8080
+CMD ["python", "-m", "http.server", "8080", "--directory", "/app"]
+"""
+        zf.writestr(f"{root_dir}/interpreter/Dockerfile", interpreter_dockerfile)
+
+        lsl_requirements = """fastapi==0.115.2
+uvicorn[standard]==0.30.6
+pylsl==1.16.2
+pydantic==2.9.2
+"""
+        zf.writestr(f"{root_dir}/lsl-bridge/requirements.txt", lsl_requirements)
+
+        lsl_dockerfile = """FROM python:3.12-slim
+WORKDIR /app
+COPY requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
+COPY app.py /app/app.py
+EXPOSE 8765
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8765"]
+"""
+        zf.writestr(f"{root_dir}/lsl-bridge/Dockerfile", lsl_dockerfile)
+
+        lsl_app = """import json
+import os
+    import re
+    from datetime import datetime, timezone
+from typing import Any, Dict
+
+from fastapi import FastAPI
+from pydantic import BaseModel, Field
+
+try:
+    from pylsl import StreamInfo, StreamOutlet, local_clock
+except Exception as exc:
+    StreamInfo = None
+    StreamOutlet = None
+    local_clock = None
+    _IMPORT_ERROR = str(exc)
+else:
+    _IMPORT_ERROR = ""
+
+
+class MarkerPayload(BaseModel):
+    event_type: str = Field(default="event")
+    event_code: int | None = None
+    timestamp_ms: float | None = None
+    study_slug: str | None = None
+    config_id: str | None = None
+    run_session_id: str | None = None
+    payload: Dict[str, Any] = Field(default_factory=dict)
+
+
+class LocalResultPayload(BaseModel):
+    source: str = Field(default="interpreter-local")
+    payload: Dict[str, Any] = Field(default_factory=dict)
+
+
+app = FastAPI(title="CogFlow LSL Bridge", version="0.1.0")
+
+_stream_name = os.getenv("LSL_STREAM_NAME", "CogFlowMarkers")
+_stream_type = os.getenv("LSL_STREAM_TYPE", "Markers")
+_source_id = os.getenv("LSL_SOURCE_ID", "cogflow-local")
+_target_system = os.getenv("COGFLOW_TARGET_SYSTEM", "generic").strip().lower() or "generic"
+_results_dir = os.getenv("COGFLOW_RESULTS_DIR", "/data/results")
+
+try:
+    os.makedirs(_results_dir, exist_ok=True)
+except Exception:
+    pass
+
+_outlet = None
+if StreamInfo is not None and StreamOutlet is not None:
+    info = StreamInfo(_stream_name, _stream_type, 1, 0, "string", _source_id)
+    _outlet = StreamOutlet(info)
+
+
+@app.get("/healthz")
+def healthz():
+    return {
+        "ok": _outlet is not None,
+        "stream_name": _stream_name,
+        "stream_type": _stream_type,
+        "source_id": _source_id,
+        "target_system": _target_system,
+        "results_dir": _results_dir,
+        "pylsl_import_error": _IMPORT_ERROR or None,
+    }
+
+
+@app.post("/v1/markers")
+def emit_marker(marker: MarkerPayload):
+    sample = json.dumps(marker.model_dump(), separators=(",", ":"))
+    pushed = False
+    if _outlet is not None:
+        try:
+            if marker.timestamp_ms is not None and local_clock is not None:
+                ts = float(marker.timestamp_ms) / 1000.0
+                _outlet.push_sample([sample], timestamp=ts)
+            else:
+                _outlet.push_sample([sample])
+            pushed = True
+        except Exception:
+            pushed = False
+
+    # Adapter hook for future hardware-specific trigger fan-out.
+    # Current implementation keeps the same LSL marker behavior for all profiles.
+    return {"ok": True, "pushed": pushed, "stream_name": _stream_name, "target_system": _target_system}
+
+
+def _safe_file_token(value: str, fallback: str = "run") -> str:
+    token = re.sub(r"[^A-Za-z0-9._-]+", "-", str(value or "").strip()).strip("-._")
+    return token or fallback
+
+
+@app.post("/v1/results")
+def persist_result(result: LocalResultPayload):
+    payload = result.payload if isinstance(result.payload, dict) else {}
+    slug_token = _safe_file_token(
+        payload.get("study_slug")
+        or payload.get("config_id")
+        or payload.get("export_code")
+        or "run",
+        "run",
+    )
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
+    file_name = f"cogflow-result-{slug_token}-{stamp}.json"
+    file_path = os.path.join(_results_dir, file_name)
+
+    doc = {
+        "saved_at": datetime.now(timezone.utc).isoformat(),
+        "source": result.source,
+        "target_system": _target_system,
+        "payload": payload,
+    }
+
+    try:
+        with open(file_path, "w", encoding="utf-8") as fh:
+            json.dump(doc, fh, indent=2)
+        size_bytes = os.path.getsize(file_path)
+        return {
+            "ok": True,
+            "file_name": file_name,
+            "path": file_path,
+            "size_bytes": size_bytes,
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "error": str(exc),
+            "results_dir": _results_dir,
+        }
+"""
+        zf.writestr(f"{root_dir}/lsl-bridge/app.py", lsl_app)
+
+        wait_script = f"""#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+KIOSK_URL="{launch_url}"
+
+if ! command -v docker >/dev/null 2>&1; then
+    echo "Docker is required but was not found in PATH."
+    exit 1
+fi
+
+cd "$ROOT_DIR"
+docker compose up --build -d
+
+for attempt in $(seq 1 90); do
+    if curl -fsS "http://127.0.0.1:8088/index.html" >/dev/null 2>&1 && curl -fsS "http://127.0.0.1:8765/healthz" >/dev/null 2>&1; then
+        break
+    fi
+    sleep 2
+done
+
+if command -v google-chrome >/dev/null 2>&1; then
+    nohup google-chrome --kiosk "$KIOSK_URL" >/dev/null 2>&1 &
+elif command -v chromium-browser >/dev/null 2>&1; then
+    nohup chromium-browser --kiosk "$KIOSK_URL" >/dev/null 2>&1 &
+elif command -v chromium >/dev/null 2>&1; then
+    nohup chromium --kiosk "$KIOSK_URL" >/dev/null 2>&1 &
+elif command -v xdg-open >/dev/null 2>&1; then
+    nohup xdg-open "$KIOSK_URL" >/dev/null 2>&1 &
+else
+    echo "Open this URL manually: $KIOSK_URL"
+fi
+
+echo "Kiosk launch attempted."
+"""
+        _write_zip_text(zf, f"{root_dir}/run-kiosk.sh", wait_script, executable=True)
+        _write_zip_text(zf, f"{root_dir}/Run Kiosk.command", wait_script, executable=True)
+
+        windows_launcher = f"""@echo off
+setlocal
+set ROOT_DIR=%~dp0
+set KIOSK_URL={launch_url}
+
+docker compose -f "%ROOT_DIR%docker-compose.yml" up --build -d
+if errorlevel 1 exit /b 1
+
+echo Waiting for services...
+powershell -NoProfile -Command "$ProgressPreference='SilentlyContinue'; for ($i=0; $i -lt 90; $i++) {{ try {{ Invoke-WebRequest 'http://127.0.0.1:8088/index.html' -UseBasicParsing | Out-Null; Invoke-WebRequest 'http://127.0.0.1:8765/healthz' -UseBasicParsing | Out-Null; exit 0 }} catch {{ Start-Sleep -Seconds 2 }} }}; exit 1"
+
+start "" msedge --kiosk "%KIOSK_URL%"
+if errorlevel 1 start "" chrome --kiosk "%KIOSK_URL%"
+if errorlevel 1 start "" "%KIOSK_URL%"
+"""
+        _write_zip_text(zf, f"{root_dir}/run-kiosk.bat", windows_launcher)
+
+        stop_script = """#!/usr/bin/env bash
+set -euo pipefail
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$ROOT_DIR"
+docker compose down
+"""
+        _write_zip_text(zf, f"{root_dir}/stop-kiosk.sh", stop_script, executable=True)
+
+    meta = {
+        "config_count": len(config_manifest),
+        "asset_count": len(all_asset_paths),
+        "asset_copied_count": copied_assets,
+        "runtime_file_count": len(runtime_files),
+        "metadata_file_count": metadata_written,
+        "bundle_system": bundle_system,
+    }
+    return bundle_bytes.getvalue(), filename, meta
 
 
 class StudiesListView(APIView):
@@ -667,6 +1393,91 @@ class StudyPropertiesView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+class StudyTakeToGoBundleView(APIView):
+    """Generate a downloadable local runtime bundle (Interpreter + PyLSL bridge)."""
+
+    def post(self, request, study_slug: str):
+        if not request.user.is_authenticated:
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        study = Study.objects.filter(slug=study_slug, is_active=True).first()
+        if not study:
+            return Response({"error": "Study not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        profile = get_or_create_profile(request.user)
+        if not _can_manage_study_scope(request, profile, study):
+            return Response(
+                {
+                    "error": "Take-to-go export requires researcher or platform_admin role",
+                    "current_role": profile.role,
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if (
+            not _has_study_access(study, request.user, profile)
+            and not _is_legacy_public_study(study)
+            and not _is_study_publish_actor(study, request.user)
+        ):
+            return Response({"error": "Study is not owned by the current researcher"}, status=status.HTTP_403_FORBIDDEN)
+
+        include_all_versions = str(request.data.get("include_all_versions", "true")).strip().lower() in {"1", "true", "yes", "on"}
+        bundle_system = _normalize_take_to_go_system(request.data.get("bundle_system", "generic"))
+        if not bundle_system:
+            return Response(
+                {
+                    "error": "Invalid bundle_system. Expected one of: generic, biosemi, brainproducts",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            request_metadata = _normalize_take_to_go_metadata_payload(request.data.get("interpreter_metadata"))
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        versions = list(study.config_versions.all())
+        if not versions:
+            return Response({"error": "No published config version"}, status=status.HTTP_404_NOT_FOUND)
+
+        selected_versions = versions if include_all_versions else versions[:1]
+        metadata_files = _build_take_to_go_metadata_files(
+            study,
+            selected_versions,
+            include_all_versions,
+            bundle_system,
+            request_metadata,
+        )
+
+        try:
+            zip_bytes, zip_name, meta = _build_take_to_go_bundle_zip(
+                study,
+                selected_versions,
+                bundle_system=bundle_system,
+                metadata_files=metadata_files,
+            )
+        except Exception as exc:
+            return Response({"error": f"Bundle generation failed: {exc}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        record_audit(
+            action="study_take_to_go_export",
+            resource_type="study",
+            resource_id=study.id,
+            actor=request.user.username,
+            metadata={
+                "study_slug": study.slug,
+                "include_all_versions": include_all_versions,
+                "bundle_system": bundle_system,
+                **meta,
+            },
+        )
+
+        response = HttpResponse(zip_bytes, content_type="application/zip")
+        response["Content-Disposition"] = f'attachment; filename="{zip_name}"'
+        response["Cache-Control"] = "no-store"
+        return response
 
 
 class PublishConfigView(APIView):

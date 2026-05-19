@@ -16,6 +16,7 @@
       populatePreviewSelect(studiesList);
       populateAnalysisStudySelect(studiesList);
       populateIntegrationsStudySelect(studiesList);
+      populateToGoStudySelect(studiesList);
     }
 
     async function loadStudies() {
@@ -255,6 +256,165 @@
         hint.textContent = "Could not load study variant details.";
       }
     }
+
+    function pushToGoTimeline(message) {
+      const timeline = document.getElementById("toGoTimeline");
+      if (!timeline) return;
+      const ts = new Date().toLocaleTimeString();
+      const row = document.createElement("li");
+      row.textContent = `[${ts}] ${message}`;
+      timeline.prepend(row);
+      while (timeline.children.length > 8) {
+        timeline.removeChild(timeline.lastElementChild);
+      }
+    }
+
+    function setToGoProgress(percent, label = "") {
+      const fill = document.getElementById("toGoProgressFill");
+      const text = document.getElementById("toGoProgressLabel");
+      if (fill) {
+        const next = Math.max(0, Math.min(100, Number(percent) || 0));
+        fill.style.width = `${next}%`;
+      }
+      if (text && label) {
+        text.textContent = label;
+      }
+    }
+
+    function setToGoStatus(message, kind = "") {
+      const el = document.getElementById("toGoStatus");
+      if (!el) return;
+      el.className = kind ? `status-bar ${kind}` : "status-bar";
+      el.textContent = message;
+    }
+
+    function setToGoVariantSelectEnabled() {
+      const useVariants = !!document.getElementById("toGoUseFlowVariants")?.checked;
+      const mode = String(document.getElementById("toGoVariantModeSelect")?.value || "auto").trim();
+      const sel = document.getElementById("toGoVariantSelect");
+      if (!sel) return;
+      sel.disabled = !useVariants || mode !== "force";
+    }
+
+    function populateToGoStudySelect(studies) {
+      const sel = document.getElementById("toGoStudySelect");
+      if (!sel) return;
+      const prev = sel.value;
+      sel.innerHTML = '<option value="">— Select study —</option>';
+      for (const s of studies) {
+        const o = document.createElement("option");
+        o.value = s.study_slug;
+        o.textContent = s.study_name || s.study_slug;
+        sel.appendChild(o);
+      }
+      if (prev) sel.value = prev;
+      refreshToGoFlowVariantOptions(sel.value || "");
+    }
+
+    async function refreshToGoFlowVariantOptions(slug) {
+      const variantSelect = document.getElementById("toGoVariantSelect");
+      const hint = document.getElementById("toGoFlowVariantsHint");
+      const useToggle = document.getElementById("toGoUseFlowVariants");
+      if (!variantSelect || !hint || !useToggle) return;
+
+      variantSelect.innerHTML = '<option value="">— Select variant —</option>';
+
+      const key = String(slug || "").trim();
+      if (!key) {
+        useToggle.checked = false;
+        useToggle.disabled = true;
+        hint.textContent = "Pick a study to inspect available variants.";
+        setToGoVariantSelectEnabled();
+        return;
+      }
+
+      useToggle.disabled = true;
+      try {
+        const payload = await fetchStudyLatestConfig(key);
+        const variants = Array.isArray(payload?.study_properties?.flow_variants) ? payload.study_properties.flow_variants : [];
+        if (variants.length > 0) {
+          useToggle.disabled = false;
+          useToggle.checked = true;
+          variants.forEach((variant) => {
+            const id = String(variant?.id || "").trim();
+            if (!id) return;
+            const o = document.createElement("option");
+            o.value = id;
+            o.textContent = variant?.label || id;
+            variantSelect.appendChild(o);
+          });
+          hint.textContent = `${variants.length} saved variant${variants.length === 1 ? "" : "s"} found for this study.`;
+        } else {
+          useToggle.checked = false;
+          useToggle.disabled = true;
+          hint.textContent = "No saved variants found. Create them in Study Properties first.";
+        }
+      } catch {
+        useToggle.checked = false;
+        useToggle.disabled = true;
+        hint.textContent = "Could not load variant details for this study.";
+      }
+      setToGoVariantSelectEnabled();
+    }
+
+    async function launchToGoBundleFromView() {
+      const slug = String(document.getElementById("toGoStudySelect")?.value || "").trim();
+      if (!slug) {
+        setToGoStatus("Select a study before preparing a bundle.", "error");
+        return;
+      }
+
+      const includeAllVersions = !!document.getElementById("toGoIncludeAllVersions")?.checked;
+      const bundleSystem = String(document.getElementById("toGoSystemSelect")?.value || "generic").trim().toLowerCase() || "generic";
+      const useSavedFlowVariants = !!document.getElementById("toGoUseFlowVariants")?.checked;
+      const variantMode = String(document.getElementById("toGoVariantModeSelect")?.value || "auto").trim().toLowerCase() || "auto";
+      const forcedVariantId = String(document.getElementById("toGoVariantSelect")?.value || "").trim();
+      const sessionTag = String(document.getElementById("toGoSessionTag")?.value || "").trim();
+      const notes = String(document.getElementById("toGoMetadataNotes")?.value || "").trim();
+
+      if (useSavedFlowVariants && variantMode === "force" && !forcedVariantId) {
+        setToGoStatus("Pick a variant when variant mode is set to 'Force one variant'.", "error");
+        return;
+      }
+
+      const startBtn = document.getElementById("toGoStartBtn");
+      if (startBtn) startBtn.disabled = true;
+      setToGoProgress(8, "Queued bundle request...");
+      setToGoStatus("Submitting bundle request...", "");
+      pushToGoTimeline(`Requested bundle for study ${slug}.`);
+
+      try {
+        await takeStudyToGo(slug, {
+          includeAllVersions,
+          bundleSystem,
+          statusTarget: "toGoStatus",
+          progress: (pct, label) => setToGoProgress(pct, label),
+          interpreterMetadata: {
+            engine_options: {
+              use_saved_flow_variants: useSavedFlowVariants,
+              variant_mode: variantMode,
+              session_tag: sessionTag || null,
+              notes: notes || null,
+            },
+            variant_selection: {
+              variant_id: useSavedFlowVariants && variantMode === "force" ? forcedVariantId : null,
+            },
+          },
+        });
+        pushToGoTimeline(`Bundle completed for ${slug} (${bundleSystem}).`);
+      } catch (err) {
+        pushToGoTimeline(`Bundle failed for ${slug}: ${err?.message || err}`);
+      } finally {
+        if (startBtn) startBtn.disabled = false;
+      }
+    }
+
+    document.getElementById("toGoStudySelect")?.addEventListener("change", (e) => {
+      refreshToGoFlowVariantOptions(e?.target?.value || "");
+    });
+    document.getElementById("toGoUseFlowVariants")?.addEventListener("change", setToGoVariantSelectEnabled);
+    document.getElementById("toGoVariantModeSelect")?.addEventListener("change", setToGoVariantSelectEnabled);
+    document.getElementById("toGoStartBtn")?.addEventListener("click", launchToGoBundleFromView);
 
     // ── Study tables ───────────────────────────────────────────
     function bindStudyTableActions(tbody) {
@@ -1164,6 +1324,100 @@
       } catch (err) {
         sb.className = "status-bar error";
         sb.textContent = `Duplicate failed: ${err?.message || err}`;
+      }
+    }
+
+    async function readDownloadBlobWithProgress(response, onProgress) {
+      if (!response?.body || typeof response.body.getReader !== "function") {
+        if (typeof onProgress === "function") onProgress(80, "Downloading bundle...");
+        const fallbackBlob = await response.blob();
+        if (typeof onProgress === "function") onProgress(95, "Finalizing download...");
+        return fallbackBlob;
+      }
+
+      const total = Number(response.headers.get("content-length") || 0);
+      const reader = response.body.getReader();
+      const chunks = [];
+      let loaded = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          chunks.push(value);
+          loaded += value.byteLength;
+          if (typeof onProgress === "function") {
+            const pct = total > 0 ? Math.max(12, Math.min(95, Math.round((loaded / total) * 95))) : 75;
+            const kbLoaded = (loaded / 1024).toFixed(0);
+            const kbTotal = total > 0 ? (total / 1024).toFixed(0) : "?";
+            onProgress(pct, `Downloading bundle... ${kbLoaded}/${kbTotal} KB`);
+          }
+        }
+      }
+      return new Blob(chunks, { type: response.headers.get("content-type") || "application/zip" });
+    }
+
+    async function takeStudyToGo(slug, options = {}) {
+      const bundleSystem = String(options?.bundleSystem || "generic").trim().toLowerCase() || "generic";
+      const includeAllVersions = options?.includeAllVersions !== false;
+      const statusTarget = String(options?.statusTarget || "studiesStatus");
+      const interpreterMetadata = options?.interpreterMetadata && typeof options.interpreterMetadata === "object"
+        ? options.interpreterMetadata
+        : {};
+      const setProgress = typeof options?.progress === "function"
+        ? options.progress
+        : () => {};
+
+      const sb = document.getElementById(statusTarget) || document.getElementById("studiesStatus");
+      if (sb) {
+        sb.className = "status-bar";
+        sb.textContent = `Preparing ${bundleSystem} bundle for ${slug}…`;
+      }
+      setProgress(12, "Generating bundle in backend...");
+      try {
+        const r = await fetch(
+          `${API}/api/v1/studies/${encodeURIComponent(slug)}/take-to-go`,
+          postOpts({
+            include_all_versions: includeAllVersions,
+            bundle_system: bundleSystem,
+            interpreter_metadata: interpreterMetadata,
+          })
+        );
+        if (r.status === 401) {
+          await checkSession();
+          showLogin("Your session expired. Please sign in again.");
+          throw new Error("Authentication required");
+        }
+        if (!r.ok) {
+          const d = await r.json().catch(() => ({}));
+          throw new Error(d.error || `HTTP ${r.status}`);
+        }
+
+        const blob = await readDownloadBlobWithProgress(r, setProgress);
+        const cd = r.headers.get("content-disposition") || "";
+        const m = cd.match(/filename=\"?([^\";]+)\"?/i);
+        const filename = (m && m[1]) ? m[1] : `cogflow-take-to-go-${slug}.zip`;
+
+        const a = document.createElement("a");
+        const objUrl = URL.createObjectURL(blob);
+        a.href = objUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(objUrl), 2000);
+
+        setProgress(100, "Download ready.");
+        if (sb) {
+          sb.className = "status-bar ok";
+          sb.textContent = `Downloaded ${filename} (${bundleSystem}). Unzip and run the kiosk launcher.`;
+        }
+      } catch (err) {
+        setProgress(0, "Bundle failed.");
+        if (sb) {
+          sb.className = "status-bar error";
+          sb.textContent = `Take-to-go export failed: ${err?.message || err}`;
+        }
+        throw err;
       }
     }
 

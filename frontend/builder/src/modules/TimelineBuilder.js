@@ -1240,6 +1240,9 @@ class TimelineBuilder {
                         <small class="text-muted">When probes-per-run &gt; 1, additional probes are inserted using repeated random gaps sampled from global interval [min,max].</small>
                     </div>
                 </div>
+                <div id="mw_probe_warning" class="alert alert-warning mt-3 mb-0 d-none" role="alert">
+                    Your block appears to be short; probes will appear more often to honor the number of probes you selected; you may want to reduce the number.
+                </div>
             </div>` : ''}
 
             <hr />
@@ -1276,6 +1279,78 @@ class TimelineBuilder {
             allowTimeoutEl.addEventListener('change', syncTimeoutUi);
         }
         syncTimeoutUi();
+
+        if (isMwProbe) {
+            const mwWarningEl = modalBody.querySelector('#mw_probe_warning');
+            const probeCountEl = modalBody.querySelector('#mw_global_probe_count_per_block');
+            const minGapEl = modalBody.querySelector('#mw_global_interval_min_ms');
+            const maxGapEl = modalBody.querySelector('#mw_global_interval_max_ms');
+
+            const parsePosNum = (raw) => {
+                const n = Number(raw);
+                return Number.isFinite(n) && n > 0 ? n : 0;
+            };
+
+            const getKnownDurationMs = () => {
+                const candidates = [
+                    component?.trial_duration_ms,
+                    component?.duration_ms,
+                    component?.block_duration_ms,
+                    component?.block_duration_seconds !== undefined ? Number(component.block_duration_seconds) * 1000 : null,
+                    component?.block_length_ms,
+                    component?.parameters?.trial_duration_ms,
+                    component?.parameters?.duration_ms,
+                    component?.parameters?.block_duration_ms,
+                    component?.parameters?.block_duration_seconds !== undefined ? Number(component.parameters.block_duration_seconds) * 1000 : null,
+                    component?.parameters?.block_length_ms
+                ];
+
+                for (const candidate of candidates) {
+                    const durationMs = parsePosNum(candidate);
+                    if (durationMs > 0) return durationMs;
+                }
+
+                return null;
+            };
+
+            const updateMwProbeWarning = () => {
+                if (!mwWarningEl) return;
+
+                const probeCount = Math.max(1, Math.round(parsePosNum(probeCountEl?.value ?? 1)));
+                const minRaw = parsePosNum(minGapEl?.value ?? 0);
+                const maxRaw = parsePosNum(maxGapEl?.value ?? minRaw);
+                const gapMax = Math.max(minRaw, maxRaw);
+                const durationMs = getKnownDurationMs();
+
+                let risky = false;
+                let effectiveMax = null;
+                if (durationMs && gapMax > 0) {
+                    effectiveMax = Math.max(0, Math.floor(durationMs / gapMax));
+                    risky = probeCount > effectiveMax;
+                } else if (gapMax > 0) {
+                    // No duration metadata in this editor context: still flag clearly extreme settings.
+                    risky = probeCount >= 50;
+                }
+
+                mwWarningEl.classList.toggle('d-none', !risky);
+                if (!risky) {
+                    mwWarningEl.textContent = 'Your block appears to be short; probes will appear more often to honor the number of probes you selected; you may want to reduce the number.';
+                    return;
+                }
+
+                if (Number.isFinite(effectiveMax)) {
+                    mwWarningEl.textContent = `Your block appears to be short; probes will appear more often to honor the number of probes you selected; you may want to reduce the number. Selected: ${probeCount}. Estimated maximum that fits this block: ${effectiveMax}.`;
+                } else {
+                    mwWarningEl.textContent = 'Your block appears to be short; probes will appear more often to honor the number of probes you selected; you may want to reduce the number.';
+                }
+            };
+
+            [probeCountEl, minGapEl, maxGapEl].forEach((el) => {
+                if (el) el.addEventListener('input', updateMwProbeWarning);
+            });
+
+            updateMwProbeWarning();
+        }
 
         // Survey instructions rich text editor (same Quill pattern as Instructions component editor).
         try {

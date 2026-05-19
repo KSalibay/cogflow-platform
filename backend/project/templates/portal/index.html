@@ -407,6 +407,13 @@
         background: rgba(58, 64, 90, 0.08);
       }
 
+      .nav-icon-img {
+        width: 18px;
+        height: 18px;
+        object-fit: contain;
+        display: block;
+      }
+
       html[data-cf-theme="dark"] .nav-icon { background: rgba(186, 199, 190, 0.12); }
 
       .nav-label { overflow: hidden; text-overflow: ellipsis; }
@@ -968,6 +975,37 @@
         font-size: 0.9rem;
       }
 
+      .to-go-progress {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        overflow: hidden;
+        height: 12px;
+        background: color-mix(in oklab, var(--panel) 70%, var(--bg));
+      }
+
+      .to-go-progress-fill {
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, #b1703d 0%, #d09a5a 60%, #e5c277 100%);
+        transition: width 220ms ease;
+      }
+
+      .to-go-timeline {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        gap: 8px;
+      }
+
+      .to-go-timeline li {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 8px 10px;
+        background: color-mix(in oklab, var(--panel) 86%, var(--bg));
+        font-size: 0.84rem;
+      }
+
       #studyPropertiesTaskList {
         list-style: none;
         margin: 0;
@@ -1452,6 +1490,11 @@
               <span class="nav-label">Integrations</span>
             </button>
 
+            <button class="nav-item" data-view="toGo" id="navToGo">
+              <span class="nav-icon"><img class="nav-icon-img" src="/builder/img/to-go-bag.png" alt="" aria-hidden="true" /></span>
+              <span class="nav-label">To Go</span>
+            </button>
+
             <button class="nav-item" data-view="ethics" id="navEthics">
               <span class="nav-icon">🛡</span>
               <span class="nav-label">Ethics &amp; Compliance</span>
@@ -1803,6 +1846,133 @@
                 <div id="prolificOutput" class="panel-pad" style="padding-top:0;border-top:1px solid var(--line);">
                   <p class="result-message" style="margin:0;">No Prolific link generated yet.</p>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- VIEW: To Go -->
+          <div class="view" id="viewToGo">
+            <div class="view-scroll">
+              <h1 class="view-title" style="margin:0 0 4px;">To Go</h1>
+              <p class="view-subtitle" style="margin:0 0 20px;">Package a local runtime bundle with Interpreter metadata for task-flow variants and engine options.</p>
+
+              <details class="panel panel-pad" open style="margin-bottom:14px;border-color:color-mix(in oklab, var(--accent) 36%, var(--line));background:color-mix(in oklab, var(--accent-lt) 16%, var(--panel));">
+                <summary style="cursor:pointer;font-weight:700;">Quick Start Help: launch and test locally (step by step)</summary>
+                <div style="margin-top:10px;display:grid;gap:10px;">
+                  <div>
+                    <h3 style="margin:0 0 6px;font-size:.92rem;">Launch Checklist</h3>
+                    <ol style="margin:0;padding-left:18px;line-height:1.55;font-size:.86rem;color:var(--ink);">
+                      <li>In this To Go tab, choose your study/options and click <strong>Prepare And Download Bundle</strong>.</li>
+                      <li>Unzip the downloaded archive on the target machine.</li>
+                      <li>Run one launcher from the bundle root:
+                        <span class="mono">run-kiosk.sh</span> (Linux),
+                        <span class="mono">Run Kiosk.command</span> (macOS), or
+                        <span class="mono">run-kiosk.bat</span> (Windows).
+                      </li>
+                      <li>Wait for services to come up, then open <span class="mono">http://127.0.0.1:8088</span> if your browser does not open automatically.</li>
+                      <li>For a local data-file test run, add <span class="mono">&amp;debug=1</span> to the Interpreter URL (or click Download data on completion).</li>
+                    </ol>
+                  </div>
+
+                  <div>
+                    <h3 style="margin:0 0 6px;font-size:.92rem;">Where files/data are stored</h3>
+                    <ul style="margin:0;padding-left:18px;line-height:1.55;font-size:.86rem;color:var(--ink);">
+                      <li><strong>Bundle files</strong>: stay in the folder where you unzip the archive.</li>
+                      <li><strong>Interpreter metadata JSONs</strong>: in <span class="mono">interpreter/metadata/</span> inside the unzipped bundle.</li>
+                      <li><strong>Participant run exports (JSON/CSV)</strong>: saved to the browser's default Downloads folder when debug/download export is used.</li>
+                      <li><strong>By default local mode does not write run-result files to disk automatically</strong>; without debug/download, data is kept in-browser for that session and logged to console.</li>
+                      <li><strong>LSL bridge container</strong>: emits markers and persists behavioral result files into <span class="mono">local_results/</span> (bundle root, via Docker volume mount).</li>
+                    </ul>
+                  </div>
+                </div>
+              </details>
+
+              <div class="panel panel-pad" style="margin-bottom:14px;">
+                <h3 style="margin:0 0 10px;">Bundle Setup</h3>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;">
+                  <div class="account-field" style="margin-bottom:0;">
+                    <label for="toGoStudySelect">Study</label>
+                    <select id="toGoStudySelect" style="border:1.5px solid var(--line);border-radius:8px;padding:7px 11px;font-size:.88rem;font-family:inherit;outline:none;background:var(--bg);color:var(--ink);">
+                      <option value="">— Select study —</option>
+                    </select>
+                  </div>
+                  <div class="account-field" style="margin-bottom:0;">
+                    <label for="toGoSystemSelect">LSL system profile</label>
+                    <select id="toGoSystemSelect" style="border:1.5px solid var(--line);border-radius:8px;padding:7px 11px;font-size:.88rem;font-family:inherit;outline:none;background:var(--bg);color:var(--ink);">
+                      <option value="generic" selected>Generic LSL</option>
+                      <option value="biosemi">BioSemi</option>
+                      <option value="brainproducts">Brain Products</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-top:10px;">
+                  <label style="display:flex;gap:8px;align-items:flex-start;">
+                    <input type="checkbox" id="toGoIncludeAllVersions" checked />
+                    <span>
+                      <span style="font-weight:600;">Include all published configs</span>
+                      <span class="inline-note" style="display:block;margin-top:3px;">Turn off to package only the latest config.</span>
+                    </span>
+                  </label>
+                  <label style="display:flex;gap:8px;align-items:flex-start;">
+                    <input type="checkbox" id="toGoUseFlowVariants" checked />
+                    <span>
+                      <span style="font-weight:600;">Attach saved flow variants</span>
+                      <span id="toGoFlowVariantsHint" class="inline-note" style="display:block;margin-top:3px;">Pick a study to inspect available variants.</span>
+                    </span>
+                  </label>
+                </div>
+
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-top:10px;">
+                  <div class="account-field" style="margin-bottom:0;">
+                    <label for="toGoVariantModeSelect">Variant mode</label>
+                    <select id="toGoVariantModeSelect" style="border:1.5px solid var(--line);border-radius:8px;padding:7px 11px;font-size:.88rem;font-family:inherit;outline:none;background:var(--bg);color:var(--ink);">
+                      <option value="auto" selected>Auto assignment</option>
+                      <option value="force">Force one variant</option>
+                      <option value="disable">Disable variant routing</option>
+                    </select>
+                  </div>
+                  <div class="account-field" style="margin-bottom:0;">
+                    <label for="toGoVariantSelect">Forced variant</label>
+                    <select id="toGoVariantSelect" disabled style="border:1.5px solid var(--line);border-radius:8px;padding:7px 11px;font-size:.88rem;font-family:inherit;outline:none;background:var(--bg);color:var(--ink);">
+                      <option value="">— Select variant —</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-top:10px;">
+                  <div class="account-field" style="margin-bottom:0;">
+                    <label for="toGoSessionTag">Session tag (optional)</label>
+                    <input type="text" id="toGoSessionTag" placeholder="pilot-a, eeg-lab-1, etc." />
+                  </div>
+                  <div class="account-field" style="margin-bottom:0;grid-template-columns:1fr;">
+                    <label for="toGoMetadataNotes">Bundle notes (optional)</label>
+                    <textarea id="toGoMetadataNotes" rows="3" style="border:1.5px solid var(--line);border-radius:8px;padding:9px 11px;font-size:.88rem;font-family:inherit;outline:none;background:var(--bg);color:var(--ink);width:100%;resize:vertical;" placeholder="Short notes for whoever runs the local interpreter bundle."></textarea>
+                  </div>
+                </div>
+
+                <div class="account-actions" style="margin-top:12px;">
+                  <button class="btn btn-primary btn-sm" id="toGoStartBtn">Prepare And Download Bundle</button>
+                </div>
+              </div>
+
+              <div class="panel panel-pad" style="margin-bottom:14px;">
+                <h3 style="margin:0 0 10px;">Bundling Progress</h3>
+                <div class="to-go-progress" aria-hidden="true">
+                  <div class="to-go-progress-fill" id="toGoProgressFill"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:8px;">
+                  <div id="toGoProgressLabel" class="inline-note">Waiting for a bundle request.</div>
+                  <div id="toGoEta" class="inline-note">Estimated time: 15-45 seconds depending on assets.</div>
+                </div>
+                <div id="toGoStatus" class="status-bar" style="margin-top:10px;">Pick study/options, then click Prepare And Download Bundle.</div>
+              </div>
+
+              <div class="panel panel-pad">
+                <h3 style="margin:0 0 10px;">Bundle Timeline</h3>
+                <ul id="toGoTimeline" class="to-go-timeline">
+                  <li>Ready: no bundle request yet.</li>
+                </ul>
               </div>
             </div>
           </div>

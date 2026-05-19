@@ -84,6 +84,96 @@
     }
   }
 
+  function parseTruthyFlag(v) {
+    const s = (v === null || v === undefined) ? '' : String(v).trim().toLowerCase();
+    return s === '1' || s === 'true' || s === 'yes' || s === 'on';
+  }
+
+  function getLslBridgeRuntimeConfig() {
+    try {
+      const qp = new URLSearchParams(window.location.search);
+      const enabled = parseTruthyFlag(qp.get('lsl')) || parseTruthyFlag(window.COGFLOW_LSL_ENABLED);
+      const bridgeUrl = (
+        (qp.get('lsl_bridge') || '').trim() ||
+        (typeof window.COGFLOW_LSL_BRIDGE_URL === 'string' ? window.COGFLOW_LSL_BRIDGE_URL.trim() : '') ||
+        'http://127.0.0.1:8765'
+      ).replace(/\/$/, '');
+      return { enabled, bridgeUrl };
+    } catch {
+      return { enabled: false, bridgeUrl: 'http://127.0.0.1:8765' };
+    }
+  }
+
+  function createLslBridgeEmitter(runtimeMeta) {
+    const cfg = getLslBridgeRuntimeConfig();
+    if (!cfg.enabled) {
+      return {
+        enabled: false,
+        emit: () => {},
+        persistResult: async () => ({ ok: false, reason: 'lsl_bridge_disabled' })
+      };
+    }
+
+    const emit = (eventType, payload = {}, eventCode = null) => {
+      try {
+        const body = {
+          event_type: String(eventType || 'event'),
+          event_code: Number.isFinite(eventCode) ? Number(eventCode) : null,
+          timestamp_ms: Date.now(),
+          study_slug: runtimeMeta && runtimeMeta.studySlug ? runtimeMeta.studySlug : null,
+          config_id: runtimeMeta && runtimeMeta.configId ? runtimeMeta.configId : null,
+          run_session_id: runtimeMeta && runtimeMeta.runSessionId ? runtimeMeta.runSessionId : null,
+          payload: (payload && typeof payload === 'object') ? payload : {}
+        };
+        fetch(`${cfg.bridgeUrl}/v1/markers`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          keepalive: true,
+          mode: 'cors'
+        }).catch(() => {});
+      } catch {
+        // ignore
+      }
+    };
+
+    const persistResult = async (resultPayload) => {
+      try {
+        const body = {
+          source: 'interpreter-local',
+          payload: (resultPayload && typeof resultPayload === 'object') ? resultPayload : {}
+        };
+        const r = await fetch(`${cfg.bridgeUrl}/v1/results`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          mode: 'cors'
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d || d.ok !== true) {
+          return {
+            ok: false,
+            status: r.status,
+            error: d && d.error ? d.error : `HTTP ${r.status}`
+          };
+        }
+        return {
+          ok: true,
+          file_name: d.file_name || null,
+          path: d.path || null,
+          size_bytes: Number.isFinite(d.size_bytes) ? d.size_bytes : null
+        };
+      } catch (e) {
+        return {
+          ok: false,
+          error: e && e.message ? e.message : String(e)
+        };
+      }
+    };
+
+    return { enabled: true, emit, persistResult };
+  }
+
   function wrapPsyScreenHtml(stimulusHtml, promptHtml) {
     const stim = (stimulusHtml === null || stimulusHtml === undefined) ? '' : String(stimulusHtml);
     const prm = (promptHtml === null || promptHtml === undefined) ? '' : String(promptHtml);
@@ -1815,9 +1905,31 @@
       // ignore
     }
 
+    const lslEmitter = createLslBridgeEmitter({
+      studySlug: (typeof window.COGFLOW_STUDY_SLUG === 'string' && window.COGFLOW_STUDY_SLUG.trim()) || (configId || null),
+      configId: configId || null,
+      runSessionId: (typeof window.COGFLOW_RUN_SESSION_ID === 'string' && window.COGFLOW_RUN_SESSION_ID.trim()) || null,
+    });
+
     const jsPsych = initJsPsych({
       display_element: displayEl,
+      on_data_update: (row) => {
+        if (!lslEmitter.enabled) return;
+        const r = (row && typeof row === 'object') ? row : {};
+        lslEmitter.emit('trial_data', {
+          plugin_type: r.plugin_type || null,
+          task_type: r.task_type || null,
+          trial_index: Number.isFinite(r.trial_index) ? r.trial_index : null,
+          rt: Number.isFinite(r.rt) ? r.rt : null,
+        }, 200);
+      },
       on_finish: async () => {
+        if (lslEmitter.enabled) {
+          lslEmitter.emit('session_finish', {
+            mode: 'single-config',
+            config_id: configId || null,
+          }, 900);
+        }
         try {
           if (window.DrtEngine && typeof window.DrtEngine.stop === 'function') {
             window.DrtEngine.stop();
@@ -1950,6 +2062,16 @@
 
         if (await submitToJatosAndContinue(dataJson)) return;
 
+        let lslPersist = null;
+        if (lslEmitter.enabled && typeof lslEmitter.persistResult === 'function') {
+          lslPersist = await lslEmitter.persistResult({
+            study_slug: (typeof window.COGFLOW_STUDY_SLUG === 'string' && window.COGFLOW_STUDY_SLUG.trim()) || null,
+            config_id: configId || null,
+            run_session_id: (typeof window.COGFLOW_RUN_SESSION_ID === 'string' && window.COGFLOW_RUN_SESSION_ID.trim()) || null,
+            result_payload: payload,
+          });
+        }
+
         // Local debug: optionally auto-download the exact payload that would be sent to JATOS.
         if (getDebugMode()) {
           const id = (getQueryParam('id') || 'local').toString().trim() || 'local';
@@ -1965,7 +2087,10 @@
             // ignore
           }
         } else {
-          renderBlockingStatus('Experiment finished', 'Run completed. Add ?debug=1 to download data locally.');
+          const persistedMsg = (lslPersist && lslPersist.ok)
+            ? `Run completed. Behavioral results persisted to local_results/${lslPersist.file_name || ''}`
+            : 'Run completed. Add ?debug=1 to download data locally.';
+          renderBlockingStatus('Experiment finished', persistedMsg);
         }
 
         // Local fallback: dump to console
@@ -1994,6 +2119,14 @@
       });
     } catch (e) {
       console.warn('Failed to add global data properties:', e);
+    }
+
+    if (lslEmitter.enabled) {
+      lslEmitter.emit('session_start', {
+        mode: 'single-config',
+        config_id: configId || null,
+        timeline_length: Array.isArray(compiled.timeline) ? compiled.timeline.length : null,
+      }, 100);
     }
 
     Promise.resolve(jsPsych.run(compiled.timeline)).catch((e) => {
@@ -2194,9 +2327,32 @@
       // ignore
     }
 
+    const lslEmitter = createLslBridgeEmitter({
+      studySlug: (typeof window.COGFLOW_STUDY_SLUG === 'string' && window.COGFLOW_STUDY_SLUG.trim()) || (code || null),
+      configId: null,
+      runSessionId: (typeof window.COGFLOW_RUN_SESSION_ID === 'string' && window.COGFLOW_RUN_SESSION_ID.trim()) || null,
+    });
+
     const jsPsych = initJsPsych({
       display_element: displayEl,
+      on_data_update: (row) => {
+        if (!lslEmitter.enabled) return;
+        const r = (row && typeof row === 'object') ? row : {};
+        lslEmitter.emit('trial_data', {
+          plugin_type: r.plugin_type || null,
+          task_type: r.task_type || null,
+          config_id: r.config_id || null,
+          trial_index: Number.isFinite(r.trial_index) ? r.trial_index : null,
+          rt: Number.isFinite(r.rt) ? r.rt : null,
+        }, 200);
+      },
       on_finish: async () => {
+        if (lslEmitter.enabled) {
+          lslEmitter.emit('session_finish', {
+            mode: 'multi-config',
+            code: code || null,
+          }, 900);
+        }
         try {
           if (eyeHud && typeof eyeHud.stop === 'function') eyeHud.stop();
         } catch {
@@ -2355,6 +2511,17 @@
 
         if (await submitToJatosAndContinue(dataJson)) return;
 
+        let lslPersist = null;
+        if (lslEmitter.enabled && typeof lslEmitter.persistResult === 'function') {
+          lslPersist = await lslEmitter.persistResult({
+            study_slug: (typeof window.COGFLOW_STUDY_SLUG === 'string' && window.COGFLOW_STUDY_SLUG.trim()) || null,
+            config_id: null,
+            export_code: code || null,
+            run_session_id: (typeof window.COGFLOW_RUN_SESSION_ID === 'string' && window.COGFLOW_RUN_SESSION_ID.trim()) || null,
+            result_payload: payload,
+          });
+        }
+
         if (getDebugMode()) {
           downloadDebugData(jsPsych, String(code || 'multi'), finalValues);
         }
@@ -2367,13 +2534,24 @@
             // ignore
           }
         } else {
-          renderBlockingStatus('Experiment finished', 'Run completed. Add ?debug=1 to download data locally.');
+          const persistedMsg = (lslPersist && lslPersist.ok)
+            ? `Run completed. Behavioral results persisted to local_results/${lslPersist.file_name || ''}`
+            : 'Run completed. Add ?debug=1 to download data locally.';
+          renderBlockingStatus('Experiment finished', persistedMsg);
         }
 
         console.log('Experiment finished. Data:', jsPsych.data.get().values());
         setStatus('Experiment finished (local mode). Data logged to console.');
       }
     });
+
+    if (lslEmitter.enabled) {
+      lslEmitter.emit('session_start', {
+        mode: 'multi-config',
+        code: code || null,
+        timeline_length: Array.isArray(timeline) ? timeline.length : null,
+      }, 100);
+    }
 
     Promise.resolve(jsPsych.run(timeline)).catch((e) => {
       console.error('jsPsych.run failed:', e);

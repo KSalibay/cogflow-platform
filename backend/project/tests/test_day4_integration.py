@@ -10,6 +10,10 @@ Verifies that:
      publish endpoint still succeeds (backward compat).
 """
 
+import io
+import zipfile
+import json
+
 import pyotp
 from django.contrib.auth.models import User
 from django.core.management import call_command
@@ -167,6 +171,158 @@ class Day4RuntimeBackendTests(APITestCase):
         )
         self.assertGreaterEqual(resp.status_code, 400)
         self.assertLess(resp.status_code, 500)
+
+
+class Day8TakeToGoBundleTests(APITestCase):
+    def _login_researcher(self, username="day8_researcher"):
+        user = User.objects.create_user(username=username, password="pass-1234")
+        profile = get_or_create_profile(user)
+        profile.role = profile.ROLE_RESEARCHER
+        profile.save(update_fields=["role"])
+        ok = self.client.login(username=username, password="pass-1234")
+        self.assertTrue(ok)
+        return user
+
+    def _publish_study(self, slug="day8-study"):
+        return self.client.post(
+            reverse("configs-publish"),
+            data={
+                "study_slug": slug,
+                "study_name": "Day 8 Take To Go Study",
+                "config_version_label": "v1",
+                "builder_version": "test",
+                "runtime_mode": "django",
+                "config": {
+                    "task_type": "rdm",
+                    "experiment_type": "trial-based",
+                    "timeline": [
+                        {
+                            "type": "html-keyboard-response",
+                            "stimulus": "<p>Ready</p>",
+                        }
+                    ],
+                },
+            },
+            format="json",
+        )
+
+    def test_take_to_go_requires_authentication(self):
+        resp = self.client.post(
+            reverse("studies-take-to-go", kwargs={"study_slug": "no-auth-study"}),
+            data={},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_take_to_go_returns_zip_with_runtime_files(self):
+        self._login_researcher()
+        publish_resp = self._publish_study(slug="day8-take-go")
+        self.assertEqual(publish_resp.status_code, status.HTTP_201_CREATED)
+
+        resp = self.client.post(
+            reverse("studies-take-to-go", kwargs={"study_slug": "day8-take-go"}),
+            data={"include_all_versions": True},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp["Content-Type"], "application/zip")
+
+        zf = zipfile.ZipFile(io.BytesIO(resp.content), mode="r")
+        names = set(zf.namelist())
+
+        self.assertTrue(any(name.endswith("/docker-compose.yml") for name in names))
+        self.assertTrue(any(name.endswith("/README.md") for name in names))
+        self.assertTrue(any(name.endswith("/lsl-bridge/app.py") for name in names))
+        self.assertTrue(any(name.endswith("/interpreter/Dockerfile") for name in names))
+        self.assertTrue(any(name.endswith("/interpreter/configs/manifest.json") for name in names))
+        self.assertTrue(any(name.endswith("/run-kiosk.sh") for name in names))
+        self.assertTrue(any(name.endswith("/Run Kiosk.command") for name in names))
+        self.assertTrue(any(name.endswith("/run-kiosk.bat") for name in names))
+        self.assertTrue(any(name.endswith("/interpreter/src/jspsych-rdm.js") for name in names))
+        self.assertTrue(any(name.endswith("/interpreter/src/rdmEngine.js") for name in names))
+        self.assertFalse(any(name.endswith("/interpreter/src/jspsych-stroop.js") for name in names))
+
+        compose_name = next(name for name in names if name.endswith("/docker-compose.yml"))
+        compose_text = zf.read(compose_name).decode("utf-8")
+        self.assertIn("./local_results:/data/results", compose_text)
+        self.assertIn("COGFLOW_RESULTS_DIR=/data/results", compose_text)
+
+        bridge_app_name = next(name for name in names if name.endswith("/lsl-bridge/app.py"))
+        bridge_app_text = zf.read(bridge_app_name).decode("utf-8")
+        self.assertIn("@app.post(\"/v1/results\")", bridge_app_text)
+
+        manifest_name = next(name for name in names if name.endswith("/interpreter/configs/manifest.json"))
+        manifest = json.loads(zf.read(manifest_name).decode("utf-8"))
+        self.assertTrue(isinstance(manifest, list) and len(manifest) >= 1)
+
+    def test_take_to_go_accepts_system_profile(self):
+        self._login_researcher(username="day8_researcher_system")
+        publish_resp = self._publish_study(slug="day8-system-profile")
+        self.assertEqual(publish_resp.status_code, status.HTTP_201_CREATED)
+
+        resp = self.client.post(
+            reverse("studies-take-to-go", kwargs={"study_slug": "day8-system-profile"}),
+            data={"include_all_versions": True, "bundle_system": "brainproducts"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+        zf = zipfile.ZipFile(io.BytesIO(resp.content), mode="r")
+        names = set(zf.namelist())
+        profile_name = next(name for name in names if name.endswith("/lsl-bridge/system_profile.json"))
+        profile = json.loads(zf.read(profile_name).decode("utf-8"))
+        self.assertEqual(profile.get("target_system"), "brainproducts")
+
+    def test_take_to_go_rejects_invalid_system_profile(self):
+        self._login_researcher(username="day8_researcher_invalid")
+        publish_resp = self._publish_study(slug="day8-invalid-system")
+        self.assertEqual(publish_resp.status_code, status.HTTP_201_CREATED)
+
+        resp = self.client.post(
+            reverse("studies-take-to-go", kwargs={"study_slug": "day8-invalid-system"}),
+            data={"bundle_system": "invalid-system"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_take_to_go_writes_interpreter_metadata_files(self):
+        self._login_researcher(username="day8_researcher_metadata")
+        publish_resp = self._publish_study(slug="day8-metadata")
+        self.assertEqual(publish_resp.status_code, status.HTTP_201_CREATED)
+
+        resp = self.client.post(
+            reverse("studies-take-to-go", kwargs={"study_slug": "day8-metadata"}),
+            data={
+                "include_all_versions": True,
+                "bundle_system": "biosemi",
+                "interpreter_metadata": {
+                    "engine_options": {
+                        "variant_mode": "force",
+                        "session_tag": "pilot-a",
+                        "notes": "prepare flow variant package",
+                        "use_saved_flow_variants": True,
+                    }
+                },
+            },
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+        zf = zipfile.ZipFile(io.BytesIO(resp.content), mode="r")
+        names = set(zf.namelist())
+
+        bundle_profile_name = next(name for name in names if name.endswith("/interpreter/metadata/bundle_profile.json"))
+        engine_flow_name = next(name for name in names if name.endswith("/interpreter/metadata/engine_task_flow.json"))
+        request_payload_name = next(name for name in names if name.endswith("/interpreter/metadata/request_payload.json"))
+
+        bundle_profile = json.loads(zf.read(bundle_profile_name).decode("utf-8"))
+        engine_flow = json.loads(zf.read(engine_flow_name).decode("utf-8"))
+        request_payload = json.loads(zf.read(request_payload_name).decode("utf-8"))
+
+        self.assertEqual(bundle_profile.get("bundle_system"), "biosemi")
+        self.assertEqual(engine_flow.get("variant_mode"), "force")
+        self.assertEqual(engine_flow.get("session_tag"), "pilot-a")
+        self.assertIn("engine_options", request_payload)
 
 
 class Day5DashboardVisibilityTests(APITestCase):
