@@ -251,6 +251,38 @@ class JSPsychSchemas {
                         default: true,
                         description: 'Show ALLOW/BLOCK feedback in the Action column after GO responses'
                     },
+                    show_feedback: {
+                        type: this.parameterTypes.BOOL,
+                        default: false,
+                        description: 'Show correct/incorrect text feedback after each SART-like response'
+                    },
+                    feedback_text_correct: {
+                        type: this.parameterTypes.STRING,
+                        default: 'Correct',
+                        description: 'SART feedback: text shown on correct response'
+                    },
+                    feedback_text_incorrect: {
+                        type: this.parameterTypes.STRING,
+                        default: 'Incorrect',
+                        description: 'SART feedback: text shown on incorrect response'
+                    },
+                    feedback_color_correct: {
+                        type: this.parameterTypes.COLOR,
+                        default: '#86efac',
+                        description: 'SART feedback: color for correct response text'
+                    },
+                    feedback_color_incorrect: {
+                        type: this.parameterTypes.COLOR,
+                        default: '#fca5a5',
+                        description: 'SART feedback: color for incorrect response text'
+                    },
+                    feedback_duration_ms: {
+                        type: this.parameterTypes.INT,
+                        default: 300,
+                        min: 0,
+                        max: 5000,
+                        description: 'SART feedback: how long the feedback text is shown (ms)'
+                    },
                     highlight_subdomains: {
                         type: this.parameterTypes.BOOL,
                         default: true,
@@ -3216,6 +3248,18 @@ class JSPsychSchemas {
                         default: 'Incorrect',
                         blockTarget: 'sart-trial',
                         description: 'SART: text shown when response is incorrect'
+                    },
+                    sart_feedback_color_correct: {
+                        type: this.parameterTypes.COLOR,
+                        default: '#86efac',
+                        blockTarget: 'sart-trial',
+                        description: 'SART: color of correct-response feedback text'
+                    },
+                    sart_feedback_color_incorrect: {
+                        type: this.parameterTypes.COLOR,
+                        default: '#fca5a5',
+                        blockTarget: 'sart-trial',
+                        description: 'SART: color of incorrect-response feedback text'
                     },
                     sart_feedback_duration_min: {
                         type: this.parameterTypes.INT,

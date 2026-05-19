@@ -7206,6 +7206,8 @@ class JsonBuilder {
                 sart_show_feedback: { type: 'boolean', default: false },
                 sart_feedback_text_correct: { type: 'string', default: 'Correct', description: 'Text shown to participant when their response is correct.' },
                 sart_feedback_text_incorrect: { type: 'string', default: 'Incorrect', description: 'Text shown to participant when their response is incorrect.' },
+                sart_feedback_color_correct: { type: 'COLOR', default: '#86efac', description: 'Color of correct-response feedback text.' },
+                sart_feedback_color_incorrect: { type: 'COLOR', default: '#fca5a5', description: 'Color of incorrect-response feedback text.' },
                 sart_feedback_duration_min: { type: 'number', default: 300, min: 0, max: 10000 },
                 sart_feedback_duration_max: { type: 'number', default: 300, min: 0, max: 10000 },
                 sart_iti_min: { type: 'number', default: 200, min: 0, max: 10000 },
@@ -11852,6 +11854,10 @@ class JsonBuilder {
             if (sartFbCorrect) values.feedback_text_correct = sartFbCorrect;
             const sartFbIncorrect = (blockComponent.sart_feedback_text_incorrect ?? '').toString().trim();
             if (sartFbIncorrect) values.feedback_text_incorrect = sartFbIncorrect;
+            const sartFbColorCorrect = (blockComponent.sart_feedback_color_correct ?? '').toString().trim();
+            if (sartFbColorCorrect) values.feedback_color_correct = sartFbColorCorrect;
+            const sartFbColorIncorrect = (blockComponent.sart_feedback_color_incorrect ?? '').toString().trim();
+            if (sartFbColorIncorrect) values.feedback_color_incorrect = sartFbColorIncorrect;
 
             addWindow('stimulus_duration_ms', blockComponent.sart_stimulus_duration_min, blockComponent.sart_stimulus_duration_max);
             addWindow('mask_duration_ms', blockComponent.sart_mask_duration_min, blockComponent.sart_mask_duration_max);

@@ -36,6 +36,8 @@
       feedback_duration_ms: { type: PT.INT, default: 300 },
       feedback_text_correct: { type: PT.STRING, default: 'Correct' },
       feedback_text_incorrect: { type: PT.STRING, default: 'Incorrect' },
+      feedback_color_correct: { type: PT.STRING, default: '#86efac' },
+      feedback_color_incorrect: { type: PT.STRING, default: '#fca5a5' },
 
       detection_response_task_enabled: { type: PT.BOOL, default: false }
     },
@@ -103,6 +105,8 @@
         : 300;
       const feedbackTextCorrect = (trial.feedback_text_correct ?? 'Correct').toString();
       const feedbackTextIncorrect = (trial.feedback_text_incorrect ?? 'Incorrect').toString();
+      const feedbackColorCorrect = (trial.feedback_color_correct ?? '#86efac').toString();
+      const feedbackColorIncorrect = (trial.feedback_color_incorrect ?? '#fca5a5').toString();
 
       const stimMs = Number.isFinite(Number(trial.stimulus_duration_ms)) ? Number(trial.stimulus_duration_ms) : 250;
       const maskMs = Number.isFinite(Number(trial.mask_duration_ms)) ? Number(trial.mask_duration_ms) : 900;
@@ -185,7 +189,7 @@
         if (showFeedback && feedbackEl) {
           const isCorrect = (!isNoGo && k === goKey);
           feedbackEl.textContent = isCorrect ? feedbackTextCorrect : feedbackTextIncorrect;
-          feedbackEl.style.color = isCorrect ? '#86efac' : '#fca5a5';
+          feedbackEl.style.color = isCorrect ? feedbackColorCorrect : feedbackColorIncorrect;
           if (feedbackDurationMs > 0) {
             this.jsPsych.pluginAPI.setTimeout(() => {
               if (feedbackEl) feedbackEl.textContent = '';
