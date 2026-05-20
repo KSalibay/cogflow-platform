@@ -1327,22 +1327,21 @@ class TimelineBuilder {
                 if (durationMs && gapMax > 0) {
                     effectiveMax = Math.max(0, Math.floor(durationMs / gapMax));
                     risky = probeCount > effectiveMax;
-                } else if (gapMax > 0) {
-                    // No duration metadata in this editor context: still flag clearly extreme settings.
-                    risky = probeCount >= 50;
                 }
 
-                mwWarningEl.classList.toggle('d-none', !risky);
-                if (!risky) {
-                    mwWarningEl.textContent = 'Your block appears to be short; probes will appear more often to honor the number of probes you selected; you may want to reduce the number.';
+                mwWarningEl.classList.remove('d-none');
+                mwWarningEl.classList.remove('alert-warning', 'alert-info');
+                mwWarningEl.classList.add(risky ? 'alert-warning' : 'alert-info');
+
+                if (Number.isFinite(effectiveMax)) {
+                    const prefix = risky
+                        ? 'Your block appears to be short; probes will appear more often to honor the number of probes you selected; you may want to reduce the number.'
+                        : 'Live capacity estimate.';
+                    mwWarningEl.textContent = `${prefix} Selected: ${probeCount}. Estimated maximum that fits this block: ${effectiveMax}.`;
                     return;
                 }
 
-                if (Number.isFinite(effectiveMax)) {
-                    mwWarningEl.textContent = `Your block appears to be short; probes will appear more often to honor the number of probes you selected; you may want to reduce the number. Selected: ${probeCount}. Estimated maximum that fits this block: ${effectiveMax}.`;
-                } else {
-                    mwWarningEl.textContent = 'Your block appears to be short; probes will appear more often to honor the number of probes you selected; you may want to reduce the number.';
-                }
+                mwWarningEl.textContent = 'Live capacity estimate unavailable here because block/session duration is not known in this editor context.';
             };
 
             [probeCountEl, minGapEl, maxGapEl].forEach((el) => {

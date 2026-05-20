@@ -439,17 +439,160 @@
           schedule: { has_schedule: false, start_at_ms: 0, end_at_ms: null, _source: 'none' }
         }));
 
+    const inferProbeExpansionSessionMs = () => {
+      if (Number.isFinite(trialMs) && trialMs > 0) return Math.floor(trialMs);
+
+      const estimateEntryMs = (subtaskTypeRaw, rawSubtask) => {
+        const type = (subtaskTypeRaw ?? '').toString().trim().toLowerCase();
+        const s = (rawSubtask && typeof rawSubtask === 'object') ? rawSubtask : {};
+
+        if (type === 'sart-like') return clamp(s.scroll_interval_ms, 100, 10000) || 900;
+        if (type === 'flanker-like') return clamp(s.trial_interval_ms, 300, 10000) || 1400;
+        if (type === 'nback-like') return clamp(s.stimulus_interval_ms, 200, 10000) || 1200;
+        if (type === 'wcst-like') {
+          const rw = clamp(s.response_window_ms, 200, 20000) || 3500;
+          const iti = clamp(s.iti_ms ?? s.trial_interval_ms, 0, 20000) || 200;
+          return Math.max(250, rw + iti);
+        }
+        if (type === 'pvt-like') return clamp(s.log_scroll_interval_ms ?? s.scroll_interval_ms, 50, 5000) || 400;
+        if (type === 'soc-inline-html-keyboard' || type === 'html-keyboard-response' || type === 'instructions') {
+          const td = Number(s.trial_duration ?? s.trial_duration_ms ?? s.duration_ms);
+          if (Number.isFinite(td) && td > 0) return Math.max(250, Math.floor(td));
+          return 4000;
+        }
+        return 1000;
+      };
+
+      let totalMs = 0;
+      for (const s of subtasks) {
+        const type = (s?.type ?? '').toString().trim().toLowerCase();
+        if (type === 'mw-probe') continue;
+
+        const durationMode = normalizeSocSubtaskDurationMode(s?.subtask_duration_mode ?? sessionSubtaskDurationMode);
+        const entriesRaw = Number(s?.subtask_duration_entries);
+        const entries = (Number.isFinite(entriesRaw) && entriesRaw > 0)
+          ? Math.floor(entriesRaw)
+          : sessionSubtaskDurationEntries;
+
+        let estMs = 0;
+        if (durationMode === 'entries' && entries > 0) {
+          estMs = Math.max(1, Math.floor(entries * estimateEntryMs(type, s)));
+        } else {
+          const durationRaw = Number(s?.duration_ms);
+          const trialDurRaw = Number(s?.trial_duration_ms ?? s?.trial_duration);
+          const minRunRaw = Number(s?.min_run_ms);
+          const maxRunRaw = Number(s?.max_run_ms);
+          if (Number.isFinite(durationRaw) && durationRaw > 0) estMs = Math.max(1, Math.floor(durationRaw));
+          else if (Number.isFinite(trialDurRaw) && trialDurRaw > 0) estMs = Math.max(1, Math.floor(trialDurRaw));
+          else if (Number.isFinite(minRunRaw) && minRunRaw > 0 && Number.isFinite(maxRunRaw) && maxRunRaw > 0) estMs = Math.max(1, Math.floor((Math.min(minRunRaw, maxRunRaw) + Math.max(minRunRaw, maxRunRaw)) / 2));
+          else if (Number.isFinite(minRunRaw) && minRunRaw > 0) estMs = Math.max(1, Math.floor(minRunRaw));
+          else if (Number.isFinite(maxRunRaw) && maxRunRaw > 0) estMs = Math.max(1, Math.floor(maxRunRaw));
+          else estMs = Math.max(1, Math.floor(estimateEntryMs(type, s)));
+        }
+
+        totalMs += estMs;
+      }
+
+      return totalMs > 0 ? Math.ceil(totalMs) : null;
+    };
+
+    const probeExpansionTrialMs = inferProbeExpansionSessionMs();
+
     // Expand MW-probe interval-only subtasks into repeated probes across the SOC session.
     // This supports "probe every X-Y ms" behavior without requiring manual duplication.
     // SEMANTICS: global_interval_min/max_ms define the gap between consecutive probes.
     // The first probe is delayed by a random value within this interval from time 0.
-    if (Number.isFinite(trialMs) && trialMs > 0) {
+    if (Number.isFinite(probeExpansionTrialMs) && probeExpansionTrialMs > 0) {
+      const sessionMs = Math.max(1, Math.floor(probeExpansionTrialMs));
+      const estimateProbeEntryDurationMs = (subtaskTypeRaw, rawSubtask) => {
+        const type = (subtaskTypeRaw ?? '').toString().trim().toLowerCase();
+        const s = (rawSubtask && typeof rawSubtask === 'object') ? rawSubtask : {};
+
+        if (type === 'sart-like') {
+          return clamp(s.scroll_interval_ms, 100, 10000) || 900;
+        }
+        if (type === 'flanker-like') {
+          return clamp(s.trial_interval_ms, 300, 10000) || 1400;
+        }
+        if (type === 'nback-like') {
+          return clamp(s.stimulus_interval_ms, 200, 10000) || 1200;
+        }
+        if (type === 'wcst-like') {
+          const rw = clamp(s.response_window_ms, 200, 20000) || 3500;
+          const iti = clamp(s.iti_ms ?? s.trial_interval_ms, 0, 20000) || 200;
+          return Math.max(250, rw + iti);
+        }
+        if (type === 'pvt-like') {
+          return clamp(s.log_scroll_interval_ms ?? s.scroll_interval_ms, 50, 5000) || 400;
+        }
+        if (type === 'soc-inline-html-keyboard' || type === 'html-keyboard-response' || type === 'instructions') {
+          const td = Number(s.trial_duration ?? s.trial_duration_ms ?? s.duration_ms);
+          if (Number.isFinite(td) && td > 0) return Math.max(250, Math.floor(td));
+          return 4000;
+        }
+        return 1000;
+      };
+
+      const estimateProbeAnchorDurationMs = (wSpec) => {
+        const s = (wSpec?.subtask && typeof wSpec.subtask === 'object') ? wSpec.subtask : {};
+        const type = (wSpec?.subtask_type ?? '').toString();
+        const typeNorm = type.trim().toLowerCase();
+
+        // MW-probe windows are interruptions and should not advance the timeline cursor.
+        if (typeNorm === 'mw-probe') return 0;
+
+        const durationMode = normalizeSocSubtaskDurationMode(s.subtask_duration_mode ?? sessionSubtaskDurationMode);
+        const hasExplicitEntries = (s.subtask_duration_entries !== undefined && s.subtask_duration_entries !== null);
+
+        if (durationMode === 'entries' || hasExplicitEntries) {
+          const entriesRaw = Number(s.subtask_duration_entries);
+          const entries = (Number.isFinite(entriesRaw) && entriesRaw > 0)
+            ? Math.floor(entriesRaw)
+            : sessionSubtaskDurationEntries;
+          if (entries > 0) {
+            return Math.max(1, Math.floor(entries * estimateProbeEntryDurationMs(type, s)));
+          }
+        }
+
+        const durationRaw = Number(s.duration_ms);
+        if (Number.isFinite(durationRaw) && durationRaw > 0) {
+          return Math.max(1, Math.floor(durationRaw));
+        }
+
+        const trialDurRaw = Number(s.trial_duration_ms ?? s.trial_duration);
+        if (Number.isFinite(trialDurRaw) && trialDurRaw > 0) {
+          return Math.max(1, Math.floor(trialDurRaw));
+        }
+
+        const minRunRaw = Number(s.min_run_ms);
+        const maxRunRaw = Number(s.max_run_ms);
+        if (Number.isFinite(minRunRaw) && minRunRaw > 0 && Number.isFinite(maxRunRaw) && maxRunRaw > 0) {
+          return Math.max(1, Math.floor((Math.min(minRunRaw, maxRunRaw) + Math.max(minRunRaw, maxRunRaw)) / 2));
+        }
+        if (Number.isFinite(minRunRaw) && minRunRaw > 0) {
+          return Math.max(1, Math.floor(minRunRaw));
+        }
+        if (Number.isFinite(maxRunRaw) && maxRunRaw > 0) {
+          return Math.max(1, Math.floor(maxRunRaw));
+        }
+
+        if (sessionMs > 0 && windowsSpec.length > 0) {
+          return Math.max(1, Math.floor(sessionMs / windowsSpec.length));
+        }
+
+        return Math.max(1, Math.floor(estimateProbeEntryDurationMs(type, s)));
+      };
+
       const expanded = [];
+      let timelineOrderCursorMs = 0;
       for (const w of windowsSpec) {
         const stType = (w?.subtask_type ?? '').toString().toLowerCase();
         const sch = w?.schedule || { has_schedule: false, start_at_ms: 0, end_at_ms: null, _source: 'none' };
         if (stType !== 'mw-probe' || sch._source !== 'mw_interval_fallback') {
           expanded.push(w);
+          if (stType !== 'mw-probe') {
+            timelineOrderCursorMs += estimateProbeAnchorDurationMs(w);
+          }
           continue;
         }
 
@@ -483,33 +626,34 @@
         const requestedProbeCount = Number.isFinite(requestedProbeCountRaw)
           ? Math.max(0, Math.min(100, Math.round(requestedProbeCountRaw)))
           : 0;
-        const maxByDuration = (trialMs > 0 && minGap > 0)
-          ? Math.max(0, Math.floor(trialMs / minGap))
-          : requestedProbeCount;
-        // effectiveProbeCount caps the number but never drives the branch logic.
-        // Use requestedProbeCount === 0 to detect "continuous emission" intent.
-        const effectiveProbeCount = (requestedProbeCount > 0)
-          ? Math.max(1, Math.min(requestedProbeCount, maxByDuration))
+        // Preserve researcher intent: when count is explicitly provided,
+        // schedule exactly that many probes (compressed if needed).
+        const effectiveProbeCount = requestedProbeCount > 0
+          ? requestedProbeCount
           : 0;
 
         const durRaw = Number(subtask.duration_ms);
         const probeDurationMs = (Number.isFinite(durRaw) && durRaw > 0)
           ? Math.max(1, Math.floor(durRaw))
           : null;
+        const emittedStarts = new Set();
 
         // Helper to emit a probe at a specific time
         const emitProbeAt = (startAtMs) => {
-          if (!(startAtMs >= 0 && startAtMs < trialMs)) return false;
+          if (!(startAtMs >= 0 && startAtMs < sessionMs)) return false;
+          const roundedStart = Math.max(0, Math.floor(startAtMs));
+          if (emittedStarts.has(roundedStart)) return false;
+          emittedStarts.add(roundedStart);
 
           const endAt = Number.isFinite(probeDurationMs)
-            ? Math.min(trialMs, startAtMs + probeDurationMs)
+            ? Math.min(sessionMs, roundedStart + probeDurationMs)
             : null;
 
           expanded.push({
             ...w,
             schedule: {
               has_schedule: true,
-              start_at_ms: Math.max(0, Math.floor(startAtMs)),
+              start_at_ms: roundedStart,
               end_at_ms: endAt,
               _source: 'explicit'
             }
@@ -517,13 +661,17 @@
           return true;
         };
 
+        // Anchor fallback scheduling to the probe's position in timeline order,
+        // so the first probe is delayed relative to where the probe is authored.
+        const baseStartMs = Math.max(0, Math.floor(timelineOrderCursorMs));
+
         // CORE LOGIC: Calculate probe schedule with structured rules
         let emitted = 0;
 
         if (requestedProbeCount <= 0) {
           // No explicit count: emit probes continuously at gapMin-gapMax intervals
-          let currentTime = Math.round(minGap + Math.random() * (maxGap - minGap));
-          while (currentTime < trialMs && emitted < 100) {
+          let currentTime = Math.round(baseStartMs + minGap + Math.random() * (maxGap - minGap));
+          while (currentTime < sessionMs && emitted < 100) {
             if (emitProbeAt(currentTime)) {
               emitted += 1;
             }
@@ -533,7 +681,8 @@
           }
         } else if (effectiveProbeCount === 1) {
           // Single probe: schedule at a random time within the interval
-          const singleTime = Math.round(minGap + Math.random() * (maxGap - minGap));
+          const singleTimeRaw = Math.round(baseStartMs + minGap + Math.random() * (maxGap - minGap));
+          const singleTime = Math.max(baseStartMs, Math.min(sessionMs - 1, singleTimeRaw));
           if (emitProbeAt(singleTime)) {
             emitted += 1;
           }
@@ -542,22 +691,43 @@
           // Goal: distribute N probes across the available time with roughly equal spacing
           // and random jitter to avoid rhythmic predictability
 
-          const availableMs = trialMs - minGap; // Leave minGap of safety at the end
-          const idealGapMs = availableMs / effectiveProbeCount;
+          const remainingMs = Math.max(0, sessionMs - baseStartMs);
+          const maxNaturalByMinGap = (minGap > 0) ? Math.floor(remainingMs / minGap) : effectiveProbeCount;
+          const needCompressed = effectiveProbeCount > maxNaturalByMinGap;
 
-          // Clamp ideal gap to the user-specified range
-          const effectiveGap = Math.max(minGap, Math.min(maxGap, idealGapMs));
+          if (!needCompressed) {
+            // Natural jitter scheduling with guardrails so remaining probes still fit.
+            let currentTime = Math.round(baseStartMs + minGap + Math.random() * (maxGap - minGap));
+            for (let i = 0; i < effectiveProbeCount; i++) {
+              const probesLeftAfter = effectiveProbeCount - i - 1;
+              const latestAllowedStart = Math.max(baseStartMs, sessionMs - (probesLeftAfter * minGap) - 1);
+              currentTime = Math.min(currentTime, latestAllowedStart);
 
-          let currentTime = Math.round(minGap + Math.random() * Math.min(maxGap - minGap, effectiveGap * 0.5));
-          for (let i = 0; i < effectiveProbeCount; i++) {
-            if (currentTime < trialMs && emitProbeAt(currentTime)) {
-              emitted += 1;
+              if (currentTime < sessionMs && emitProbeAt(currentTime)) {
+                emitted += 1;
+                if (emitted >= effectiveProbeCount) break;
+              }
+
+              if (i < effectiveProbeCount - 1) {
+                currentTime += Math.round(minGap + Math.random() * (maxGap - minGap));
+              }
             }
+          }
 
-            if (i < effectiveProbeCount - 1) {
-              // Add jitter within the gap range, but stay within the ideal spacing
-              const jitter = Math.round(minGap + Math.random() * (maxGap - minGap));
-              currentTime += jitter;
+          // If natural jitter couldn't fit all probes, backfill with compressed/even spacing.
+          if (emitted < effectiveProbeCount && remainingMs > 0) {
+            let remainingToEmit = effectiveProbeCount - emitted;
+            const step = remainingMs / (effectiveProbeCount + 1);
+            let fallbackTime = baseStartMs + step;
+            for (let i = 0; i < effectiveProbeCount && remainingToEmit > 0; i++) {
+              const jitterSpan = Math.max(0, step * 0.15);
+              const jitter = (Math.random() * 2 - 1) * jitterSpan;
+              const candidate = Math.round(fallbackTime + jitter);
+              if (emitProbeAt(Math.max(baseStartMs, Math.min(sessionMs - 1, candidate)))) {
+                emitted += 1;
+                remainingToEmit -= 1;
+              }
+              fallbackTime += step;
             }
           }
         }

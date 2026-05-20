@@ -122,7 +122,7 @@
           <div style="height:88px; display:flex; align-items:center; justify-content:center;">
             <div id="sart-stim" style="font-size:72px; line-height:1; width:1.2ch; min-width:1.2ch; min-height:1em; font-weight:800; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; font-variant-numeric: tabular-nums; text-align:center;">${esc(String(digit))}</div>
           </div>
-          <div id="sart-feedback" style="min-height:20px; font-size:14px; font-weight:700; opacity:0.95;"></div>
+          <div id="sart-feedback" style="height:22px; min-height:22px; width:min(100%, 420px); overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font-size:14px; line-height:22px; font-weight:700; opacity:0.95; visibility:hidden;"></div>
           <div style="opacity:0.65; font-size: 12px;">Press ${esc(goKey === ' ' ? 'space' : goKey)} for GO (do not press for ${esc(String(nogoDigit))})</div>
         </div>
       `;
@@ -190,9 +190,13 @@
           const isCorrect = (!isNoGo && k === goKey);
           feedbackEl.textContent = isCorrect ? feedbackTextCorrect : feedbackTextIncorrect;
           feedbackEl.style.color = isCorrect ? feedbackColorCorrect : feedbackColorIncorrect;
+          feedbackEl.style.visibility = 'visible';
           if (feedbackDurationMs > 0) {
             this.jsPsych.pluginAPI.setTimeout(() => {
-              if (feedbackEl) feedbackEl.textContent = '';
+              if (feedbackEl) {
+                feedbackEl.textContent = '';
+                feedbackEl.style.visibility = 'hidden';
+              }
             }, feedbackDurationMs);
           }
         }
