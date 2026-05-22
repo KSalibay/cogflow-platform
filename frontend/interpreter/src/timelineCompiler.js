@@ -439,6 +439,24 @@
         ? block.component_type.trim()
         : 'rdm-trial';
     const canonicalBaseType = (baseType === 'gabor-quest') ? 'gabor-trial' : baseType;
+    const sourceTimelinePath = Array.isArray(block?._source_timeline_path)
+      ? block._source_timeline_path.filter((seg) => Number.isFinite(Number(seg))).map((seg) => Number(seg))
+      : [];
+    const sourceTimelinePathText = sourceTimelinePath.length ? sourceTimelinePath.join('.') : '';
+    const sourceComponentLabel = (block?.label ?? block?.name ?? '').toString().trim();
+    const sourceComponentIdentity = sourceComponentLabel || (sourceTimelinePathText
+      ? `${canonicalBaseType}@${sourceTimelinePathText}`
+      : canonicalBaseType);
+    const applyGeneratedBlockSourceMeta = (trial, trialIndex) => ({
+      ...trial,
+      _generated_from_block: true,
+      _block_index: trialIndex,
+      _source_component_type: canonicalBaseType,
+      _source_component_label: sourceComponentLabel || null,
+      _source_component_identity: sourceComponentIdentity,
+      _source_timeline_path: sourceTimelinePath.slice(),
+      _source_timeline_path_text: sourceTimelinePathText || null
+    });
 
     // N-back: treat Block as the generator (Builder UX).
     // Support legacy `nback-block`, the public alias `nback`, and the older name `nback-trial-sequence`.
@@ -726,7 +744,7 @@
           return null;
         };
 
-        out.push({
+        out.push(applyGeneratedBlockSourceMeta({
           type: 'continuous-image-presentation',
           image_url: imageUrls[idx] || '',
           asset_filename: filenames[idx] || '',
@@ -736,10 +754,8 @@
           image_duration_ms: imageDurationMs,
           transition_duration_ms: transitionDurationMs,
           choices,
-          _generated_from_block: true,
-          _block_index: i,
           _block_source_index: idx
-        });
+        }, i));
       }
 
       return applyMiniblockStructureToTrials(out, block);
@@ -1494,7 +1510,7 @@
 
     const trials = [];
     for (let i = 0; i < length; i++) {
-      const t = { type: canonicalBaseType, _generated_from_block: true, _block_index: i };
+      const t = applyGeneratedBlockSourceMeta({ type: canonicalBaseType }, i);
 
       // Apply fixed values
       for (const [k, v] of Object.entries(values)) {
@@ -2152,6 +2168,9 @@
           const randomNode = {
             type: 'randomize-group',
             randomizable_across_markers: item.randomizable_across_markers !== false,
+            ...(item.pool_across_randomize_groups === true || item.pool_across_randomize_groups === false
+              ? { pool_across_randomize_groups: item.pool_across_randomize_groups === true }
+              : {}),
             ...(randomId ? { random_group_id: randomId } : {}),
             items: []
           };
@@ -2372,8 +2391,21 @@
       return outChunks;
     };
 
+    const annotateChildTimelineSourcePath = (items, parentPath) => {
+      const src = Array.isArray(items) ? items : [];
+      const pathPrefix = Array.isArray(parentPath) ? parentPath : [];
+      return src.map((child, idx) => {
+        if (!isObject(child) || Array.isArray(child._source_timeline_path)) return child;
+        return {
+          ...child,
+          _source_timeline_path: [...pathPrefix, idx]
+        };
+      });
+    };
+
     const globalRandomizeOrder = (opts && opts.globalRandomizeOrder === true && level === 0);
-    const topLevelChunks = chunkItemsForShuffle(inTlNormalized);
+    const tlWithSourcePath = annotateChildTimelineSourcePath(inTlNormalized, []);
+    const topLevelChunks = chunkItemsForShuffle(tlWithSourcePath);
     const orderedTopLevelChunks = globalRandomizeOrder
       ? shuffleChunksPreservingInstructionLike(topLevelChunks)
       : topLevelChunks;
@@ -2382,6 +2414,8 @@
       if (!isObject(node)) return false;
       const t = String(node.type || '');
       if (t !== 'randomize-group' && t !== 'randomize-across-markers') return false;
+      if (node.pool_across_randomize_groups === true) return true;
+      if (node.pool_across_randomize_groups === false) return false;
       // Only pool across sibling groups when explicitly opted in.
       return node.randomizable_across_markers === true;
     };
@@ -2412,9 +2446,10 @@
           : (Array.isArray(item.timeline)
             ? item.timeline
             : (Array.isArray(item.components) ? item.components : []));
+        const childItemsWithSourcePath = annotateChildTimelineSourcePath(childItems, item._source_timeline_path);
 
         for (let i = 0; i < iterations; i++) {
-          out.push(...expandTimeline(childItems, opts, level + 1));
+          out.push(...expandTimeline(childItemsWithSourcePath, opts, level + 1));
         }
         return;
       }
@@ -2425,12 +2460,20 @@
           : (Array.isArray(item.timeline)
             ? item.timeline
             : (Array.isArray(item.components) ? item.components : []));
+        const childItemsWithSourcePath = annotateChildTimelineSourcePath(childItems, item._source_timeline_path);
 
-        const childChunks = chunkItemsForShuffle(childItems, { bundleInstructionRuns: true }).map((chunk) => expandTimeline(chunk, opts, level + 1));
+        const childChunks = chunkItemsForShuffle(childItemsWithSourcePath, { bundleInstructionRuns: true }).map((chunk) => expandTimeline(chunk, opts, level + 1));
         const shouldShuffle = item.randomizable_across_markers !== false;
+        const shouldFlattenPool = item.pool_across_randomize_groups === true;
 
         let orderedChildChunks = childChunks;
         if (shouldShuffle) {
+          if (shouldFlattenPool) {
+            const pooledItems = childChunks.flatMap((chunk) => Array.isArray(chunk) ? chunk : []);
+            orderedChildChunks = shuffleChunksPreservingInstructionLike(
+              chunkItemsForShuffle(pooledItems, { bundleInstructionRuns: true })
+            );
+          } else {
           // For two-way counterbalance groups reused by a parent loop, preserve
           // strict alternation (ABAB or BABA) across repeated expansions.
           const groupKey = String(item.random_group_id || '').trim();
@@ -2458,6 +2501,7 @@
             groupState.flipNext = !groupState.flipNext;
           } else {
             orderedChildChunks = shuffleChunksPreservingInstructionLike(childChunks);
+          }
           }
         }
 
@@ -2540,13 +2584,17 @@
           : (Array.isArray(groupNode.timeline)
             ? groupNode.timeline
             : (Array.isArray(groupNode.components) ? groupNode.components : []));
-        const groupChunks = chunkItemsForShuffle(groupChildItems, { bundleInstructionRuns: true }).map((chunk) => expandTimeline(chunk, opts, level + 1));
+        const groupChildItemsWithSourcePath = annotateChildTimelineSourcePath(groupChildItems, groupNode._source_timeline_path);
+        const groupChunks = chunkItemsForShuffle(groupChildItemsWithSourcePath, { bundleInstructionRuns: true }).map((chunk) => expandTimeline(chunk, opts, level + 1));
         for (const expandedChunk of groupChunks) {
           pooledExpandedChunks.push(expandedChunk);
         }
       }
 
-      const shuffledPool = shuffleChunksPreservingInstructionLike(pooledExpandedChunks);
+      const pooledExpandedItems = pooledExpandedChunks.flatMap((chunk) => Array.isArray(chunk) ? chunk : []);
+      const shuffledPool = shuffleChunksPreservingInstructionLike(
+        chunkItemsForShuffle(pooledExpandedItems, { bundleInstructionRuns: true })
+      );
       for (const expandedChunk of shuffledPool) {
         out.push(...expandedChunk);
       }
@@ -3438,6 +3486,36 @@
       return null;
     };
 
+    const getGeneratedBlockSourceData = (item) => {
+      if (!item || typeof item !== 'object' || item._generated_from_block !== true) {
+        return {
+          _generated_from_block: false,
+          _block_index: null
+        };
+      }
+
+      return {
+        _generated_from_block: true,
+        _block_index: Number.isFinite(item._block_index) ? item._block_index : null,
+        source_component_type: (typeof item._source_component_type === 'string' && item._source_component_type.trim())
+          ? item._source_component_type.trim()
+          : null,
+        source_component_label: (typeof item._source_component_label === 'string' && item._source_component_label.trim())
+          ? item._source_component_label.trim()
+          : null,
+        source_component_identity: (typeof item._source_component_identity === 'string' && item._source_component_identity.trim())
+          ? item._source_component_identity.trim()
+          : null,
+        source_timeline_path: Array.isArray(item._source_timeline_path)
+          ? item._source_timeline_path.filter((seg) => Number.isFinite(Number(seg))).map((seg) => Number(seg))
+          : [],
+        source_timeline_path_text: (typeof item._source_timeline_path_text === 'string' && item._source_timeline_path_text.trim())
+          ? item._source_timeline_path_text.trim()
+          : null,
+        _block_source_index: Number.isFinite(item._block_source_index) ? item._block_source_index : null
+      };
+    };
+
     const scoringBasisLabel = (basis) => {
       const b = (basis || '').toString().trim().toLowerCase();
       if (b === 'reaction_time') return 'Reaction time';
@@ -4262,8 +4340,15 @@
               trial.data = {
                 plugin_type: 'pvt-trial',
                 task_type: 'pvt',
-                _generated_from_block: true,
-                _block_index: state.total_done,
+                ...getGeneratedBlockSourceData({
+                  _generated_from_block: true,
+                  _block_index: state.total_done,
+                  _source_component_type: item._source_component_type,
+                  _source_component_label: item._source_component_label,
+                  _source_component_identity: item._source_component_identity,
+                  _source_timeline_path: item._source_timeline_path,
+                  _source_timeline_path_text: item._source_timeline_path_text
+                }),
                 pvt_target_valid_trials: state.target_valid_trials,
                 pvt_valid_trials_completed_before: state.valid_done,
                 pvt_total_trials_completed_before: state.total_done
@@ -4665,8 +4750,7 @@
           ...(onFinish ? { on_finish: onFinish } : {}),
           data: {
             plugin_type: type,
-            _generated_from_block: !!item._generated_from_block,
-            _block_index: Number.isFinite(item._block_index) ? item._block_index : null
+            ...getGeneratedBlockSourceData(item)
           }
         };
         timeline.push(maybeWrapTrialWithRewardPopups(trial, type));
@@ -4682,7 +4766,7 @@
           type: Flanker,
           post_trial_gap: Number.isFinite(Number(item.iti_ms)) ? Number(item.iti_ms) : 0,
           ...(onFinish ? { on_finish: onFinish } : {}),
-          data: { plugin_type: type, task_type: 'flanker' }
+          data: { plugin_type: type, task_type: 'flanker', ...getGeneratedBlockSourceData(item) }
         };
         timeline.push(maybeWrapTrialWithRewardPopups(trial, type));
         continue;
@@ -4697,7 +4781,7 @@
           type: Sart,
           post_trial_gap: Number.isFinite(Number(item.iti_ms)) ? Number(item.iti_ms) : 0,
           ...(onFinish ? { on_finish: onFinish } : {}),
-          data: { plugin_type: type, task_type: 'sart' }
+          data: { plugin_type: type, task_type: 'sart', ...getGeneratedBlockSourceData(item) }
         };
         timeline.push(maybeWrapTrialWithRewardPopups(trial, type));
         continue;
@@ -4711,7 +4795,7 @@
           ...item,
           type: Mot,
           ...(onFinish ? { on_finish: onFinish } : {}),
-          data: { plugin_type: type, task_type: 'mot' }
+          data: { plugin_type: type, task_type: 'mot', ...getGeneratedBlockSourceData(item) }
         };
         timeline.push(maybeWrapTrialWithRewardPopups(trial, type));
         continue;
@@ -4734,9 +4818,7 @@
             task_type: 'continuous-image',
             stimulus_image_url: item.image_url ?? null,
             stimulus_filename: item.asset_filename ?? null,
-            _generated_from_block: !!item._generated_from_block,
-            _block_index: Number.isFinite(item._block_index) ? item._block_index : null,
-            _block_source_index: Number.isFinite(item._block_source_index) ? item._block_source_index : null
+            ...getGeneratedBlockSourceData(item)
           }
         };
 
@@ -5295,8 +5377,7 @@
           data: {
             plugin_type: type,
             task_type: 'gabor',
-            _generated_from_block: !!item._generated_from_block,
-            _block_index: Number.isFinite(item._block_index) ? item._block_index : null
+            ...getGeneratedBlockSourceData(item)
           }
         };
         timeline.push(maybeWrapTrialWithRewardPopups(trial, type));
@@ -5417,8 +5498,7 @@
           data: {
             plugin_type: type,
             task_type: 'stroop',
-            _generated_from_block: !!item._generated_from_block,
-            _block_index: Number.isFinite(item._block_index) ? item._block_index : null
+            ...getGeneratedBlockSourceData(item)
           }
         };
         timeline.push(maybeWrapTrialWithRewardPopups(trial, type));
@@ -5545,8 +5625,7 @@
             original_type: type,
             word_list_label: wordListLabel || null,
             word_list_index: wordListIndex,
-            _generated_from_block: !!item._generated_from_block,
-            _block_index: Number.isFinite(item._block_index) ? item._block_index : null
+            ...getGeneratedBlockSourceData(item)
           }
         };
         timeline.push(maybeWrapTrialWithRewardPopups(trial, type));
@@ -5670,8 +5749,7 @@
           data: {
             plugin_type: type,
             task_type: 'simon',
-            _generated_from_block: !!item._generated_from_block,
-            _block_index: Number.isFinite(item._block_index) ? item._block_index : null
+            ...getGeneratedBlockSourceData(item)
           }
         };
         timeline.push(maybeWrapTrialWithRewardPopups(trial, type));
@@ -5815,8 +5893,7 @@
           data: {
             plugin_type: type,
             task_type: 'task-switching',
-            _generated_from_block: !!item._generated_from_block,
-            _block_index: Number.isFinite(item._block_index) ? item._block_index : null
+            ...getGeneratedBlockSourceData(item)
           }
         };
 
@@ -5910,8 +5987,7 @@
           data: {
             plugin_type: type,
             task_type: 'pvt',
-            _generated_from_block: !!item._generated_from_block,
-            _block_index: Number.isFinite(item._block_index) ? item._block_index : null
+            ...getGeneratedBlockSourceData(item)
           }
         };
         timeline.push(maybeWrapTrialWithRewardPopups(trial, type));

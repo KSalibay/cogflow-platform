@@ -2748,6 +2748,9 @@ class JsonBuilder {
                         name: 'Randomize Start',
                         random_group_id: markerId,
                         randomizable_across_markers: item.randomizable_across_markers !== false,
+                        ...(item.pool_across_randomize_groups === true || item.pool_across_randomize_groups === false
+                            ? { pool_across_randomize_groups: item.pool_across_randomize_groups === true }
+                            : {}),
                         label: item.label
                     });
                     walk(item.items);
@@ -7733,7 +7736,8 @@ class JsonBuilder {
                 type: 'randomize-start',
                 parameters: {
                     random_group_id: { type: 'string', default: '' },
-                    randomizable_across_markers: { type: 'boolean', default: true }
+                    randomizable_across_markers: { type: 'boolean', default: true },
+                    pool_across_randomize_groups: { type: 'boolean', default: true }
                 }
             },
             {
@@ -11190,6 +11194,9 @@ class JsonBuilder {
                 const randomNode = {
                     type: 'randomize-group',
                     randomizable_across_markers: item.randomizable_across_markers !== false,
+                    ...(item.pool_across_randomize_groups === true || item.pool_across_randomize_groups === false
+                        ? { pool_across_randomize_groups: item.pool_across_randomize_groups === true }
+                        : {}),
                     ...(randomId ? { random_group_id: randomId } : {}),
                     items: []
                 };

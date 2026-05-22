@@ -987,7 +987,10 @@
                 } else {
                     data.name = type === 'randomize-start' ? 'Randomize Start' : 'Randomize End';
                     data.random_group_id = markerId;
-                    if (type === 'randomize-start') data.randomizable_across_markers = true;
+                    if (type === 'randomize-start') {
+                        data.randomizable_across_markers = true;
+                        data.pool_across_randomize_groups = true;
+                    }
                 }
                 if (type === 'loop-start') {
                     data.iterations = Number.isFinite(Number(iterations)) ? Math.max(1, Math.floor(Number(iterations))) : 2;
@@ -1016,6 +1019,104 @@
                 else timelineContainer.appendChild(endMarker);
 
                 if (window.jsonBuilderInstance) window.jsonBuilderInstance.updateJSON();
+            };
+
+            const ensureRandomizationGroupModal = () => {
+                let modalEl = document.getElementById('randomizationGroupModal');
+                if (modalEl) return modalEl;
+
+                modalEl = document.createElement('div');
+                modalEl.className = 'modal fade';
+                modalEl.id = 'randomizationGroupModal';
+                modalEl.tabIndex = -1;
+                modalEl.setAttribute('aria-hidden', 'true');
+                modalEl.innerHTML = `
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Randomization Group Options</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <p class="mb-2">Choose how items inside this shuffle bracket should be randomized:</p>
+                                <div class="mb-3">
+                                    <label class="form-label" for="randomizeGroupIdInput">Randomization Group ID</label>
+                                    <input type="text" class="form-control" id="randomizeGroupIdInput" placeholder="e.g. randomize_group_A">
+                                    <div class="form-text">Stored as <code>random_group_id</code> on the start/end markers.</div>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="radio" name="randomizeGroupMode" id="randomizeModeBetween" value="between_blocks">
+                                    <label class="form-check-label" for="randomizeModeBetween">
+                                        Randomize Between Blocks
+                                    </label>
+                                    <div class="form-text">Shuffle only inside this bracketed group.</div>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="radio" name="randomizeGroupMode" id="randomizeModeAll" value="shuffle_all">
+                                    <label class="form-check-label" for="randomizeModeAll">
+                                        Shuffle Everything Together
+                                    </label>
+                                    <div class="form-text">Pool sibling shuffle groups and randomize them together.</div>
+                                </div>
+                            </div>
+                            <div class="modal-footer d-flex justify-content-between">
+                                <button type="button" class="btn btn-outline-danger" id="removeRandomizationGroupBtn">Remove Group</button>
+                                <div class="d-flex gap-2">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                    <button type="button" class="btn btn-primary" id="saveRandomizationGroupBtn">Save</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                document.body.appendChild(modalEl);
+                return modalEl;
+            };
+
+            const openRandomizationGroupModal = (group, onSave, onRemove) => {
+                const modalEl = ensureRandomizationGroupModal();
+                const betweenEl = modalEl.querySelector('#randomizeModeBetween');
+                const allEl = modalEl.querySelector('#randomizeModeAll');
+                const groupIdEl = modalEl.querySelector('#randomizeGroupIdInput');
+                const saveBtn = modalEl.querySelector('#saveRandomizationGroupBtn');
+                const removeBtn = modalEl.querySelector('#removeRandomizationGroupBtn');
+
+                const startData = parseComponentData(group.startEl);
+                const mode = startData.pool_across_randomize_groups === false ? 'between_blocks' : 'shuffle_all';
+                if (betweenEl) betweenEl.checked = mode === 'between_blocks';
+                if (allEl) allEl.checked = mode === 'shuffle_all';
+                if (groupIdEl) {
+                    const currentGroupId = (startData.random_group_id ?? group.groupId ?? '').toString().trim();
+                    groupIdEl.value = currentGroupId;
+                }
+
+                const bsModal = new bootstrap.Modal(modalEl);
+
+                const cleanup = () => {
+                    if (saveBtn) saveBtn.onclick = null;
+                    if (removeBtn) removeBtn.onclick = null;
+                    modalEl.removeEventListener('hidden.bs.modal', cleanup);
+                };
+
+                if (saveBtn) {
+                    saveBtn.onclick = () => {
+                        const selectedMode = allEl && allEl.checked ? 'shuffle_all' : 'between_blocks';
+                        const typedGroupId = (groupIdEl?.value ?? '').toString().trim();
+                        onSave({ selectedMode, typedGroupId });
+                        bsModal.hide();
+                    };
+                }
+
+                if (removeBtn) {
+                    removeBtn.onclick = () => {
+                        onRemove();
+                        bsModal.hide();
+                    };
+                }
+
+                modalEl.addEventListener('hidden.bs.modal', cleanup);
+                bsModal.show();
             };
 
             const moveLoopBoundaryToVisibleIndex = (loop, handleType, targetVisibleIdx) => {
@@ -1139,7 +1240,11 @@
                     bracket.style.height = `${Math.max(8, bottom - top)}px`;
                     bracket.dataset.loopKey = key;
                     bracket.dataset.rangeType = 'randomize';
-                    bracket.title = 'Randomize enclosed items once per run • click to remove';
+                    const startData = parseComponentData(group.startEl);
+                    const modeLabel = startData.pool_across_randomize_groups === false
+                        ? 'Randomize Between Blocks'
+                        : 'Shuffle Everything Together';
+                    bracket.title = `${modeLabel} • click to edit`;
 
                     const topHandle = document.createElement('div');
                     topHandle.className = 'timeline-random-handle top';
@@ -1249,14 +1354,42 @@
                     if (!loop) return;
 
                     if (rangeType === 'randomize') {
-                        const ok = window.confirm('Remove this randomization group?');
-                        if (!ok) return;
-                        loop.startEl.remove();
-                        loop.endEl.remove();
-                        if (window.jsonBuilderInstance) {
-                            window.jsonBuilderInstance.updateJSON();
-                        }
-                        refresh();
+                        openRandomizationGroupModal(
+                            loop,
+                            ({ selectedMode, typedGroupId }) => {
+                                const startData = parseComponentData(loop.startEl);
+                                const endData = parseComponentData(loop.endEl);
+                                const currentGroupId = (startData.random_group_id ?? loop.groupId ?? '').toString().trim();
+                                const nextGroupId = typedGroupId || currentGroupId;
+                                const updated = {
+                                    ...startData,
+                                    type: 'randomize-start',
+                                    random_group_id: nextGroupId,
+                                    // Keep within-group randomization enabled in both modes.
+                                    randomizable_across_markers: true,
+                                    pool_across_randomize_groups: selectedMode === 'shuffle_all'
+                                };
+                                const updatedEnd = {
+                                    ...endData,
+                                    type: 'randomize-end',
+                                    random_group_id: nextGroupId
+                                };
+                                loop.startEl.dataset.componentData = JSON.stringify(updated);
+                                loop.endEl.dataset.componentData = JSON.stringify(updatedEnd);
+                                if (window.jsonBuilderInstance) {
+                                    window.jsonBuilderInstance.updateJSON();
+                                }
+                                refresh();
+                            },
+                            () => {
+                                loop.startEl.remove();
+                                loop.endEl.remove();
+                                if (window.jsonBuilderInstance) {
+                                    window.jsonBuilderInstance.updateJSON();
+                                }
+                                refresh();
+                            }
+                        );
                         return;
                     }
 
