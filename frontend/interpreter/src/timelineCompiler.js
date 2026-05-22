@@ -2719,14 +2719,30 @@
         .sort((a, b) => a - b);
       const dedupedInsertIndices = Array.from(new Set(normalizedInsertIndices));
 
-      // Keep exactly one authored mw-probe anchor in compiled SOC helper timelines.
-      // Runtime expansion in jspsych-soc-dashboard.js owns final probe count/spacing.
-      const insertAtSingle = dedupedInsertIndices.length > 0
-        ? dedupedInsertIndices[0]
-        : Math.max(0, Math.min(i, out.length));
-      out.splice(insertAtSingle, 0, probe);
-
-      i = insertAtSingle;
+      if (taskType === 'soc-dashboard') {
+        // Keep exactly one authored mw-probe anchor in compiled SOC helper timelines.
+        // Runtime expansion in jspsych-soc-dashboard.js owns final probe count/spacing.
+        const insertAtSingle = dedupedInsertIndices.length > 0
+          ? dedupedInsertIndices[0]
+          : Math.max(0, Math.min(i, out.length));
+        out.splice(insertAtSingle, 0, probe);
+        i = insertAtSingle;
+      } else {
+        // Non-SOC tasks (e.g., RDM): preserve legacy multi-insert behavior.
+        const probesToInsert = dedupedInsertIndices.length;
+        for (let p = 0; p < probesToInsert; p++) {
+          const insertAt = dedupedInsertIndices[p] + p;
+          const probeClone = (p === 0)
+            ? probe
+            : {
+                ...probe,
+                _mw_probe_instance_index: p + 1,
+                _mw_probe_instances_total: probesToInsert
+              };
+          out.splice(insertAt, 0, probeClone);
+        }
+        i = dedupedInsertIndices[dedupedInsertIndices.length - 1] + Math.max(0, probesToInsert - 1);
+      }
     }
 
     // If an MW probe lands inside an active DRT segment, auto-bracket it with
