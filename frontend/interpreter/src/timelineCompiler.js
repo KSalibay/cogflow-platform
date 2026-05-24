@@ -2090,6 +2090,7 @@
   function expandTimeline(rawTimeline, opts, level = 0) {
     const inTl = Array.isArray(rawTimeline) ? rawTimeline : [];
     const out = [];
+    const taskType = ((opts && opts.taskType) ?? '').toString().trim().toLowerCase();
 
     const shuffleInPlace = (arr) => {
       for (let i = arr.length - 1; i > 0; i--) {
@@ -3059,6 +3060,7 @@
       globalRandomizeOrder: config.randomize_order === true,
       nbackDefaults,
       taskSwitchingDefaults,
+      taskType,
       ...blockLengthOpts
     });
 
