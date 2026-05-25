@@ -1310,36 +1310,113 @@ class TimelineBuilder {
                     if (durationMs > 0) return durationMs;
                 }
 
-                // The mw-probe has no own duration fields. Infer from the nearest adjacent
-                // block in the live timeline by correlating DOM position with timeline index.
+                const estimateDurationFromComponentData = (rawItem) => {
+                    if (!rawItem || typeof rawItem !== 'object') return null;
+
+                    const pv = (rawItem.parameter_values && typeof rawItem.parameter_values === 'object')
+                        ? rawItem.parameter_values
+                        : ((rawItem.parameters && typeof rawItem.parameters === 'object') ? rawItem.parameters : {});
+
+                    const directCandidates = [
+                        rawItem.trial_duration_ms,
+                        rawItem.duration_ms,
+                        rawItem.block_duration_ms,
+                        rawItem.block_duration_seconds !== undefined ? Number(rawItem.block_duration_seconds) * 1000 : null,
+                        rawItem.block_length_ms,
+                        pv.trial_duration_ms,
+                        pv.duration_ms,
+                        pv.block_duration_ms,
+                        pv.block_duration_seconds !== undefined ? Number(pv.block_duration_seconds) * 1000 : null,
+                        pv.block_length_ms
+                    ];
+
+                    for (const candidate of directCandidates) {
+                        const ms = parsePosNum(candidate);
+                        if (ms > 0) return ms;
+                    }
+
+                    const bySeconds = parsePosNum(rawItem.block_duration_seconds ?? pv.block_duration_seconds);
+                    if (bySeconds > 0) return bySeconds * 1000;
+
+                    const blockLike = (rawItem.type === 'block')
+                        || rawItem.block_component_type !== undefined
+                        || rawItem.component_type !== undefined
+                        || pv.block_length !== undefined
+                        || rawItem.block_length !== undefined
+                        || rawItem.length !== undefined;
+                    if (!blockLike) return null;
+
+                    const trialDurationMs = parsePosNum(
+                        rawItem.trial_duration_ms
+                        ?? pv.trial_duration_ms
+                        ?? rawItem.stimulus_duration_ms
+                        ?? pv.stimulus_duration_ms
+                    );
+                    const itiMs = parsePosNum(
+                        rawItem.iti_ms
+                        ?? pv.iti_ms
+                        ?? rawItem.post_trial_gap_ms
+                        ?? pv.post_trial_gap_ms
+                        ?? rawItem.inter_trial_interval_ms
+                        ?? pv.inter_trial_interval_ms
+                    );
+                    const length = parsePosNum(
+                        rawItem.block_length
+                        ?? pv.block_length
+                        ?? rawItem.length
+                        ?? pv.length
+                    );
+
+                    if (length > 0 && trialDurationMs > 0) {
+                        return length * (trialDurationMs + itiMs);
+                    }
+
+                    return null;
+                };
+
+                // The mw-probe has no own duration fields. Infer from nearby items
+                // in the rendered timeline first, then fall back to model timeline.
                 try {
                     const container = componentElement?.parentElement;
-                    const tl = this.jsonBuilder?.timeline;
-                    if (container && Array.isArray(tl)) {
+                    if (container) {
                         const allEls = Array.from(container.querySelectorAll('.timeline-component'));
                         const probeIdx = allEls.indexOf(componentElement);
                         if (probeIdx >= 0) {
                             for (const offset of [-1, 1, -2, 2]) {
-                                const tlItem = tl[probeIdx + offset];
-                                if (!tlItem || tlItem.type !== 'block') continue;
-                                const pv = (tlItem.parameter_values && typeof tlItem.parameter_values === 'object')
-                                    ? tlItem.parameter_values : {};
-                                const trialDurationMs = parsePosNum(pv.trial_duration_ms ?? pv.stimulus_duration_ms);
-                                const itiMs = parsePosNum(pv.iti_ms);
-                                const length = parsePosNum(tlItem.length ?? pv.length);
-                                if (length > 0 && trialDurationMs > 0) {
-                                    return length * (trialDurationMs + itiMs);
+                                const el = allEls[probeIdx + offset];
+                                if (!el) continue;
+                                let neighborData = null;
+                                try {
+                                    neighborData = JSON.parse(el.dataset?.componentData || '{}');
+                                } catch {
+                                    neighborData = null;
                                 }
-                                // Duration-based blocks store seconds
-                                const bySeconds = parsePosNum(tlItem.block_duration_seconds ?? pv.block_duration_seconds);
-                                if (bySeconds > 0) return bySeconds * 1000;
-                                const byMs = parsePosNum(tlItem.block_duration_ms ?? pv.block_duration_ms);
-                                if (byMs > 0) return byMs;
+                                const estimatedMs = estimateDurationFromComponentData(neighborData);
+                                if (estimatedMs > 0) return estimatedMs;
                             }
                         }
                     }
+
+                    const tl = this.jsonBuilder?.timeline;
+                    if (Array.isArray(tl) && tl.length > 0) {
+                        for (const item of tl) {
+                            const estimatedMs = estimateDurationFromComponentData(item);
+                            if (estimatedMs > 0) return estimatedMs;
+                        }
+                    }
+
+                    if (componentElement?.dataset?.componentData) {
+                        let selfData = null;
+                        try {
+                            selfData = JSON.parse(componentElement.dataset.componentData || '{}');
+                        } catch {
+                            selfData = null;
+                        }
+                        const estimatedMs = estimateDurationFromComponentData(selfData);
+                        if (estimatedMs > 0) return estimatedMs;
+                    }
                 } catch {
-                    // best-effort estimate only — ignore any errors
+                    // best-effort estimate only - ignore any errors
                 }
 
                 return null;
