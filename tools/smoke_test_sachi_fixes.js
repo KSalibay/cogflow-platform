@@ -620,6 +620,86 @@ function parseInactivityPrompt(response) {
 }
 
 // ---------------------------------------------------------------------------
+// TEST SECTION 5 — MW PROBE FIRST-TRIAL GUARD (STANDARD TASKS)
+// ---------------------------------------------------------------------------
+section('5. MW probe does not insert before first anchor trial (standard)');
+
+{
+  // block -> mw-probe with tiny interval should target earliest possible slot.
+  // Regression guard: probe must not be inserted before the first generated trial.
+  const tl = [
+    makeBlock('sart-trial', 5, { parameter_values: { trial_duration_ms: 1000 } }),
+    {
+      type: 'mw-probe',
+      global_interval_min_ms: 1,
+      global_interval_max_ms: 1,
+      global_probe_count_per_block: 1,
+    },
+  ];
+
+  const out = expandTimeline(tl, {});
+  const probeIdx = out.findIndex((t) => t && t.type === 'mw-probe');
+  const taskBeforeProbe = out.slice(0, Math.max(0, probeIdx)).filter((t) => t && t.type === 'sart-trial').length;
+
+  assert(
+    'Standard: mw-probe exists after expansion',
+    probeIdx >= 0,
+    `probeIdx=${probeIdx}`
+  );
+  assert(
+    'Standard: mw-probe is not before first generated trial',
+    probeIdx > 0,
+    `probeIdx=${probeIdx}`
+  );
+  assert(
+    'Standard: at least one SART trial precedes first mw-probe',
+    taskBeforeProbe >= 1,
+    `taskBeforeProbe=${taskBeforeProbe}`
+  );
+}
+
+// ---------------------------------------------------------------------------
+// TEST SECTION 6 — MW PROBE FIRST-TRIAL GUARD (SOC HELPER PATH)
+// ---------------------------------------------------------------------------
+section('6. MW probe guard also applies in SOC helper path');
+
+{
+  const tl = [
+    makeBlock('sart-trial', 6, { parameter_values: { trial_duration_ms: 1000 } }),
+    {
+      type: 'mw-probe',
+      global_interval_min_ms: 1,
+      global_interval_max_ms: 1,
+      global_probe_count_per_block: 3,
+    },
+  ];
+
+  const out = expandTimeline(tl, { taskType: 'soc-dashboard' });
+  const probeIndices = out
+    .map((t, i) => (t && t.type === 'mw-probe' ? i : -1))
+    .filter((i) => i >= 0);
+
+  const firstProbeIdx = probeIndices.length ? probeIndices[0] : -1;
+  const taskBeforeFirstProbe = out.slice(0, Math.max(0, firstProbeIdx)).filter((t) => t && t.type === 'sart-trial').length;
+
+  assert(
+    'SOC helper: exactly one authored mw-probe anchor is kept',
+    probeIndices.length === 1,
+    `probeIndices=${JSON.stringify(probeIndices)}`
+  );
+  assert(
+    'SOC helper: retained mw-probe is not before first generated trial',
+    firstProbeIdx > 0,
+    `firstProbeIdx=${firstProbeIdx}`
+  );
+  assert(
+    'SOC helper: at least one SART trial precedes retained mw-probe',
+    taskBeforeFirstProbe >= 1,
+    `taskBeforeFirstProbe=${taskBeforeFirstProbe}`
+  );
+}
+
+// ---------------------------------------------------------------------------
 // SUMMARY
 // ---------------------------------------------------------------------------
 console.log(`\n${'─'.repeat(56)}`);

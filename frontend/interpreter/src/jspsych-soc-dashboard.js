@@ -661,9 +661,20 @@
           return true;
         };
 
-        // Anchor fallback scheduling to the probe's position in timeline order,
-        // so the first probe is delayed relative to where the probe is authored.
-        const baseStartMs = Math.max(0, Math.floor(timelineOrderCursorMs));
+        // For duration_based mode (default, concurrent subtasks), probes should be
+        // distributed across the full session starting from t=0. Only in
+        // timeline_order_based mode (sequential subtasks) should we anchor to the
+        // accumulated cursor so probes fire after the preceding subtask's window.
+        const fallbackScheduledStart = Number(sch.start_at_ms);
+        const baseStartMs = (() => {
+          if (Number.isFinite(fallbackScheduledStart) && fallbackScheduledStart > 0) {
+            return Math.max(0, Math.min(sessionMs - 1, Math.floor(fallbackScheduledStart)));
+          }
+          if (sessionSubtaskControlMode === 'timeline_order_based') {
+            return Math.max(0, Math.min(sessionMs - 1, Math.floor(timelineOrderCursorMs)));
+          }
+          return 0;
+        })();
 
         // CORE LOGIC: Calculate probe schedule with structured rules
         let emitted = 0;

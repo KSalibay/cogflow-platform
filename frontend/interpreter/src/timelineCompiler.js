@@ -2756,6 +2756,14 @@
               break;
             }
           }
+          // When the threshold fires on the very first anchor trial AND that trial
+          // is positioned AFTER the probe's authored position, the normalization step
+          // maps insertAt back to the authored index — placing the probe before the
+          // entire anchor block (premature). Advance to the second anchor trial so
+          // the probe fires after at least one task trial instead.
+          if (insertAt === generatedIdx[0] && generatedIdx.length > 1) {
+            insertAt = generatedIdx[1];
+          }
           targetIndices.push(insertAt);
         }
       }
