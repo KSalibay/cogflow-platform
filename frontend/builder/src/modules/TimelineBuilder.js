@@ -1472,6 +1472,27 @@ class TimelineBuilder {
                     // best-effort estimate only - ignore any errors
                 }
 
+                // Final fallback: infer from the Builder's current generated config.
+                // This avoids DOM/dataset shape mismatches and reflects the JSON preview.
+                try {
+                    const generated = (typeof this.jsonBuilder?.generateJSON === 'function')
+                        ? this.jsonBuilder.generateJSON()
+                        : null;
+                    const tl = Array.isArray(generated?.timeline) ? generated.timeline : [];
+                    for (const item of tl) {
+                        const estimatedMs = estimateDurationFromComponentData(item);
+                        if (estimatedMs > 0) return estimatedMs;
+                    }
+
+                    const sessionMs = parsePosNum(generated?.soc_dashboard_settings?.trial_duration_ms);
+                    if (sessionMs > 0) return sessionMs;
+
+                    const globalDurationSec = parsePosNum(generated?.duration);
+                    if (globalDurationSec > 0) return globalDurationSec * 1000;
+                } catch {
+                    // best-effort estimate only - ignore any errors
+                }
+
                 return null;
             };
 
