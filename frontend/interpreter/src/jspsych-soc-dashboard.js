@@ -666,15 +666,12 @@
         // timeline_order_based mode (sequential subtasks) should we anchor to the
         // accumulated cursor so probes fire after the preceding subtask's window.
         const fallbackScheduledStart = Number(sch.start_at_ms);
-        const baseStartMs = (() => {
-          if (Number.isFinite(fallbackScheduledStart) && fallbackScheduledStart > 0) {
-            return Math.max(0, Math.min(sessionMs - 1, Math.floor(fallbackScheduledStart)));
-          }
-          if (sessionSubtaskControlMode === 'timeline_order_based') {
-            return Math.max(0, Math.min(sessionMs - 1, Math.floor(timelineOrderCursorMs)));
-          }
-          return 0;
-        })();
+        const seededStartMs = (Number.isFinite(fallbackScheduledStart) && fallbackScheduledStart > 0)
+          ? Math.max(0, Math.min(sessionMs - 1, Math.floor(fallbackScheduledStart)))
+          : null;
+        const baseStartMs = (sessionSubtaskControlMode === 'timeline_order_based')
+          ? Math.max(0, Math.min(sessionMs - 1, Math.floor(timelineOrderCursorMs)))
+          : 0;
 
         // CORE LOGIC: Calculate probe schedule with structured rules
         let emitted = 0;
@@ -691,8 +688,11 @@
             currentTime += step;
           }
         } else if (effectiveProbeCount === 1) {
-          // Single probe: schedule at a random time within the interval
-          const singleTimeRaw = Math.round(baseStartMs + minGap + Math.random() * (maxGap - minGap));
+          // Single probe: if coerceSchedule already provided a seeded interval start,
+          // use it directly so we do not apply interval jitter twice.
+          const singleTimeRaw = (seededStartMs !== null)
+            ? seededStartMs
+            : Math.round(baseStartMs + minGap + Math.random() * (maxGap - minGap));
           const singleTime = Math.max(baseStartMs, Math.min(sessionMs - 1, singleTimeRaw));
           if (emitProbeAt(singleTime)) {
             emitted += 1;
