@@ -1310,6 +1310,38 @@ class TimelineBuilder {
                     if (durationMs > 0) return durationMs;
                 }
 
+                // The mw-probe has no own duration fields. Infer from the nearest adjacent
+                // block in the live timeline by correlating DOM position with timeline index.
+                try {
+                    const container = componentElement?.parentElement;
+                    const tl = this.jsonBuilder?.timeline;
+                    if (container && Array.isArray(tl)) {
+                        const allEls = Array.from(container.querySelectorAll('.timeline-component'));
+                        const probeIdx = allEls.indexOf(componentElement);
+                        if (probeIdx >= 0) {
+                            for (const offset of [-1, 1, -2, 2]) {
+                                const tlItem = tl[probeIdx + offset];
+                                if (!tlItem || tlItem.type !== 'block') continue;
+                                const pv = (tlItem.parameter_values && typeof tlItem.parameter_values === 'object')
+                                    ? tlItem.parameter_values : {};
+                                const trialDurationMs = parsePosNum(pv.trial_duration_ms ?? pv.stimulus_duration_ms);
+                                const itiMs = parsePosNum(pv.iti_ms);
+                                const length = parsePosNum(tlItem.length ?? pv.length);
+                                if (length > 0 && trialDurationMs > 0) {
+                                    return length * (trialDurationMs + itiMs);
+                                }
+                                // Duration-based blocks store seconds
+                                const bySeconds = parsePosNum(tlItem.block_duration_seconds ?? pv.block_duration_seconds);
+                                if (bySeconds > 0) return bySeconds * 1000;
+                                const byMs = parsePosNum(tlItem.block_duration_ms ?? pv.block_duration_ms);
+                                if (byMs > 0) return byMs;
+                            }
+                        }
+                    }
+                } catch {
+                    // best-effort estimate only — ignore any errors
+                }
+
                 return null;
             };
 
