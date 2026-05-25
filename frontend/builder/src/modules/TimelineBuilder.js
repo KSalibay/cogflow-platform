@@ -1283,6 +1283,8 @@ class TimelineBuilder {
         if (isMwProbe) {
             const mwWarningEl = modalBody.querySelector('#mw_probe_warning');
             const probeCountEl = modalBody.querySelector('#mw_global_probe_count_per_block');
+            const minFromStartEl = modalBody.querySelector('#mw_min_interval_ms');
+            const maxFromStartEl = modalBody.querySelector('#mw_max_interval_ms');
             const minGapEl = modalBody.querySelector('#mw_global_interval_min_ms');
             const maxGapEl = modalBody.querySelector('#mw_global_interval_max_ms');
 
@@ -1313,6 +1315,25 @@ class TimelineBuilder {
                 const estimateDurationFromComponentData = (rawItem) => {
                     if (!rawItem || typeof rawItem !== 'object') return null;
 
+                    const typeNorm = String(rawItem.type || '').trim().toLowerCase();
+
+                    const estimateSocEntryDurationMs = (socType) => {
+                        const t = String(socType || '').trim().toLowerCase().replace(/^soc-subtask-/, '');
+                        if (t === 'sart-like') return parsePosNum(rawItem.scroll_interval_ms ?? pv.scroll_interval_ms) || 900;
+                        if (t === 'flanker-like') return parsePosNum(rawItem.trial_interval_ms ?? pv.trial_interval_ms) || 1400;
+                        if (t === 'nback-like') return parsePosNum(rawItem.stimulus_interval_ms ?? pv.stimulus_interval_ms) || 1200;
+                        if (t === 'wcst-like') {
+                            const rw = parsePosNum(rawItem.response_window_ms ?? pv.response_window_ms) || 3500;
+                            const iti = parsePosNum(rawItem.iti_ms ?? pv.iti_ms ?? rawItem.trial_interval_ms ?? pv.trial_interval_ms) || 200;
+                            return rw + iti;
+                        }
+                        if (t === 'pvt-like') return parsePosNum(rawItem.log_scroll_interval_ms ?? pv.log_scroll_interval_ms ?? rawItem.scroll_interval_ms ?? pv.scroll_interval_ms) || 400;
+                        if (t === 'soc-inline-html-keyboard' || t === 'html-keyboard-response' || t === 'instructions') {
+                            return parsePosNum(rawItem.trial_duration_ms ?? pv.trial_duration_ms ?? rawItem.trial_duration ?? pv.trial_duration ?? rawItem.duration_ms ?? pv.duration_ms) || 4000;
+                        }
+                        return 1000;
+                    };
+
                     const pv = (rawItem.parameter_values && typeof rawItem.parameter_values === 'object')
                         ? rawItem.parameter_values
                         : ((rawItem.parameters && typeof rawItem.parameters === 'object') ? rawItem.parameters : {});
@@ -1337,6 +1358,38 @@ class TimelineBuilder {
 
                     const bySeconds = parsePosNum(rawItem.block_duration_seconds ?? pv.block_duration_seconds);
                     if (bySeconds > 0) return bySeconds * 1000;
+
+                    const socTypeRaw = String(rawItem.type ?? rawItem.subtask_type ?? '').trim();
+                    const socDurationMode = String(rawItem.subtask_duration_mode ?? pv.subtask_duration_mode ?? '').trim().toLowerCase();
+                    const socEntries = parsePosNum(rawItem.subtask_duration_entries ?? pv.subtask_duration_entries);
+                    const isSocLike = socTypeRaw.toLowerCase().startsWith('soc-subtask-')
+                        || socTypeRaw.toLowerCase().endsWith('-like')
+                        || socTypeRaw.toLowerCase() === 'soc-inline-html-keyboard'
+                        || typeNorm === 'soc-inline-html-keyboard';
+
+                    if (isSocLike) {
+                        if ((socDurationMode === 'entries' || socEntries > 0) && socEntries > 0) {
+                            const entryMs = estimateSocEntryDurationMs(socTypeRaw || typeNorm);
+                            if (entryMs > 0) return socEntries * entryMs;
+                        }
+
+                        const socDurationCandidates = [
+                            rawItem.duration_ms,
+                            pv.duration_ms,
+                            rawItem.trial_duration_ms,
+                            pv.trial_duration_ms,
+                            rawItem.trial_duration,
+                            pv.trial_duration,
+                            rawItem.min_run_ms,
+                            pv.min_run_ms,
+                            rawItem.max_run_ms,
+                            pv.max_run_ms
+                        ];
+                        for (const candidate of socDurationCandidates) {
+                            const ms = parsePosNum(candidate);
+                            if (ms > 0) return ms;
+                        }
+                    }
 
                     const blockLike = (rawItem.type === 'block')
                         || rawItem.block_component_type !== undefined
@@ -1426,9 +1479,16 @@ class TimelineBuilder {
                 if (!mwWarningEl) return;
 
                 const probeCount = Math.max(1, Math.round(parsePosNum(probeCountEl?.value ?? 1)));
+                const singleMinRaw = parsePosNum(minFromStartEl?.value ?? 0);
+                const singleMaxRaw = parsePosNum(maxFromStartEl?.value ?? singleMinRaw);
+                const singleGapMax = Math.max(singleMinRaw, singleMaxRaw);
                 const minRaw = parsePosNum(minGapEl?.value ?? 0);
                 const maxRaw = parsePosNum(maxGapEl?.value ?? minRaw);
-                const gapMax = Math.max(minRaw, maxRaw);
+                const globalGapMax = Math.max(minRaw, maxRaw);
+                let gapMax = probeCount > 1 ? globalGapMax : singleGapMax;
+                if (!(gapMax > 0)) {
+                    gapMax = Math.max(singleGapMax, globalGapMax);
+                }
                 const durationMs = getKnownDurationMs();
 
                 let risky = false;
@@ -1450,10 +1510,15 @@ class TimelineBuilder {
                     return;
                 }
 
+                if (durationMs && !(gapMax > 0)) {
+                    mwWarningEl.textContent = 'Set a max interval greater than 0 to compute a live capacity estimate.';
+                    return;
+                }
+
                 mwWarningEl.textContent = 'Live capacity estimate unavailable here because block/session duration is not known in this editor context.';
             };
 
-            [probeCountEl, minGapEl, maxGapEl].forEach((el) => {
+            [probeCountEl, minFromStartEl, maxFromStartEl, minGapEl, maxGapEl].forEach((el) => {
                 if (el) el.addEventListener('input', updateMwProbeWarning);
             });
 
