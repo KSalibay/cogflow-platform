@@ -638,15 +638,55 @@
           : null;
         const emittedStarts = new Set();
 
+        const findProbeAnchorWindowRange = () => {
+          if (sessionSubtaskControlMode !== 'duration_based') {
+            return { anchorStartMs: 0, anchorEndMs: sessionMs };
+          }
+
+          // In duration-based mode, interval-only probes authored after a specific
+          // subtask should use that subtask window as their timing anchor when possible.
+          // This prevents "first probe appears too early" behavior in mixed timelines.
+          let prevScheduled = null;
+          for (let p = expanded.length - 1; p >= 0; p--) {
+            const candidate = expanded[p];
+            const cType = (candidate?.subtask_type ?? '').toString().trim().toLowerCase();
+            if (cType === 'mw-probe') continue;
+
+            const cSchedule = candidate?.schedule || {};
+            if (cSchedule.has_schedule !== true) continue;
+
+            const cStartRaw = Number(cSchedule.start_at_ms);
+            if (!Number.isFinite(cStartRaw) || cStartRaw < 0) continue;
+
+            prevScheduled = candidate;
+            break;
+          }
+
+          if (!prevScheduled) return { anchorStartMs: 0, anchorEndMs: sessionMs };
+
+          const pSchedule = prevScheduled.schedule || {};
+          const startRaw = Number(pSchedule.start_at_ms);
+          const endRaw = Number(pSchedule.end_at_ms);
+
+          const anchorStartMs = Math.max(0, Math.min(sessionMs - 1, Math.floor(startRaw)));
+          const anchorEndMs = (Number.isFinite(endRaw) && endRaw > anchorStartMs)
+            ? Math.max(anchorStartMs + 1, Math.min(sessionMs, Math.floor(endRaw)))
+            : sessionMs;
+
+          return { anchorStartMs, anchorEndMs };
+        };
+
+        const { anchorStartMs, anchorEndMs } = findProbeAnchorWindowRange();
+
         // Helper to emit a probe at a specific time
         const emitProbeAt = (startAtMs) => {
-          if (!(startAtMs >= 0 && startAtMs < sessionMs)) return false;
-          const roundedStart = Math.max(0, Math.floor(startAtMs));
+          if (!(startAtMs >= anchorStartMs && startAtMs < anchorEndMs)) return false;
+          const roundedStart = Math.max(anchorStartMs, Math.floor(startAtMs));
           if (emittedStarts.has(roundedStart)) return false;
           emittedStarts.add(roundedStart);
 
           const endAt = Number.isFinite(probeDurationMs)
-            ? Math.min(sessionMs, roundedStart + probeDurationMs)
+            ? Math.min(anchorEndMs, roundedStart + probeDurationMs)
             : null;
 
           expanded.push({
@@ -667,11 +707,11 @@
         // accumulated cursor so probes fire after the preceding subtask's window.
         const fallbackScheduledStart = Number(sch.start_at_ms);
         const seededStartMs = (Number.isFinite(fallbackScheduledStart) && fallbackScheduledStart > 0)
-          ? Math.max(0, Math.min(sessionMs - 1, Math.floor(fallbackScheduledStart)))
+          ? Math.max(anchorStartMs, Math.min(anchorEndMs - 1, Math.floor(fallbackScheduledStart)))
           : null;
         const baseStartMs = (sessionSubtaskControlMode === 'timeline_order_based')
           ? Math.max(0, Math.min(sessionMs - 1, Math.floor(timelineOrderCursorMs)))
-          : 0;
+          : anchorStartMs;
 
         // CORE LOGIC: Calculate probe schedule with structured rules
         let emitted = 0;
@@ -679,7 +719,7 @@
         if (requestedProbeCount <= 0) {
           // No explicit count: emit probes continuously at gapMin-gapMax intervals
           let currentTime = Math.round(baseStartMs + minGap + Math.random() * (maxGap - minGap));
-          while (currentTime < sessionMs && emitted < 100) {
+          while (currentTime < anchorEndMs && emitted < 100) {
             if (emitProbeAt(currentTime)) {
               emitted += 1;
             }
@@ -690,10 +730,14 @@
         } else if (effectiveProbeCount === 1) {
           // Single probe: if coerceSchedule already provided a seeded interval start,
           // use it directly so we do not apply interval jitter twice.
-          const singleTimeRaw = (seededStartMs !== null)
+          // Seeded start values from fallback coercion are only safe as absolute
+          // schedule values when the anchor starts at 0. Otherwise treat them as
+          // pre-anchor placeholders and re-sample against the anchored window.
+          const canUseSeededStart = (seededStartMs !== null && anchorStartMs === 0);
+          const singleTimeRaw = canUseSeededStart
             ? seededStartMs
             : Math.round(baseStartMs + minGap + Math.random() * (maxGap - minGap));
-          const singleTime = Math.max(baseStartMs, Math.min(sessionMs - 1, singleTimeRaw));
+          const singleTime = Math.max(baseStartMs, Math.min(anchorEndMs - 1, singleTimeRaw));
           if (emitProbeAt(singleTime)) {
             emitted += 1;
           }
@@ -702,7 +746,7 @@
           // Goal: distribute N probes across the available time with roughly equal spacing
           // and random jitter to avoid rhythmic predictability
 
-          const remainingMs = Math.max(0, sessionMs - baseStartMs);
+          const remainingMs = Math.max(0, anchorEndMs - baseStartMs);
           const maxNaturalByMinGap = (minGap > 0) ? Math.floor(remainingMs / minGap) : effectiveProbeCount;
           const needCompressed = effectiveProbeCount > maxNaturalByMinGap;
 
@@ -711,10 +755,10 @@
             let currentTime = Math.round(baseStartMs + minGap + Math.random() * (maxGap - minGap));
             for (let i = 0; i < effectiveProbeCount; i++) {
               const probesLeftAfter = effectiveProbeCount - i - 1;
-              const latestAllowedStart = Math.max(baseStartMs, sessionMs - (probesLeftAfter * minGap) - 1);
+              const latestAllowedStart = Math.max(baseStartMs, anchorEndMs - (probesLeftAfter * minGap) - 1);
               currentTime = Math.min(currentTime, latestAllowedStart);
 
-              if (currentTime < sessionMs && emitProbeAt(currentTime)) {
+              if (currentTime < anchorEndMs && emitProbeAt(currentTime)) {
                 emitted += 1;
                 if (emitted >= effectiveProbeCount) break;
               }
@@ -734,7 +778,7 @@
               const jitterSpan = Math.max(0, step * 0.15);
               const jitter = (Math.random() * 2 - 1) * jitterSpan;
               const candidate = Math.round(fallbackTime + jitter);
-              if (emitProbeAt(Math.max(baseStartMs, Math.min(sessionMs - 1, candidate)))) {
+              if (emitProbeAt(Math.max(baseStartMs, Math.min(anchorEndMs - 1, candidate)))) {
                 emitted += 1;
                 remainingToEmit -= 1;
               }
