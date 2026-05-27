@@ -102,8 +102,7 @@
         return 33;
       })(),
       // Where to load WebGazer from.
-      // - Prefer vendored local copy when available (recommended for reliability in labs / offline / firewall).
-      // - Fall back to CDN.
+      // - Default is CDN-only (no vendored copy in this repository).
       // Config can override with either:
       //   - webgazer_src: string
       //   - webgazer_srcs: string[]
@@ -121,11 +120,9 @@
         }
 
         return [
-          // If you vendor WebGazer, drop it here (or update this path).
-          resolveRuntimeAssetUrl('vendor/webgazer.min.js'),
-          // CDN fallback (pinned to the same upstream tag as our vendored copy)
+          // CDN source (pinned upstream tag).
           'https://cdn.jsdelivr.net/gh/brownhci/WebGazer@3.4.0/www/webgazer.js'
-        ].filter(Boolean);
+        ];
       })(),
       // Whether to show the webcam preview box.
       show_video: settingsRaw.show_video === true,

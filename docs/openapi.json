@@ -1,154 +1,1640 @@
 {
-    "openapi": "3.0.2",
-    "info": {
-        "title": "",
-        "version": ""
+  "openapi": "3.0.2",
+  "info": {
+    "title": "CogFlow Platform API",
+    "version": "1.0.0",
+    "description": "OpenAPI schema for CogFlow Platform v1 endpoints."
+  },
+  "paths": {
+    "/healthz": {
+      "get": {
+        "operationId": "listHealths",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {}
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "healthz"
+        ]
+      }
     },
-    "paths": {
-        "/healthz": {
-            "get": {
-                "operationId": "listHealths",
-                "description": "",
-                "parameters": [],
-                "responses": {
-                    "200": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "array",
-                                    "items": {}
-                                }
-                            }
-                        },
-                        "description": ""
-                    }
-                },
-                "tags": [
-                    "healthz"
-                ]
-            }
+    "/api/v1/auth/me": {
+      "get": {
+        "operationId": "listAuthMes",
+        "description": "Return current session user info, or 401 if not authenticated.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {}
+                }
+              }
+            },
+            "description": ""
+          }
         },
-        "/api/v1/studies": {
-            "get": {
-                "operationId": "listStudies",
-                "description": "",
-                "parameters": [],
-                "responses": {
-                    "200": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "array",
-                                    "items": {}
-                                }
-                            }
-                        },
-                        "description": ""
-                    }
-                },
-                "tags": [
-                    "api"
-                ]
-            }
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/credits": {
+      "get": {
+        "operationId": "listCredits",
+        "description": "Fetch/update CRediT assignments grouped by task scopes.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {}
+                }
+              }
+            },
+            "description": ""
+          }
         },
-        "/api/v1/configs/publish": {
-            "post": {
-                "operationId": "createPublishConfig",
-                "description": "",
-                "parameters": [],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {}
-                        },
-                        "application/x-www-form-urlencoded": {
-                            "schema": {}
-                        },
-                        "multipart/form-data": {
-                            "schema": {}
-                        }
-                    }
-                },
-                "responses": {
-                    "201": {
-                        "content": {
-                            "application/json": {
-                                "schema": {}
-                            }
-                        },
-                        "description": ""
-                    }
-                },
-                "tags": [
-                    "api"
-                ]
+        "tags": [
+          "api"
+        ]
+      },
+      "put": {
+        "operationId": "updateCredits",
+        "description": "Fetch/update CRediT assignments grouped by task scopes.",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
             }
+          }
         },
-        "/api/v1/runs/start": {
-            "post": {
-                "operationId": "createStartRun",
-                "description": "",
-                "parameters": [],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {}
-                        },
-                        "application/x-www-form-urlencoded": {
-                            "schema": {}
-                        },
-                        "multipart/form-data": {
-                            "schema": {}
-                        }
-                    }
-                },
-                "responses": {
-                    "201": {
-                        "content": {
-                            "application/json": {
-                                "schema": {}
-                            }
-                        },
-                        "description": ""
-                    }
-                },
-                "tags": [
-                    "api"
-                ]
-            }
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
         },
-        "/api/v1/results/submit": {
-            "post": {
-                "operationId": "createSubmitResult",
-                "description": "",
-                "parameters": [],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {}
-                        },
-                        "application/x-www-form-urlencoded": {
-                            "schema": {}
-                        },
-                        "multipart/form-data": {
-                            "schema": {}
-                        }
-                    }
-                },
-                "responses": {
-                    "201": {
-                        "content": {
-                            "application/json": {
-                                "schema": {}
-                            }
-                        },
-                        "description": ""
-                    }
-                },
-                "tags": [
-                    "api"
-                ]
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/admin/users": {
+      "get": {
+        "operationId": "listAdminUsers",
+        "description": "List and create platform users (platform_admin only).",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {}
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      },
+      "post": {
+        "operationId": "createAdminUsers",
+        "description": "List and create platform users (platform_admin only).",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
             }
-        }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/studies": {
+      "get": {
+        "operationId": "listStudies",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {}
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/studies/{study_slug}/runs": {
+      "get": {
+        "operationId": "listStudyRuns",
+        "description": "Return recent run metadata for a study to power dashboard result access.",
+        "parameters": [
+          {
+            "name": "study_slug",
+            "in": "path",
+            "required": true,
+            "description": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {}
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/studies/{study_slug}/latest-config": {
+      "get": {
+        "operationId": "listStudyLatestConfigs",
+        "description": "Return the latest published config JSON for a study the researcher can access.",
+        "parameters": [
+          {
+            "name": "study_slug",
+            "in": "path",
+            "required": true,
+            "description": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {}
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/studies/analysis/jobs": {
+      "get": {
+        "operationId": "listStudyAnalysisReportJobs",
+        "description": "Queue and inspect asynchronous analysis report jobs.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {}
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      },
+      "post": {
+        "operationId": "createStudyAnalysisReportJobs",
+        "description": "Queue and inspect asynchronous analysis report jobs.",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/studies/analysis/jobs/{job_id}": {
+      "get": {
+        "operationId": "retrieveStudyAnalysisReportJobDetail",
+        "description": "",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "description": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/studies/analysis/jobs/{job_id}/artifacts/{artifact_format}": {
+      "get": {
+        "operationId": "retrieveStudyAnalysisReportArtifactDownload",
+        "description": "",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "description": "",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "artifact_format",
+            "in": "path",
+            "required": true,
+            "description": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/assets/file/{asset_path}": {
+      "get": {
+        "operationId": "retrieveDownloadBuilderAsset",
+        "description": "",
+        "parameters": [
+          {
+            "name": "asset_path",
+            "in": "path",
+            "required": true,
+            "description": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/media/{asset_path}": {
+      "get": {
+        "operationId": "retrieveDownloadBuilderAsset",
+        "description": "",
+        "parameters": [
+          {
+            "name": "asset_path",
+            "in": "path",
+            "required": true,
+            "description": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "operationId": "createAuthLogin",
+        "description": "Session login endpoint for portal user flows.",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/auth/register": {
+      "post": {
+        "operationId": "createAuthRegister",
+        "description": "Self-service registration endpoint (account activates by email verification).",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/auth/password/reset/request": {
+      "post": {
+        "operationId": "createPasswordResetRequest",
+        "description": "Send a password reset email without exposing whether the account exists.",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/auth/password/reset/confirm": {
+      "post": {
+        "operationId": "createPasswordResetConfirm",
+        "description": "Set a new password from a signed email reset token.",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "operationId": "createAuthLogout",
+        "description": "",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/auth/mfa/setup": {
+      "post": {
+        "operationId": "createTotpSetup",
+        "description": "Generate or return TOTP setup material for the logged-in user.",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/auth/mfa/verify": {
+      "post": {
+        "operationId": "createTotpVerify",
+        "description": "Verify a TOTP code and mark MFA as active for this session.",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/auth/mfa/disable": {
+      "post": {
+        "operationId": "createTotpDisable",
+        "description": "Remove TOTP MFA from the logged-in user's account.",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/auth/password/change": {
+      "post": {
+        "operationId": "createPasswordChange",
+        "description": "Allow a logged-in user to change their own password.",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/feedback/submit": {
+      "post": {
+        "operationId": "createFeedbackSubmit",
+        "description": "Submit in-portal feedback (Resend preferred, SMTP fallback).",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/admin/users/{user_id}/password": {
+      "post": {
+        "operationId": "createAdminUserPassword",
+        "description": "Allow platform admins to set a new temporary password for any user.",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "description": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/admin/users/{user_id}/role": {
+      "post": {
+        "operationId": "createAdminUserRole",
+        "description": "Update an existing user's role (platform_admin only).",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "description": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/admin/users/{user_id}/activation": {
+      "post": {
+        "operationId": "createAdminUserActivation",
+        "description": "Activate or deactivate a user account (platform_admin only).",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "description": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/admin/users/{user_id}/delete": {
+      "post": {
+        "operationId": "createAdminUserDelete",
+        "description": "Delete a user account (platform_admin only).",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "description": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/studies/{study_slug}/participant-links": {
+      "post": {
+        "operationId": "createCreateParticipantLink",
+        "description": "Generate signed participant launch links for a researcher-owned study.",
+        "parameters": [
+          {
+            "name": "study_slug",
+            "in": "path",
+            "required": true,
+            "description": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/studies/{study_slug}/owner": {
+      "post": {
+        "operationId": "createAssignStudyOwner",
+        "description": "Allow platform admins to reassign researcher ownership for a study.",
+        "parameters": [
+          {
+            "name": "study_slug",
+            "in": "path",
+            "required": true,
+            "description": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/studies/{study_slug}/share": {
+      "post": {
+        "operationId": "createShareStudy",
+        "description": "Share a study with another user by username and granular study permissions.",
+        "parameters": [
+          {
+            "name": "study_slug",
+            "in": "path",
+            "required": true,
+            "description": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/studies/{study_slug}/share/validate-user": {
+      "post": {
+        "operationId": "createShareStudyValidateUser",
+        "description": "Validate a target username for sharing without exposing user listings.",
+        "parameters": [
+          {
+            "name": "study_slug",
+            "in": "path",
+            "required": true,
+            "description": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/studies/{study_slug}/share/remove": {
+      "post": {
+        "operationId": "createRevokeStudyAccess",
+        "description": "Remove researcher collaboration access from a study.",
+        "parameters": [
+          {
+            "name": "study_slug",
+            "in": "path",
+            "required": true,
+            "description": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/studies/{study_slug}/duplicate": {
+      "post": {
+        "operationId": "createDuplicateStudy",
+        "description": "Duplicate a study and clone its latest published config for further editing.",
+        "parameters": [
+          {
+            "name": "study_slug",
+            "in": "path",
+            "required": true,
+            "description": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/studies/{study_slug}/delete": {
+      "post": {
+        "operationId": "createDeleteStudy",
+        "description": "Soft-delete (deactivate) a study while retaining all audit/config/result records.",
+        "parameters": [
+          {
+            "name": "study_slug",
+            "in": "path",
+            "required": true,
+            "description": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/studies/{study_slug}/configs/{config_version_id}/delete": {
+      "post": {
+        "operationId": "createDeleteStudyConfigVersion",
+        "description": "Delete one config version from a study when it is safe to remove.",
+        "parameters": [
+          {
+            "name": "study_slug",
+            "in": "path",
+            "required": true,
+            "description": "",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "config_version_id",
+            "in": "path",
+            "required": true,
+            "description": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/studies/{study_slug}/properties": {
+      "post": {
+        "operationId": "createStudyProperties",
+        "description": "Persist study-level task labels/order and flow variants for launch orchestration.",
+        "parameters": [
+          {
+            "name": "study_slug",
+            "in": "path",
+            "required": true,
+            "description": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/studies/{study_slug}/take-to-go": {
+      "post": {
+        "operationId": "createStudyTakeToGoBundle",
+        "description": "Generate a downloadable local runtime bundle (Interpreter + PyLSL bridge).",
+        "parameters": [
+          {
+            "name": "study_slug",
+            "in": "path",
+            "required": true,
+            "description": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/studies/analysis/report": {
+      "post": {
+        "operationId": "createStudyAnalysisReport",
+        "description": "Generate a direct preview using the shared report-rendering pipeline.",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/studies/analysis/jobs/{job_id}/cancel": {
+      "post": {
+        "operationId": "createStudyAnalysisReportJobCancel",
+        "description": "Cancel a queued report job (only queued jobs may be cancelled).",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "description": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/configs/publish": {
+      "post": {
+        "operationId": "createPublishConfig",
+        "description": "",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/assets/upload": {
+      "post": {
+        "operationId": "createUploadBuilderAsset",
+        "description": "",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/runs/start": {
+      "post": {
+        "operationId": "createStartRun",
+        "description": "",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/results/submit": {
+      "post": {
+        "operationId": "createSubmitResult",
+        "description": "",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/results/decrypt": {
+      "post": {
+        "operationId": "createDecryptResult",
+        "description": "Protected decrypt/read endpoint for interim Day 6 privacy controls.",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/studies/analysis/jobs/{job_id}/delete": {
+      "delete": {
+        "operationId": "destroyStudyAnalysisReportJobDelete",
+        "description": "Delete a completed or failed report job and all its artifacts.",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "description": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
     }
+  }
 }

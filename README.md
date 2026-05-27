@@ -12,20 +12,49 @@ The platform will eventually bundle:
 
 ## Current Status
 
-This repository is the new implementation home for the platform migration. The immediate goal is to build a vertical slice that proves the end-to-end workflow:
+This repository is in beta-hardening mode toward CogFlow 0.9.
 
-1. Publish a study from Builder
-2. Create or update the study record automatically
-3. Show the study on a researcher dashboard
-4. Launch Interpreter against the Django-backed runtime
-5. Persist results and reflect run state in the platform
+Current focus:
+
+1. Keep Builder -> Platform -> Interpreter integration stable
+2. Keep API contracts and generated OpenAPI synchronized
+3. Strengthen publication-ready documentation for public and contributor audiences
+4. Enforce clearer security posture for researcher and admin workflows
 
 ## Documentation
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): system overview, core domain model, security principles, and migration structure
-- [docs/API.md](docs/API.md): initial API surface and contract direction for publish, run start, and result submission
+- [docs/API.md](docs/API.md): API docs hub and publication scopes
+- [docs/API_PUBLIC.md](docs/API_PUBLIC.md): public API surface for website publication
+- [docs/API_RESEARCHER.md](docs/API_RESEARCHER.md): researcher-facing authenticated API
+- [docs/API_ADMIN_INTERNAL.md](docs/API_ADMIN_INTERNAL.md): internal-only admin API docs
+- [docs/ADMIN_SECURITY_POLICY.md](docs/ADMIN_SECURITY_POLICY.md): admin access policy and security requirements
+- [docs/ADMIN_SECURITY_MATRIX.md](docs/ADMIN_SECURITY_MATRIX.md): endpoint/action control matrix (role, MFA, step-up, audit)
+- [docs/site-public/00_COGFLOW_OVERVIEW.md](docs/site-public/00_COGFLOW_OVERVIEW.md): public-public website overview copy
+- [docs/site-public/01_ADVANTAGES_AND_SEO_POINTS.md](docs/site-public/01_ADVANTAGES_AND_SEO_POINTS.md): SEO and sales-focused value messaging
+- [docs/site-public/02_CUSTOMIZATION_AND_SERVICES.md](docs/site-public/02_CUSTOMIZATION_AND_SERVICES.md): customization and services copy
+- [docs/site-public/03_TUTORIALS_PAGE_COPY.md](docs/site-public/03_TUTORIALS_PAGE_COPY.md): tutorials page content scaffolding
+- [docs/openapi.json](docs/openapi.json): generated OpenAPI schema artifact used for publication
+- [docs/DOCS_MAINTENANCE.md](docs/DOCS_MAINTENANCE.md): update policy, release cadence, and docs publication scope rules
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): local, staging, and Kubernetes deployment model
 - [docs/ROADMAP.md](docs/ROADMAP.md): 4-6 week delivery plan toward a deployable pilot option
+
+## Licensing
+
+- [LICENSE](LICENSE): BSD-3-Clause
+- [COPYRIGHT.md](COPYRIGHT.md): project ownership and attribution
+- [NOTICE](NOTICE): distribution notice and third-party boundary notes
+
+## OpenAPI Generation
+
+The API schema published in `docs/openapi.json` is generated from Django's
+schema output:
+
+```bash
+./scripts/generate_openapi.sh
+```
+
+Use this script whenever API contracts change.
 
 ## Intended Repository Layout
 
@@ -65,4 +94,4 @@ cogflow-platform/
 
 ## Next Step
 
-The next implementation step is to scaffold the platform runtime and deliver the Week 1 vertical slice described in [docs/ROADMAP.md](docs/ROADMAP.md).
+For 0.9 beta readiness, keep API/docs synchronization strict and publish only the intended public documentation scopes.

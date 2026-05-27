@@ -11,7 +11,7 @@ The deployment model should prioritize reproducibility, observability, and rollb
 ## Environment Profiles
 
 ### Local
-Used for rapid development and vertical-slice testing.
+Used for rapid development, integration validation, and docs/API verification.
 
 Expected components:
 - Django API
@@ -20,9 +20,9 @@ Expected components:
 - MinIO
 - Optional Redis
 
-### Day 1 Local Stack (Current)
+### Local Stack (Current)
 
-This repository provides a local Docker Compose stack for the Week 1 vertical slice:
+This repository provides a Docker Compose stack for ongoing beta development:
 
 - `api` (Django)
 - `db` (PostgreSQL 16)
@@ -191,6 +191,12 @@ These do not block initial work but should be settled before broad pilot use:
 - Managed object storage vs self-hosted MinIO beyond local development
 - Celery vs lighter background job framework
 - Ingress controller choice and certificate automation strategy
+
+## Operations Runbook
+
+For planned production host split and weekend migration execution, see:
+
+- `docs/OPS_FRIDAY_CUTOVER_RUNBOOK.md`
 
 ---
 

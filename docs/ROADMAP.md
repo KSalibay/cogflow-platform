@@ -152,3 +152,8 @@ At the end of each week, record:
 - What slipped
 - Top risks entering next week
 - Go/No-Go decision for next milestone
+
+## Post-Alpha Operations Planning References
+
+- `docs/RELEASE_CADENCE_POST_ALPHA.md`
+- `docs/TUTORIAL_CONTENT_PRODUCTION_PLAN.md`

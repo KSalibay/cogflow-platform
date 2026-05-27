@@ -563,11 +563,10 @@ The interpreter can optionally collect camera-based gaze estimates via WebGazer.
     - `eye_tracking_samples_json` (stringified array of gaze samples)
     - `eye_tracking_calibration_json` (stringified array of calibration events)
     - `eye_tracking_stats`, start/stop results, and sample counts
-- Reliability: recommended to vendor a pinned copy at `vendor/webgazer.min.js` so studies don’t depend on external CDNs.
-  - The interpreter will try `vendor/webgazer.min.js` first, then fall back to a pinned CDN.
+- Runtime source: default is CDN-only (pinned WebGazer URL); this repository does not vendor WebGazer JavaScript.
   - Override sources via `data_collection.eye_tracking.webgazer_srcs` (string array) or `webgazer_src` (single string).
-- If you later want CDN-only (e.g., for a packaged distribution), set `webgazer_srcs` to just the CDN URL (or remove `vendor/webgazer.min.js`).
-- Licensing: WebGazer is GPL-3.0; see `vendor/THIRD_PARTY_NOTICES.md` before distributing builds.
+- Licensing: WebGazer is third-party software under GPL-3.0 terms; CogFlow does not grant a separate license for WebGazer.
+- See licensing notes in `vendor/THIRD_PARTY_NOTICES.md` before distributing builds.
 - Sample: `configs/sample_eye_tracking_webgazer.json`
 
 ### Eye tracking config knobs
