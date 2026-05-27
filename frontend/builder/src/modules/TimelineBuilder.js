@@ -1452,10 +1452,14 @@ class TimelineBuilder {
 
                     const tl = this.jsonBuilder?.timeline;
                     if (Array.isArray(tl) && tl.length > 0) {
+                        // Take the maximum across all items so a short practice
+                        // subtask does not shadow the longer main block duration.
+                        let bestMs = 0;
                         for (const item of tl) {
                             const estimatedMs = estimateDurationFromComponentData(item);
-                            if (estimatedMs > 0) return estimatedMs;
+                            if (estimatedMs > bestMs) bestMs = estimatedMs;
                         }
+                        if (bestMs > 0) return bestMs;
                     }
 
                     if (componentElement?.dataset?.componentData) {
@@ -1478,17 +1482,27 @@ class TimelineBuilder {
                     const generated = (typeof this.jsonBuilder?.generateJSON === 'function')
                         ? this.jsonBuilder.generateJSON()
                         : null;
-                    const tl = Array.isArray(generated?.timeline) ? generated.timeline : [];
-                    for (const item of tl) {
-                        const estimatedMs = estimateDurationFromComponentData(item);
-                        if (estimatedMs > 0) return estimatedMs;
-                    }
 
-                    const sessionMs = parsePosNum(generated?.soc_dashboard_settings?.trial_duration_ms);
-                    if (sessionMs > 0) return sessionMs;
+                    // For SOC configs, session-level duration fields must be
+                    // checked before iterating timeline items. A short practice
+                    // subtask is always the first item and would otherwise shadow
+                    // the full session duration, producing a near-zero capacity
+                    // estimate (the bug Tariq reported: estimate missing/0).
+                    const socSessionMs = parsePosNum(generated?.soc_dashboard_settings?.trial_duration_ms);
+                    if (socSessionMs > 0) return socSessionMs;
 
                     const globalDurationSec = parsePosNum(generated?.duration);
                     if (globalDurationSec > 0) return globalDurationSec * 1000;
+
+                    // Non-SOC fallback: take the maximum individual item estimate
+                    // so a short instructions block never shadows a longer task block.
+                    const tl = Array.isArray(generated?.timeline) ? generated.timeline : [];
+                    let bestMs = 0;
+                    for (const item of tl) {
+                        const estimatedMs = estimateDurationFromComponentData(item);
+                        if (estimatedMs > bestMs) bestMs = estimatedMs;
+                    }
+                    if (bestMs > 0) return bestMs;
                 } catch {
                     // best-effort estimate only - ignore any errors
                 }
