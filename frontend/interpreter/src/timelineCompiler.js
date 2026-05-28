@@ -2627,18 +2627,42 @@
         return estimateTrialDurationMs(candidate) > 0;
       };
 
+      const restrictToSingleSourceRun = String(taskType || '').trim().toLowerCase() === 'sart';
+
       const prevIdx = [];
+      let prevSourceToken;
       for (let k = i - 1; k >= 0; k--) {
         const candidate = out[k];
         if (!isProbeAnchorTrial(candidate)) break;
+        if (restrictToSingleSourceRun) {
+          const sourceToken = (candidate && candidate._generated_from_block === true)
+            ? String(candidate._source_component_identity ?? candidate._source_timeline_path_text ?? '')
+            : null;
+          if (prevSourceToken === undefined) {
+            prevSourceToken = sourceToken;
+          } else if (sourceToken !== prevSourceToken) {
+            break;
+          }
+        }
         prevIdx.push(k);
       }
       prevIdx.reverse();
 
       const nextIdx = [];
+      let nextSourceToken;
       for (let k = i + 1; k < out.length; k++) {
         const candidate = out[k];
         if (!isProbeAnchorTrial(candidate)) break;
+        if (restrictToSingleSourceRun) {
+          const sourceToken = (candidate && candidate._generated_from_block === true)
+            ? String(candidate._source_component_identity ?? candidate._source_timeline_path_text ?? '')
+            : null;
+          if (nextSourceToken === undefined) {
+            nextSourceToken = sourceToken;
+          } else if (sourceToken !== nextSourceToken) {
+            break;
+          }
+        }
         nextIdx.push(k);
       }
 
