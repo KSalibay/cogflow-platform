@@ -2,7 +2,7 @@
 
 CogFlow Platform is the new self-hosted platform for the CogFlow workflow. It is intended to replace the current JATOS-centric deployment model with a deployable system that can run on infrastructure you control while preserving a fallback path to JATOS during migration.
 
-The platform will eventually bundle:
+The platform bundles:
 - Researcher-facing study management
 - Builder publishing without manual token copy/paste
 - Interpreter runtime integration
@@ -13,13 +13,6 @@ The platform will eventually bundle:
 ## Current Status
 
 This repository is in beta-hardening mode toward CogFlow 0.9.
-
-Current focus:
-
-1. Keep Builder -> Platform -> Interpreter integration stable
-2. Keep API contracts and generated OpenAPI synchronized
-3. Strengthen publication-ready documentation for public and contributor audiences
-4. Enforce clearer security posture for researcher and admin workflows
 
 ## Documentation
 
@@ -63,15 +56,6 @@ Use this script whenever API contracts change.
 The backend includes a global maintenance gate that can temporarily block portal
 access and return `503` responses while maintenance is in progress.
 
-1. Set `COGFLOW_MAINTENANCE_MODE=1` in your environment.
-2. Optionally adjust:
-	- `COGFLOW_MAINTENANCE_RETRY_HOURS` (default `5`)
-	- `COGFLOW_MAINTENANCE_WINDOW`
-	- `COGFLOW_MAINTENANCE_MESSAGE`
-	- `COGFLOW_SUPPORT_EMAIL`
-3. Restart backend services so new env values are applied.
-4. Set `COGFLOW_MAINTENANCE_MODE=0` and restart when maintenance is complete.
-
 ## Intended Repository Layout
 
 ```text
@@ -85,29 +69,3 @@ cogflow-platform/
 ├── docs/
 └── README.md
 ```
-
-## Implementation Priorities
-
-### Priority 1
-- Stand up Django, PostgreSQL, and object storage locally
-- Freeze the first API contracts
-- Deliver the first vertical slice
-
-### Priority 2
-- Introduce privacy-safe result handling
-- Add dashboard workflow and study lifecycle management
-- Deploy to staging on Kubernetes
-
-### Priority 3
-- Harden operations, observability, and rollback procedures
-- Expand researcher portal and compliance workflows
-
-## Migration Constraints
-
-- Keep the JATOS fallback path available during transition
-- Avoid redesigning Builder and Interpreter payload formats prematurely
-- Defer final encryption schema details until the Django models and access patterns are concrete
-
-## Next Step
-
-For 0.9 beta readiness, keep API/docs synchronization strict and publish only the intended public documentation scopes.
