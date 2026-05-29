@@ -188,3 +188,83 @@ class CreditsView(APIView):
         return Response({"ok": True, "updated_count": updated}, status=status.HTTP_200_OK)
 
 
+class CreditsPublicView(APIView):
+    """Public, read-only CRediT payload for website rendering."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def _apply_cors(self, request, response):
+        origin = (request.headers.get("Origin") or "").strip()
+        default_origins = (
+            "https://cogflow.app,"
+            "https://www.cogflow.app,"
+            "http://localhost:5173,"
+            "http://127.0.0.1:5173"
+        )
+        allowed_raw = (os.getenv("COGFLOW_PUBLIC_SITE_ORIGINS", "") or "").strip() or default_origins
+        allowed = {x.strip() for x in allowed_raw.split(",") if x.strip()}
+        if origin and origin in allowed:
+            response["Access-Control-Allow-Origin"] = origin
+            response["Vary"] = "Origin"
+            response["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+        return response
+
+    def options(self, request):
+        resp = Response(status=status.HTTP_204_NO_CONTENT)
+        return self._apply_cors(request, resp)
+
+    def get(self, request):
+        schema_set = set(SCHEMA_COMPONENT_TYPES)
+        task_scopes = []
+        for row in TASK_SCOPE_DEFINITIONS:
+            task_type = str(row["task_type"])
+            components = [c for c in row["components"] if c in schema_set]
+            task_scopes.append({"task_type": task_type, "components": components})
+
+        db_rows = list(TaskCreditRow.objects.select_related("updated_by").all())
+        usernames = sorted({str(x.contributor_username or "").strip() for x in db_rows if str(x.contributor_username or "").strip()})
+        users = {
+            u.username: u
+            for u in User.objects.filter(username__in=usernames)
+        }
+
+        def _display_name(username):
+            u = users.get(username)
+            if u:
+                full = (f"{u.first_name} {u.last_name}").strip()
+                if full:
+                    return full
+            cleaned = username.replace("_", " ").replace("-", " ").strip()
+            parts = [p for p in cleaned.split(" ") if p]
+            if not parts:
+                return username
+            return " ".join(p[:1].upper() + p[1:] for p in parts)
+
+        entries = []
+        for x in db_rows:
+            uname = str(x.contributor_username or "").strip()
+            entries.append(
+                {
+                    "task_type": x.task_type,
+                    "component_type": x.component_type,
+                    "credit_role": x.credit_role,
+                    "contributor_username": uname,
+                    "contributor_display": _display_name(uname),
+                    "notes": x.notes,
+                    "updated_at": x.updated_at,
+                }
+            )
+
+        resp = Response(
+            {
+                "ok": True,
+                "task_scopes": task_scopes,
+                "credit_roles": CREDIT_ROLES,
+                "entries": entries,
+            },
+            status=status.HTTP_200_OK,
+        )
+        return self._apply_cors(request, resp)
+
+
