@@ -16,6 +16,7 @@ BRANCH="${BRANCH:-main}"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 BACKUP_FILE_DEFAULT="$ROOT_DIR/pre_deploy_backup_${TIMESTAMP}.sql"
 BACKUP_FILE="${BACKUP_FILE:-$BACKUP_FILE_DEFAULT}"
+PUBLIC_HEALTHCHECK_URL="${PUBLIC_HEALTHCHECK_URL:-https://portal.cogflow.app/api/v1/health}"
 DO_PULL=1
 
 for arg in "$@"; do
@@ -109,8 +110,8 @@ if command -v systemctl >/dev/null 2>&1; then
 fi
 
 echo "==> Public health checks"
-if curl -fsS -I https://cogflow.app/api/v1/health >/dev/null; then
-  echo "    OK: https://cogflow.app/api/v1/health"
+if curl -fsS -I "$PUBLIC_HEALTHCHECK_URL" >/dev/null; then
+  echo "    OK: $PUBLIC_HEALTHCHECK_URL"
 else
   echo "    WARN: Public health check failed; inspect nginx/api logs"
 fi

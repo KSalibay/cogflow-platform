@@ -34,3 +34,11 @@ This document lists endpoints safe to publish on public documentation pages.
 ## Schema Reference
 
 Use `docs/openapi.json` for exact request/response fields and status codes.
+
+Builder/Interpreter runtime schema contract:
+
+- `docs/API_SCHEMAS.md`
+
+Contribution process and update workflow:
+
+- `docs/CONTRIBUTOR_GUIDE.md`

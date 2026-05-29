@@ -16,6 +16,8 @@ Regenerate the schema artifact:
 - [Public API](API_PUBLIC.md): participant-facing and integration-safe endpoints for launch and result submission paths.
 - [Researcher API](API_RESEARCHER.md): authenticated researcher workflows (study lifecycle, sharing, analysis jobs, assets).
 - [Admin API (Internal)](API_ADMIN_INTERNAL.md): privileged platform administration endpoints.
+- [Builder/Interpreter Schema API](API_SCHEMAS.md): runtime config/timeline schema contracts used by Builder and Interpreter.
+- [Contributor Guide](CONTRIBUTOR_GUIDE.md): formatting, sync workflow, and merge process for platform contributions.
 
 ## Internal Security References
 
@@ -38,6 +40,14 @@ Regenerate the schema artifact:
 
 Endpoint routing lives in `backend/project/urls.py`.
 OpenAPI is generated from the running backend schema endpoint (`/api/schema`) using the script above.
+
+## Runtime Schema Source of Truth
+
+Builder/Interpreter schema contracts are documented in `docs/API_SCHEMAS.md` and sourced from:
+
+- `frontend/builder/src/schemas/JSPsychSchemas.js`
+- `frontend/interpreter/src/timelineCompiler.js`
+- `backend/project/api_views_common.py` task scope definitions
 
 ## Update Policy
 

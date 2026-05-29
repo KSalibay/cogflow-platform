@@ -71,3 +71,11 @@ Prefer publishing a reduced subset to public docs and keeping the full researche
 ## Schema Reference
 
 Use `docs/openapi.json` as the canonical field-level contract.
+
+Builder/Interpreter runtime schema contract:
+
+- `docs/API_SCHEMAS.md`
+
+Contribution process and task onboarding workflow:
+
+- `docs/CONTRIBUTOR_GUIDE.md`

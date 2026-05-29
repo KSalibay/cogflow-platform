@@ -13,7 +13,9 @@ is not required.
 
 - Public-public website copy: `docs/site-public/*`
 - Public technical docs: `docs/API_PUBLIC.md` and approved portions of `docs/API_RESEARCHER.md`
+- Runtime schema docs: `docs/API_SCHEMAS.md`
 - Internal docs: admin/security docs such as `docs/API_ADMIN_INTERNAL.md`, `docs/ADMIN_SECURITY_POLICY.md`, and `docs/ADMIN_SECURITY_MATRIX.md`
+- Contributor process docs: `docs/CONTRIBUTOR_GUIDE.md`
 
 ## Update Triggers
 
@@ -42,7 +44,8 @@ Minimum required update set:
 
 1. Regenerate `docs/openapi.json`
 2. Update `docs/API.md` summary sections if behavior changed
-3. Update any app README sections affected by runtime changes
+3. Update `docs/API_SCHEMAS.md` if Builder/Interpreter schema contracts changed
+4. Update any app README sections affected by runtime changes
 
 ## Release Cadence
 

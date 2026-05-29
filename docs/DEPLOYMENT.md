@@ -202,6 +202,36 @@ For planned production host split and weekend migration execution, see:
 
 ## Day 4 — Platform Integration Feature Flags
 
+## Production Host Split (cogflow.app + portal.cogflow.app)
+
+Recommended routing model:
+
+- Public website: `https://cogflow.app`
+- Authenticated portal + API: `https://portal.cogflow.app`
+
+Minimum app environment values for this split:
+
+```env
+DJANGO_ALLOWED_HOSTS=cogflow.app,www.cogflow.app,portal.cogflow.app
+DJANGO_CSRF_TRUSTED_ORIGINS=https://cogflow.app,https://www.cogflow.app,https://portal.cogflow.app
+DJANGO_SESSION_COOKIE_DOMAIN=.cogflow.app
+DJANGO_CSRF_COOKIE_DOMAIN=.cogflow.app
+COGFLOW_PLATFORM_URL=https://portal.cogflow.app
+```
+
+Website environment for portal links:
+
+```env
+VITE_PUBLIC_SITE_BASE_URL=https://cogflow.app
+VITE_PORTAL_BASE_URL=https://portal.cogflow.app
+```
+
+Notes:
+
+- Keep cookie `Secure` flags enabled in production HTTPS.
+- Keep reverse-proxy forwarding headers configured (`X-Forwarded-Proto`, host forwarding).
+- Run smoke checks for login, publish, run start, and result submit immediately after cutover.
+
 The Builder and Interpreter ship with a feature-flag system controlled by
 JavaScript globals injected at page load.  This allows the same source to run
 against JATOS, local-fallback, or the Django platform backend without

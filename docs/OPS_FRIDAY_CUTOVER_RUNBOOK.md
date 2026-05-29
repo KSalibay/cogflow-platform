@@ -155,3 +155,79 @@ Store in internal ops folder:
 - Smoke test checklist results
 - Incident timeline and status messages
 - Any issues and mitigations for next cutover
+
+## 8. Reference Config Snippets
+
+### 8.1 App environment (portal host split)
+
+```env
+DJANGO_ALLOWED_HOSTS=cogflow.app,www.cogflow.app,portal.cogflow.app
+DJANGO_CSRF_TRUSTED_ORIGINS=https://cogflow.app,https://www.cogflow.app,https://portal.cogflow.app
+DJANGO_SESSION_COOKIE_DOMAIN=.cogflow.app
+DJANGO_CSRF_COOKIE_DOMAIN=.cogflow.app
+DJANGO_SESSION_COOKIE_SECURE=1
+DJANGO_CSRF_COOKIE_SECURE=1
+DJANGO_USE_X_FORWARDED_PROTO=1
+DJANGO_USE_X_FORWARDED_HOST=1
+COGFLOW_PLATFORM_URL=https://portal.cogflow.app
+```
+
+### 8.2 Website environment
+
+```env
+VITE_PUBLIC_SITE_BASE_URL=https://cogflow.app
+VITE_PORTAL_BASE_URL=https://portal.cogflow.app
+```
+
+### 8.3 Reverse proxy sketch (Nginx)
+
+```nginx
+server {
+  listen 80;
+  server_name cogflow.app www.cogflow.app;
+  return 301 https://$host$request_uri;
+}
+
+server {
+  listen 443 ssl http2;
+  server_name cogflow.app www.cogflow.app;
+
+  # TLS cert directives here
+
+  root /var/www/cogflow-site/dist;
+  index index.html;
+
+  location / {
+    try_files $uri /index.html;
+  }
+}
+
+server {
+  listen 80;
+  server_name portal.cogflow.app;
+  return 301 https://$host$request_uri;
+}
+
+server {
+  listen 443 ssl http2;
+  server_name portal.cogflow.app;
+
+  # TLS cert directives here
+
+  client_max_body_size 25m;
+
+  location / {
+    proxy_pass http://127.0.0.1:8000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-Host $host;
+  }
+}
+```
+
+### 8.4 Post-change smoke URLs
+
+- https://cogflow.app/
+- https://portal.cogflow.app/portal/
+- https://portal.cogflow.app/api/v1/health

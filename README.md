@@ -28,6 +28,8 @@ Current focus:
 - [docs/API_PUBLIC.md](docs/API_PUBLIC.md): public API surface for website publication
 - [docs/API_RESEARCHER.md](docs/API_RESEARCHER.md): researcher-facing authenticated API
 - [docs/API_ADMIN_INTERNAL.md](docs/API_ADMIN_INTERNAL.md): internal-only admin API docs
+- [docs/API_SCHEMAS.md](docs/API_SCHEMAS.md): Builder/Interpreter schema API contracts and task scope mapping
+- [docs/CONTRIBUTOR_GUIDE.md](docs/CONTRIBUTOR_GUIDE.md): contribution workflow, formatting expectations, and task onboarding process
 - [docs/ADMIN_SECURITY_POLICY.md](docs/ADMIN_SECURITY_POLICY.md): admin access policy and security requirements
 - [docs/ADMIN_SECURITY_MATRIX.md](docs/ADMIN_SECURITY_MATRIX.md): endpoint/action control matrix (role, MFA, step-up, audit)
 - [docs/site-public/00_COGFLOW_OVERVIEW.md](docs/site-public/00_COGFLOW_OVERVIEW.md): public-public website overview copy
