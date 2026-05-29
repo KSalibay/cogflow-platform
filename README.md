@@ -56,6 +56,20 @@ schema output:
 
 Use this script whenever API contracts change.
 
+## Maintenance Mode
+
+The backend includes a global maintenance gate that can temporarily block portal
+access and return `503` responses while maintenance is in progress.
+
+1. Set `COGFLOW_MAINTENANCE_MODE=1` in your environment.
+2. Optionally adjust:
+	- `COGFLOW_MAINTENANCE_RETRY_HOURS` (default `5`)
+	- `COGFLOW_MAINTENANCE_WINDOW`
+	- `COGFLOW_MAINTENANCE_MESSAGE`
+	- `COGFLOW_SUPPORT_EMAIL`
+3. Restart backend services so new env values are applied.
+4. Set `COGFLOW_MAINTENANCE_MODE=0` and restart when maintenance is complete.
+
 ## Intended Repository Layout
 
 ```text

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CogFlow Platform Maintenance</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7ff;
+      --card: #ffffff;
+      --ink: #1f2a44;
+      --muted: #5d6883;
+      --accent: #1f7a8c;
+      --border: #dfe4f2;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: radial-gradient(circle at 20% 10%, #e7f0ff 0%, var(--bg) 35%, #eef3ff 100%);
+      color: var(--ink);
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+    .card {
+      width: min(720px, 100%);
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: 0 20px 40px rgba(31, 42, 68, 0.12);
+      padding: 28px 24px;
+    }
+    h1 {
+      margin: 0 0 14px;
+      font-size: 30px;
+      line-height: 1.2;
+      letter-spacing: 0.2px;
+    }
+    p {
+      margin: 0 0 12px;
+      line-height: 1.55;
+      color: var(--muted);
+      font-size: 16px;
+    }
+    .pill {
+      display: inline-block;
+      margin: 4px 0 16px;
+      padding: 7px 12px;
+      border-radius: 999px;
+      border: 1px solid #bfe0e8;
+      background: #ecf9fc;
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .support {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+      font-size: 14px;
+    }
+    a {
+      color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+  <main class="card" role="main" aria-live="polite">
+    <h1>CogFlow Platform is under scheduled maintenance</h1>
+    <div class="pill">Maintenance window: {{ maintenance_window }}</div>
+    <p>{{ maintenance_message }}</p>
+    <p>
+      Access to the portal is temporarily paused while migration and infrastructure updates are applied.
+      Please retry in about {{ retry_after_hours }} hours.
+    </p>
+    <p class="support">
+      Need help outside this maintenance window?
+      Contact <a href="mailto:{{ support_email }}">{{ support_email }}</a>.
+    </p>
+  </main>
+</body>
+</html>
