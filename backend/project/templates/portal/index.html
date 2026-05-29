@@ -1348,6 +1348,10 @@
           <p class="mfa-hint" style="margin-top:0;">New accounts are activated by email verification.</p>
           <div class="field-group">
             <div>
+              <label for="regFullName">Full name</label>
+              <input type="text" id="regFullName" autocomplete="name" placeholder="Dr Jane Smith" />
+            </div>
+            <div>
               <label for="regUsername">Username</label>
               <input type="text" id="regUsername" autocomplete="username" placeholder="your-username" />
             </div>
@@ -2169,6 +2173,10 @@
                 <h3 style="margin:0 0 10px;">Create New User</h3>
                 <div id="adminMsg" class="inline-note" style="display:none;margin-bottom:10px;"></div>
                 <div class="account-field">
+                  <label for="adminNewPublicName">Public name</label>
+                  <input type="text" id="adminNewPublicName" autocomplete="off" placeholder="Shown in portal and public credits" />
+                </div>
+                <div class="account-field">
                   <label for="adminNewUsername">Username</label>
                   <input type="text" id="adminNewUsername" autocomplete="off" />
                 </div>
@@ -2202,6 +2210,7 @@
                 <table>
                   <thead>
                     <tr>
+                      <th>Public Name</th>
                       <th>Username</th>
                       <th>Email</th>
                       <th>Role</th>
@@ -2249,6 +2258,19 @@
                 <div id="mfaAccountMsg" class="inline-note" style="display:none;margin-bottom:12px;"></div>
                 <div id="mfaStatusBlock"></div>
               </div>
+
+              <form class="account-section" onsubmit="return false;">
+                <h3>Public Name</h3>
+                <p class="mfa-hint" style="margin:0 0 10px;">This name is displayed in portal credits and public website attributions.</p>
+                <div id="profileMsg" class="inline-note" style="display:none;margin-bottom:12px;"></div>
+                <div class="account-field">
+                  <label for="profilePublicName">Public name</label>
+                  <input type="text" id="profilePublicName" autocomplete="name" />
+                </div>
+                <div class="account-actions">
+                  <button class="btn btn-primary btn-sm" id="saveProfileBtn">Save Public Name</button>
+                </div>
+              </form>
             </div>
           </div>
 

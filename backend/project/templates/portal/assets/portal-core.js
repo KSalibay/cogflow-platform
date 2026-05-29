@@ -1103,6 +1103,7 @@
     let creditsTaskScopes = [];
     let creditsRoles = [];
     let creditsUsernames = [];
+    let creditsUserDisplayNames = {};
     let creditsDraftRows = [];
     let creditsLoaded = false;
     let creditsEditMode = false;
@@ -2041,6 +2042,14 @@
       return Array.from(new Set((items || []).map((x) => String(x || "").trim()).filter(Boolean)));
     }
 
+    function getPublicNameForUsername(username) {
+      const key = String(username || "").trim();
+      if (!key) return "";
+      const mapped = creditsUserDisplayNames?.[key] || creditsUserDisplayNames?.[key.toLowerCase()];
+      if (mapped) return String(mapped).trim();
+      return key;
+    }
+
     function groupCreditsEntriesForUi(entries) {
       const grouped = new Map();
       (Array.isArray(entries) ? entries : []).forEach((e) => {
@@ -2108,6 +2117,15 @@
         creditsTaskScopes = Array.isArray(d.task_scopes) ? d.task_scopes : [];
         creditsRoles = Array.isArray(d.credit_roles) ? d.credit_roles : [];
         creditsUsernames = Array.isArray(d.usernames) ? d.usernames : [];
+        creditsUserDisplayNames = {};
+        const contributors = Array.isArray(d.contributors) ? d.contributors : [];
+        contributors.forEach((c) => {
+          const username = String(c?.username || "").trim();
+          const publicName = String(c?.public_name || "").trim();
+          if (!username) return;
+          creditsUserDisplayNames[username] = publicName || username;
+          creditsUserDisplayNames[username.toLowerCase()] = publicName || username;
+        });
         creditsDraftRows = [];
         creditsLoaded = true;
         renderCreditsView();
@@ -2201,6 +2219,14 @@
         .map((x) => `<option value="${esc(String(x || ""))}" ${String(x || "") === String(selected || "") ? "selected" : ""}>${esc(String(x || ""))}</option>`)
         .join("");
 
+      const optionHtmlUser = (items, selected) => (items || [])
+        .map((x) => {
+          const value = String(x || "");
+          const label = getPublicNameForUsername(value);
+          return `<option value="${esc(value)}" ${value === String(selected || "") ? "selected" : ""}>${esc(label)}</option>`;
+        })
+        .join("");
+
       const chipListHtml = (items, chipKind, rowIndex, editable) => {
         const list = uniqList(items || []);
         if (!list.length) return '<span style="color:var(--muted);">—</span>';
@@ -2208,7 +2234,8 @@
           const remove = editable
             ? `<button class="credit-chip-remove" data-action="remove-chip" data-chip-kind="${esc(chipKind)}" data-chip-value="${esc(x)}" data-row-index="${rowIndex}" aria-label="Remove">×</button>`
             : "";
-          return `<span class="credit-chip">${esc(x)}${remove}</span>`;
+          const label = chipKind === "user" ? getPublicNameForUsername(x) : x;
+          return `<span class="credit-chip">${esc(label)}${remove}</span>`;
         }).join("")}</div>`;
       };
 
@@ -2242,7 +2269,7 @@
             <td>
               ${chipListHtml(contributors, "user", rowIndex, true)}
               <div class="credit-chip-controls">
-                <select data-field="user_picker" data-row-index="${rowIndex}">${optionHtml(creditsUsernames, creditsUsernames[0] || "")}</select>
+                <select data-field="user_picker" data-row-index="${rowIndex}">${optionHtmlUser(creditsUsernames, creditsUsernames[0] || "")}</select>
                 <button class="btn btn-ghost btn-xs" data-action="add-chip" data-chip-kind="user" data-row-index="${rowIndex}">Add</button>
               </div>
             </td>
@@ -2487,7 +2514,7 @@
         const r = await fetch(`${API}/api/v1/auth/me`, { credentials: "include" });
         if (r.ok) {
           const d = await r.json();
-          currentUser = { username: d.username, role: d.role, email: d.email || "",
+          currentUser = { username: d.username, public_name: d.public_name || d.username || "", role: d.role, email: d.email || "",
                           mfa_enabled: !!d.mfa_enabled,
                           mfa_verified: !!(d.mfa_enabled && d.mfa_verified_at),
                           mfa_verified_at: d.mfa_verified_at || null };
@@ -2565,21 +2592,25 @@
       document.getElementById("appShell").classList.remove("hidden");
       const u = currentUser;
       const isAdmin = u.role === "platform_admin";
-      document.getElementById("topbarUsername").textContent  = u.username;
+      const publicName = (u.public_name || u.username || "").toString().trim() || u.username;
+      document.getElementById("topbarUsername").textContent  = publicName;
       document.getElementById("topbarRole").textContent      = u.role || "";
-      document.getElementById("sidebarUsername").textContent = u.username;
+      document.getElementById("sidebarUsername").textContent = publicName;
       document.getElementById("sidebarRole").textContent     = u.role || "";
-      document.getElementById("sidebarAvatar").textContent   = (u.username || "?")[0].toUpperCase();
+      document.getElementById("sidebarAvatar").textContent   = (publicName || "?")[0].toUpperCase();
       document.getElementById("dbAdminBtn").style.display    = isAdmin ? "" : "none";
       document.getElementById("navAdmin").style.display      = isAdmin ? "" : "none";
       applyRoleBasedUiLocks();
       const feedbackContact = document.getElementById("feedbackContact");
       if (feedbackContact) feedbackContact.value = (u.email || "").toString().trim();
+      const profilePublicName = document.getElementById("profilePublicName");
+      if (profilePublicName) profilePublicName.value = publicName;
       loadPortalA11yPreference();
       creditsEntries = [];
       creditsTaskScopes = [];
       creditsRoles = [];
       creditsUsernames = [];
+      creditsUserDisplayNames = {};
       creditsDraftRows = [];
       creditsLoaded = false;
       creditsEditMode = false;
@@ -2615,7 +2646,7 @@
         const d = await r.json().catch(() => ({}));
         btn.disabled = false; btn.textContent = "Sign In";
         if (r.ok && d.ok) {
-          currentUser = { username: d.username, role: null,
+          currentUser = { username: d.username, public_name: d.public_name || d.username || "", role: null,
                           mfa_enabled: !!d.mfa_enabled, mfa_verified: false, mfa_verified_at: null };
           if (d.mfa_enabled) {
             document.getElementById("loginStep1").style.display = "none";
@@ -2662,13 +2693,14 @@
     }
 
     async function doRegister() {
+      const fullName = (document.getElementById("regFullName")?.value || "").trim();
       const username = (document.getElementById("regUsername")?.value || "").trim();
       const email = (document.getElementById("regEmail")?.value || "").trim();
       const requestedRole = (document.getElementById("regRequestedRole")?.value || "researcher").trim().toLowerCase();
       const password = document.getElementById("regPassword")?.value || "";
       const password2 = document.getElementById("regPassword2")?.value || "";
-      if (!username || !email || !password) {
-        showRegister("Username, email, and password are required.");
+      if (!fullName || !username || !email || !password) {
+        showRegister("Full name, username, email, and password are required.");
         return;
       }
       if (password !== password2) {
@@ -2688,12 +2720,12 @@
       btn.disabled = true;
       btn.textContent = "Submitting…";
       try {
-        const r = await fetch(`${API}/api/v1/auth/register`, postOpts({ username, email, password, requested_role: requestedRole }));
+        const r = await fetch(`${API}/api/v1/auth/register`, postOpts({ full_name: fullName, username, email, password, requested_role: requestedRole }));
         const d = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
 
         document.getElementById("authUsername").value = username;
-        ["regUsername", "regEmail", "regPassword", "regPassword2"].forEach(id => {
+        ["regFullName", "regUsername", "regEmail", "regPassword", "regPassword2"].forEach(id => {
           const el = document.getElementById(id);
           if (el) el.value = "";
         });
@@ -2797,6 +2829,33 @@
     document.getElementById("confirmResetBtn").addEventListener("click", doPasswordResetConfirm);
     document.getElementById("resetPassword2").addEventListener("keydown", e => e.key === "Enter" && doPasswordResetConfirm());
 
+    document.getElementById("saveProfileBtn")?.addEventListener("click", async () => {
+      if (!currentUser) return;
+      const input = document.getElementById("profilePublicName");
+      const msgEl = document.getElementById("profileMsg");
+      const publicName = (input?.value || "").toString().trim();
+      if (!publicName) {
+        inlineMsg(msgEl, "Public name is required.", "err");
+        return;
+      }
+      const btn = document.getElementById("saveProfileBtn");
+      btn.disabled = true;
+      btn.textContent = "Saving…";
+      try {
+        const r = await fetch(`${API}/api/v1/auth/profile`, postOpts({ public_name: publicName }));
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+        currentUser.public_name = d.public_name || publicName;
+        showApp();
+        inlineMsg(msgEl, "Public name updated.", "ok");
+      } catch (err) {
+        inlineMsg(msgEl, `Profile update failed: ${err?.message || err}`, "err");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Save Public Name";
+      }
+    });
+
     // ── Sign out ───────────────────────────────────────────────
     document.getElementById("signOutBtn").addEventListener("click", async () => {
       await fetch(`${API}/api/v1/auth/logout`, postOpts({}));
@@ -2805,6 +2864,7 @@
       creditsTaskScopes = [];
       creditsRoles = [];
       creditsUsernames = [];
+      creditsUserDisplayNames = {};
       creditsDraftRows = [];
       creditsLoaded = false;
       creditsEditMode = false;

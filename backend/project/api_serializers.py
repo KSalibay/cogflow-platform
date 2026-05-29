@@ -59,6 +59,7 @@ class AuthLoginRequestSerializer(serializers.Serializer):
 class AuthRegisterRequestSerializer(serializers.Serializer):
     username = serializers.CharField(max_length=150)
     email = serializers.EmailField()
+    full_name = serializers.CharField(max_length=255)
     password = serializers.CharField(max_length=128)
     requested_role = serializers.ChoiceField(
         choices=[UserProfile.ROLE_RESEARCHER, UserProfile.ROLE_ANALYST],
@@ -152,10 +153,19 @@ class DuplicateStudyRequestSerializer(serializers.Serializer):
 
 class AdminCreateUserRequestSerializer(serializers.Serializer):
     username = serializers.CharField(max_length=150)
+    public_name = serializers.CharField(max_length=255, required=False, allow_blank=True)
     password = serializers.CharField(max_length=128)
     email = serializers.EmailField(required=False, allow_blank=True)
     role = serializers.ChoiceField(choices=[c[0] for c in UserProfile.ROLE_CHOICES])
     is_active = serializers.BooleanField(required=False, default=True)
+
+
+class AdminUpdateUserProfileRequestSerializer(serializers.Serializer):
+    public_name = serializers.CharField(max_length=255)
+
+
+class AuthProfileUpdateRequestSerializer(serializers.Serializer):
+    public_name = serializers.CharField(max_length=255)
 
 
 class AdminUpdateUserRoleRequestSerializer(serializers.Serializer):

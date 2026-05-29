@@ -1571,7 +1571,7 @@
       tbody.innerHTML = "";
 
       if (!adminUsers.length) {
-        tbody.innerHTML = '<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:24px;">No users found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="color:var(--muted);text-align:center;padding:24px;">No users found.</td></tr>';
         return;
       }
 
@@ -1589,6 +1589,12 @@
              </div>`
           : "—";
         tr.innerHTML = `
+          <td>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <input class="admin-public-name-input" data-user-id="${Number(u.id)}" type="text" value="${esc(u.public_name || u.username || "")}" style="border:1.5px solid var(--line);border-radius:8px;padding:4px 8px;font-size:.8rem;font-family:inherit;outline:none;background:var(--bg);color:var(--ink);width:220px;max-width:100%;" />
+              <button class="btn btn-ghost btn-xs" data-action="admin-save-public-name" data-user-id="${Number(u.id)}">Save</button>
+            </div>
+          </td>
           <td><strong>${esc(u.username || "—")}</strong></td>
           <td>${emailCell}</td>
           <td>
@@ -1651,6 +1657,31 @@
             await loadAdminUsers(true);
           } catch (err) {
             inlineMsg(msgEl, `Role update failed: ${err?.message || err}`, "err");
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      });
+
+      tbody.querySelectorAll('[data-action="admin-save-public-name"]').forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const userId = btn.getAttribute("data-user-id");
+          const input = tbody.querySelector(`input.admin-public-name-input[data-user-id="${String(userId)}"]`);
+          const publicName = String(input?.value || "").trim();
+          const msgEl = document.getElementById("adminMsg");
+          if (!publicName) {
+            inlineMsg(msgEl, "Public name is required.", "err");
+            return;
+          }
+          btn.disabled = true;
+          try {
+            const r = await fetch(`${API}/api/v1/admin/users/${encodeURIComponent(userId)}/profile`, postOpts({ public_name: publicName }));
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+            inlineMsg(msgEl, `Public name updated for user #${userId}.`, "ok");
+            await loadAdminUsers(true);
+          } catch (err) {
+            inlineMsg(msgEl, `Public name update failed: ${err?.message || err}`, "err");
           } finally {
             btn.disabled = false;
           }
@@ -1765,6 +1796,7 @@
     }
 
     document.getElementById("adminCreateUserBtn")?.addEventListener("click", async () => {
+      const publicName = (document.getElementById("adminNewPublicName")?.value || "").trim();
       const username = (document.getElementById("adminNewUsername")?.value || "").trim();
       const email = (document.getElementById("adminNewEmail")?.value || "").trim();
       const password = document.getElementById("adminNewPassword")?.value || "";
@@ -1784,11 +1816,11 @@
       btn.disabled = true;
       btn.textContent = "Creating…";
       try {
-        const r = await fetch(`${API}/api/v1/admin/users`, postOpts({ username, email, password, role, is_active: true }));
+        const r = await fetch(`${API}/api/v1/admin/users`, postOpts({ username, public_name: publicName, email, password, role, is_active: true }));
         const d = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
         inlineMsg(msgEl, `User ${username} created successfully.`, "ok");
-        ["adminNewUsername", "adminNewEmail", "adminNewPassword"].forEach(id => {
+        ["adminNewPublicName", "adminNewUsername", "adminNewEmail", "adminNewPassword"].forEach(id => {
           const el = document.getElementById(id);
           if (el) el.value = "";
         });

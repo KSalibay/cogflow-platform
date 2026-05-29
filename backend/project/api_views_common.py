@@ -41,7 +41,7 @@ from apps.studies.models import (
     StudyAnalysisReportJob,
 )
 from apps.users.models import UserProfile
-from apps.users.services import get_or_create_profile
+from apps.users.services import get_or_create_profile, get_public_name
 from apps.results.models import ResultEnvelope
 from apps.results.services import (
     get_decrypted_envelope,
@@ -50,7 +50,9 @@ from apps.results.services import (
     store_trial_results,
 )
 from project.api_serializers import (
+    AuthProfileUpdateRequestSerializer,
     AdminCreateUserRequestSerializer,
+    AdminUpdateUserProfileRequestSerializer,
     AdminSetUserPasswordRequestSerializer,
     AdminUpdateUserActivationRequestSerializer,
     AdminUpdateUserRoleRequestSerializer,

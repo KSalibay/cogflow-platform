@@ -16,6 +16,7 @@ class AdminUsersView(APIView):
                 {
                     "id": user.id,
                     "username": user.username,
+                    "public_name": get_public_name(user),
                     "email": user.email,
                     "is_active": user.is_active,
                     "is_superuser": user.is_superuser,
@@ -52,7 +53,8 @@ class AdminUsersView(APIView):
 
         profile = get_or_create_profile(user)
         profile.role = data["role"]
-        profile.save(update_fields=["role"])
+        profile.public_name = str(data.get("public_name") or "").strip()
+        profile.save(update_fields=["role", "public_name"])
 
         record_audit(
             action="admin_user_created",
@@ -68,6 +70,7 @@ class AdminUsersView(APIView):
                 "user": {
                     "id": user.id,
                     "username": user.username,
+                    "public_name": get_public_name(user),
                     "email": user.email,
                     "is_active": user.is_active,
                     "role": profile.role,
@@ -219,6 +222,50 @@ class AdminUserPasswordView(APIView):
 
         return Response(
             {"ok": True, "user": {"id": target.id, "username": target.username}},
+            status=status.HTTP_200_OK,
+        )
+
+
+class AdminUserProfileView(APIView):
+    """Allow platform admins to update a user's public profile fields."""
+
+    @transaction.atomic
+    def post(self, request, user_id: int):
+        _, error = _require_platform_admin(request)
+        if error:
+            return error
+
+        serializer = AdminUpdateUserProfileRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        public_name = str(serializer.validated_data["public_name"] or "").strip()
+        if not public_name:
+            return Response({"error": "public_name is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        target = User.objects.filter(id=user_id).first()
+        if not target:
+            return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        profile = get_or_create_profile(target)
+        profile.public_name = public_name
+        profile.save(update_fields=["public_name"])
+
+        record_audit(
+            action="admin_user_profile_updated",
+            resource_type="user",
+            resource_id=target.id,
+            actor=request.user.username,
+            metadata={"username": target.username, "public_name": public_name},
+        )
+
+        return Response(
+            {
+                "ok": True,
+                "user": {
+                    "id": target.id,
+                    "username": target.username,
+                    "public_name": get_public_name(target),
+                },
+            },
             status=status.HTTP_200_OK,
         )
 

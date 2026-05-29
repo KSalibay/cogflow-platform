@@ -40,6 +40,7 @@ class AuthLoginView(APIView):
             {
                 "ok": True,
                 "username": user.username,
+                "public_name": get_public_name(user),
                 "mfa_enabled": profile.mfa_enabled,
             },
             status=status.HTTP_200_OK,
@@ -73,11 +74,14 @@ class AuthRegisterView(APIView):
 
         username = data["username"].strip()
         email = data["email"].strip().lower()
+        full_name = str(data.get("full_name") or "").strip()
         password = data["password"]
         requested_role = data.get("requested_role") or UserProfile.ROLE_RESEARCHER
 
         if not username:
             return Response({"error": "Username is required"}, status=status.HTTP_400_BAD_REQUEST)
+        if not full_name:
+            return Response({"error": "Full name is required"}, status=status.HTTP_400_BAD_REQUEST)
         if len(password) < 8:
             return Response({"error": "Password must be at least 8 characters"}, status=status.HTTP_400_BAD_REQUEST)
         if User.objects.filter(username=username).exists():
@@ -91,7 +95,8 @@ class AuthRegisterView(APIView):
 
         profile = get_or_create_profile(user)
         profile.role = requested_role
-        profile.save(update_fields=["role"])
+        profile.public_name = full_name
+        profile.save(update_fields=["role", "public_name"])
 
         record_audit(
             action="auth_register_requested",
@@ -489,10 +494,47 @@ class AuthMeView(APIView):
             {
                 "authenticated": True,
                 "username": request.user.username,
+                "public_name": get_public_name(request.user),
                 "email": request.user.email or "",
                 "role": profile.role,
                 "mfa_enabled": profile.mfa_enabled,
                 "mfa_verified_at": mfa_verified_at,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class AuthProfileView(APIView):
+    """Allow authenticated users to update their own public profile fields."""
+
+    @transaction.atomic
+    def post(self, request):
+        if not request.user.is_authenticated:
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        serializer = AuthProfileUpdateRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        public_name = str(serializer.validated_data["public_name"] or "").strip()
+        if not public_name:
+            return Response({"error": "public_name is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        profile = get_or_create_profile(request.user)
+        profile.public_name = public_name
+        profile.save(update_fields=["public_name"])
+
+        record_audit(
+            action="auth_profile_updated",
+            resource_type="user",
+            resource_id=request.user.id,
+            actor=request.user.username,
+            metadata={"public_name": public_name},
+        )
+
+        return Response(
+            {
+                "ok": True,
+                "username": request.user.username,
+                "public_name": get_public_name(request.user),
             },
             status=status.HTTP_200_OK,
         )

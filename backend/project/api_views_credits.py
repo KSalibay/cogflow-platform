@@ -40,6 +40,17 @@ class CreditsView(APIView):
             .order_by("username")
             .values_list("username", flat=True)
         )
+        users = {
+            u.username: u
+            for u in User.objects.filter(username__in=usernames)
+        }
+        contributors = [
+            {
+                "username": uname,
+                "public_name": get_public_name(users[uname]) if uname in users else uname,
+            }
+            for uname in usernames
+        ]
 
         return Response(
             {
@@ -50,6 +61,7 @@ class CreditsView(APIView):
                 "task_scopes": task_scopes,
                 "credit_roles": CREDIT_ROLES,
                 "usernames": usernames,
+                "contributors": contributors,
                 "entries": rows,
             },
             status=status.HTTP_200_OK,
@@ -232,9 +244,7 @@ class CreditsPublicView(APIView):
         def _display_name(username):
             u = users.get(username)
             if u:
-                full = (f"{u.first_name} {u.last_name}").strip()
-                if full:
-                    return full
+                return get_public_name(u)
             cleaned = username.replace("_", " ").replace("-", " ").strip()
             parts = [p for p in cleaned.split(" ") if p]
             if not parts:
@@ -251,6 +261,7 @@ class CreditsPublicView(APIView):
                     "credit_role": x.credit_role,
                     "contributor_username": uname,
                     "contributor_display": _display_name(uname),
+                    "contributor_public_name": _display_name(uname),
                     "notes": x.notes,
                     "updated_at": x.updated_at,
                 }

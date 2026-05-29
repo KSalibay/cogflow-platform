@@ -12,6 +12,7 @@ from .api_views_auth import (
     PasswordResetRequestView,
     PasswordResetConfirmView,
     AuthMeView,
+    AuthProfileView,
     FeedbackSubmitView,
 )
 from .api_views_admin import (
@@ -20,6 +21,7 @@ from .api_views_admin import (
     AdminUserDeleteView,
     AdminUserActivationView,
     AdminUserPasswordView,
+    AdminUserProfileView,
 )
 from .api_views_portal import (
     HealthView,
