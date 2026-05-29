@@ -1276,9 +1276,7 @@
       });
 
       const isStudiesView = (id === "studiesManagement" || id === "studiesResults");
-      if (isStudiesView) {
-        document.getElementById("navStudies")?.classList.add("active");
-      }
+      document.getElementById("navStudies")?.classList.toggle("active", isStudiesView);
       document.getElementById("navStudiesManagement")?.classList.toggle("active", id === "studiesManagement");
       document.getElementById("navStudiesResults")?.classList.toggle("active", id === "studiesResults");
       document.getElementById("subNavStudies")?.classList.toggle("hidden", !isStudiesView);

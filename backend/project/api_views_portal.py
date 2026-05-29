@@ -129,6 +129,7 @@ class PortalDashboardView(APIView):
 
     def get(self, request):
         db_admin_url = (os.getenv("COGFLOW_DB_ADMIN_URL", "") or "").strip()
+        public_site_url = (os.getenv("COGFLOW_PUBLIC_SITE_URL", "") or "").strip() or "https://cogflow.app"
         if not db_admin_url:
             host = request.get_host().split(":", 1)[0]
             adminer_port = (os.getenv("ADMINER_HOST_PORT", "8080") or "8080").strip() or "8080"
@@ -136,6 +137,13 @@ class PortalDashboardView(APIView):
                 f"{request.scheme}://{host}:{adminer_port}/"
                 "?pgsql=db&username=cogflow&db=cogflow_platform&ns=public"
             )
-        return render(request, "portal/index.html", {"db_admin_url": db_admin_url})
+        return render(
+            request,
+            "portal/index.html",
+            {
+                "db_admin_url": db_admin_url,
+                "public_site_url": public_site_url,
+            },
+        )
 
 

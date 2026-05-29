@@ -425,6 +425,10 @@
 
       .nav-item.sub { font-size: 0.82rem; padding: 7px 11px; }
 
+      a.nav-item {
+        text-decoration: none;
+      }
+
       .nav-divider {
         height: 1px; background: var(--line); margin: 6px 4px; flex-shrink: 0;
       }
@@ -481,6 +485,19 @@
       .view-scroll { flex: 1; overflow-y: auto; padding: 24px; }
 
       .view-iframe { flex: 1; border: none; display: block; width: 100%; height: 100%; box-sizing: border-box; }
+
+      #viewAnalysis .account-field {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 6px;
+      }
+
+      #viewAnalysis .account-field input,
+      #viewAnalysis .account-field select {
+        max-width: none;
+        width: 100%;
+      }
 
       .iframe-shell {
         flex: 1;
@@ -1421,6 +1438,15 @@
         </div>
         <div class="topbar-spacer"></div>
         <div class="topbar-user">
+          <a
+            href="{{ public_site_url|default:'https://cogflow.app' }}"
+            class="btn btn-ghost btn-sm"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Open public site"
+          >
+            Back to cogflow.app
+          </a>
           <button class="btn btn-ghost btn-sm theme-btn" id="portalThemeToggle">Theme: Light</button>
           <select id="portalA11ySelect" class="a11y-select" aria-label="Accessibility mode">
             <option value="standard">A11y: Standard</option>
@@ -1521,6 +1547,10 @@
               <span class="nav-icon">⚙</span>
               <span class="nav-label">Account Settings</span>
             </button>
+            <a class="nav-item" id="navPublicSite" href="{{ public_site_url|default:'https://cogflow.app' }}" target="_blank" rel="noopener noreferrer" title="Open public site">
+              <span class="nav-icon">🌐</span>
+              <span class="nav-label">Public Site</span>
+            </a>
           </div>
 
           <div class="sidebar-footer">
