@@ -280,7 +280,7 @@ var jsPsychRdm = (function (jspsych) {
       const ctx = canvas.getContext('2d');
 
       // Fixation phase: draw cross on blank bg
-      const bg = (typeof rdm.background_color === 'string' && rdm.background_color.trim() !== '') ? rdm.background_color : '#000000';
+      const bg = (typeof rdm.background_color === 'string' && rdm.background_color.trim() !== '') ? rdm.background_color : '#404040';
 
       const showFixation = () => {
         ctx.fillStyle = bg;

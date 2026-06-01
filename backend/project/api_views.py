@@ -56,5 +56,6 @@ from .api_views_studies import (
 from .api_views_runs import (
     StartRunView,
     SubmitResultView,
+    SaveCheckpointView,
     DecryptResultView,
 )

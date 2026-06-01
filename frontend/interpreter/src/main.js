@@ -2106,6 +2106,32 @@
       // ignore
     }
 
+    // Expose checkpoint save hook for checkpoint-marker timeline items.
+    // Fires a partial save to the platform without closing the run session.
+    try {
+      window.CogFlowCheckpoint = {
+        save: function (opts) {
+          const options = (opts && typeof opts === 'object') ? opts : {};
+          try {
+            const values = jsPsych.data.get().values();
+            const payload = buildResultPayload({ values, config, compiled, configId, code: null });
+            if (window.DjangoRuntimeBackend && typeof window.DjangoRuntimeBackend.saveCheckpoint === 'function') {
+              window.DjangoRuntimeBackend.saveCheckpoint(payload, {
+                label: options.label || '',
+                checkpointIndex: options.checkpointIndex || 0,
+              }).catch((e) => {
+                console.warn('[CogFlowCheckpoint] saveCheckpoint failed (non-fatal):', e && e.message ? e.message : String(e));
+              });
+            }
+          } catch (e) {
+            console.warn('[CogFlowCheckpoint] save() error (non-fatal):', e && e.message ? e.message : String(e));
+          }
+        }
+      };
+    } catch {
+      // ignore
+    }
+
     // Ensure core identifiers are present on *every* row (useful for debug CSV/JSON).
     // Multi-config mode already stamps these per trial since they change by config.
     try {
@@ -2544,6 +2570,31 @@
         setStatus('Experiment finished (local mode). Data logged to console.');
       }
     });
+
+    // Expose checkpoint save hook for checkpoint-marker timeline items (multi-config path).
+    try {
+      window.CogFlowCheckpoint = {
+        save: function (opts) {
+          const options = (opts && typeof opts === 'object') ? opts : {};
+          try {
+            const values = jsPsych.data.get().values();
+            const payload = buildResultPayload({ values, config: null, compiled: null, configId: null, code: code || null });
+            if (window.DjangoRuntimeBackend && typeof window.DjangoRuntimeBackend.saveCheckpoint === 'function') {
+              window.DjangoRuntimeBackend.saveCheckpoint(payload, {
+                label: options.label || '',
+                checkpointIndex: options.checkpointIndex || 0,
+              }).catch((e) => {
+                console.warn('[CogFlowCheckpoint] saveCheckpoint failed (non-fatal):', e && e.message ? e.message : String(e));
+              });
+            }
+          } catch (e) {
+            console.warn('[CogFlowCheckpoint] save() error (non-fatal):', e && e.message ? e.message : String(e));
+          }
+        }
+      };
+    } catch {
+      // ignore
+    }
 
     if (lslEmitter.enabled) {
       lslEmitter.emit('session_start', {

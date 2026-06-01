@@ -243,5 +243,78 @@
       console.log('[DjangoRuntimeBackend] Result submitted. Envelope:', data.result_envelope_id);
       return data;
     },
+
+    /**
+     * POST /api/v1/results/checkpoint — saves partial progress without closing the run.
+     *
+     * Called by the checkpoint-marker timeline component.  Failures are swallowed
+     * (logged as warnings) so that a network hiccup never aborts the experiment.
+     *
+     * @param {object} payload         CogFlow result payload with .trials array.
+     * @param {object} [options]
+     * @param {string} [options.label]           Researcher-authored label for this checkpoint.
+     * @param {number} [options.checkpointIndex] Zero-based position in the timeline.
+     * @returns {Promise<object|null>}  Resolves with the response body, or null on failure.
+     */
+    saveCheckpoint: async function (payload, options) {
+      if (!this._runSessionId) {
+        console.warn('[DjangoRuntimeBackend] saveCheckpoint called before startRun — skipping.');
+        return null;
+      }
+
+      const opts = (options && typeof options === 'object') ? options : {};
+      const url = this._baseUrl() + '/api/v1/results/checkpoint';
+      const trials = Array.isArray(payload && payload.trials) ? payload.trials : [];
+
+      let resp;
+      try {
+        const requestBody = JSON.stringify({
+          run_session_id: this._runSessionId,
+          checkpoint_label: (typeof opts.label === 'string') ? opts.label : '',
+          checkpoint_index: (typeof opts.checkpointIndex === 'number') ? opts.checkpointIndex : 0,
+          trial_count: trials.length,
+          result_payload: payload || {},
+          trials: trials,
+        });
+
+        const sendRequest = async () => {
+          const csrfToken = this._getCsrfToken();
+          return fetch(url, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+            },
+            body: requestBody,
+          });
+        };
+
+        resp = await sendRequest();
+        if (resp && resp.status === 403) {
+          await this._refreshCsrfCookie();
+          resp = await sendRequest();
+        }
+      } catch (networkErr) {
+        console.warn(
+          '[DjangoRuntimeBackend] saveCheckpoint network error (non-fatal):',
+          networkErr && networkErr.message ? networkErr.message : String(networkErr)
+        );
+        return null;
+      }
+
+      if (!resp.ok) {
+        console.warn('[DjangoRuntimeBackend] saveCheckpoint returned', resp.status, '(non-fatal)');
+        return null;
+      }
+
+      const data = await resp.json();
+      console.log(
+        '[DjangoRuntimeBackend] Checkpoint saved:',
+        opts.label || '(unlabeled)',
+        '| trials so far:', trials.length
+      );
+      return data;
+    },
   };
 })();

@@ -318,6 +318,79 @@ class SubmitResultView(APIView):
         )
 
 
+class SaveCheckpointView(APIView):
+    """Store a partial / in-progress result without closing the run session.
+
+    Called by the Interpreter whenever a researcher-placed checkpoint marker
+    executes in the jsPsych timeline.  The run status stays ``started``; the
+    result envelope and trial rows are upserted so that data is recoverable if
+    the participant drops out before reaching the final submit.
+    """
+
+    @transaction.atomic
+    def post(self, request):
+        serializer = SaveCheckpointRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        run_session = RunSession.objects.filter(id=data["run_session_id"]).first()
+        if not run_session:
+            return Response({"error": "Run session not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if run_session.status in RUN_TERMINAL_STATUSES:
+            # Silently accept the checkpoint but do nothing — run is already closed.
+            return Response(
+                {
+                    "run_session_id": run_session.id,
+                    "stored": False,
+                    "reason": "run_already_terminal",
+                    "status": run_session.status,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        envelope = store_result_envelope(
+            run_session=run_session,
+            trial_count=data["trial_count"],
+            summary_json={
+                "checkpoint_label": data["checkpoint_label"],
+                "checkpoint_index": data["checkpoint_index"],
+            },
+            result_payload=data["result_payload"],
+        )
+
+        trial_records_stored = store_trial_results(
+            run_session=run_session,
+            trials=data.get("trials", []),
+        )
+
+        # Keep the session open (status remains "started")
+        record_audit(
+            action="save_checkpoint",
+            resource_type="run_session",
+            resource_id=run_session.id,
+            metadata={
+                "checkpoint_label": data["checkpoint_label"],
+                "checkpoint_index": data["checkpoint_index"],
+                "trial_count": data["trial_count"],
+                "trial_records_stored": trial_records_stored,
+            },
+        )
+
+        return Response(
+            {
+                "run_session_id": run_session.id,
+                "result_envelope_id": envelope.id,
+                "status": run_session.status,
+                "stored": True,
+                "checkpoint_label": data["checkpoint_label"],
+                "checkpoint_index": data["checkpoint_index"],
+                "trial_records_stored": trial_records_stored,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 class DecryptResultView(APIView):
     """Protected decrypt/read endpoint for interim Day 6 privacy controls."""
 

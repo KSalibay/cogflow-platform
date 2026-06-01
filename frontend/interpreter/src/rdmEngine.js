@@ -145,7 +145,7 @@
       this.centerX = w / 2;
       this.centerY = h / 2;
 
-      this.background = pickColor(p.background_color, '#000000');
+      this.background = pickColor(p.background_color, '#404040');
       this.dotSize = Number(p.dot_size ?? 4);
       this.totalDots = Math.max(1, Number.parseInt(p.total_dots ?? 150, 10) || 150);
 

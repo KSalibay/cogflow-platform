@@ -2882,7 +2882,7 @@ class JsonBuilder {
         } else if (nextExperimentType === 'continuous') {
             this.setElementValue('frameRate', config?.frame_rate);
             this.setElementValue('duration', config?.duration);
-            this.setElementValue('updateInterval', config?.update_interval);
+            this.setElementValue('updateInterval', config?.update_interval_ms ?? config?.update_interval);
             this.setElementValue('defaultTransitionDuration', config?.transition_settings?.duration_ms);
             this.setElementValue('defaultTransitionType', config?.transition_settings?.type);
         }
@@ -2907,13 +2907,96 @@ class JsonBuilder {
         };
 
         if (t === 'rdm') {
-            const ds = (config?.display_settings && typeof config.display_settings === 'object') ? config.display_settings : {};
-            setFrom('canvasWidth', ds.canvas_width);
-            setFrom('canvasHeight', ds.canvas_height);
-            setFrom('backgroundColor', ds.background_color);
-            setFrom('fixationDuration', config?.fixation_duration);
-            setFrom('defaultResponseDevice', config?.data_collection?.default_response_device);
-            setFrom('responseKeys', csv(config?.response_keys));
+            const ds = (config?.display_settings && typeof config.display_settings === 'object')
+                ? config.display_settings
+                : ((config?.display_parameters && typeof config.display_parameters === 'object') ? config.display_parameters : {});
+            const ap = (config?.aperture_parameters && typeof config.aperture_parameters === 'object') ? config.aperture_parameters : {};
+            const dot = (config?.dot_parameters && typeof config.dot_parameters === 'object') ? config.dot_parameters : {};
+            const motion = (config?.motion_parameters && typeof config.motion_parameters === 'object') ? config.motion_parameters : {};
+            const timing = (config?.timing_parameters && typeof config.timing_parameters === 'object') ? config.timing_parameters : {};
+            const response = (config?.response_parameters && typeof config.response_parameters === 'object') ? config.response_parameters : {};
+
+            const firstRdmTimelineItem = (() => {
+                const timeline = Array.isArray(config?.timeline) ? config.timeline : [];
+                for (const item of timeline) {
+                    if (!item || typeof item !== 'object') continue;
+                    const type = (item.type || '').toString().trim();
+                    if (type.startsWith('rdm-')) return item;
+                }
+                return null;
+            })();
+
+            setFrom('canvasWidth', ds.canvas_width ?? firstRdmTimelineItem?.canvas_width);
+            setFrom('canvasHeight', ds.canvas_height ?? firstRdmTimelineItem?.canvas_height);
+            setFrom('backgroundColor', ds.background_color ?? firstRdmTimelineItem?.background_color);
+
+            setFrom('apertureShape', ap.aperture_shape ?? ap.shape ?? firstRdmTimelineItem?.aperture_shape);
+            setFrom('apertureDiameter', ap.aperture_size ?? ap.diameter ?? firstRdmTimelineItem?.aperture_size);
+            if (ap.show_aperture_outline !== undefined) setFrom('apertureOutlineEnabled', ap.show_aperture_outline, 'checked');
+            setFrom('apertureOutlineWidth', ap.aperture_outline_width);
+            setFrom('apertureOutlineColor', ap.aperture_outline_color);
+
+            setFrom('dotSize', dot.dot_size ?? firstRdmTimelineItem?.dot_size);
+            setFrom('dotColor', dot.dot_color ?? firstRdmTimelineItem?.dot_color);
+            setFrom('totalDots', dot.total_dots ?? firstRdmTimelineItem?.total_dots);
+            setFrom('dotLifetime', dot.lifetime_frames ?? firstRdmTimelineItem?.lifetime_frames);
+
+            setFrom('motionCoherence', motion.coherence ?? firstRdmTimelineItem?.coherence);
+            setFrom('motionDirection', motion.coherent_direction ?? motion.direction ?? firstRdmTimelineItem?.coherent_direction ?? firstRdmTimelineItem?.direction);
+            setFrom('motionSpeed', motion.speed ?? firstRdmTimelineItem?.speed);
+            setFrom('noiseType', motion.noise_type ?? firstRdmTimelineItem?.noise_type);
+
+            setFrom('stimulusDuration', timing.stimulus_duration ?? firstRdmTimelineItem?.stimulus_duration);
+            setFrom('responseDeadline', timing.response_deadline ?? firstRdmTimelineItem?.response_deadline);
+            setFrom('interTrialInterval', timing.inter_trial_interval ?? firstRdmTimelineItem?.inter_trial_interval);
+            setFrom('fixationDuration', timing.fixation_duration ?? config?.fixation_duration ?? firstRdmTimelineItem?.fixation_duration);
+
+            const inferredResponseDevice = (() => {
+                if (typeof response.response_device === 'string' && response.response_device.trim() !== '') {
+                    return response.response_device;
+                }
+                if (response.mouse_response) return 'mouse';
+                if (response.touch_response) return 'touch';
+                if (response.voice_response) return 'voice';
+                if (typeof config?.data_collection?.default_response_device === 'string' && config.data_collection.default_response_device.trim() !== '') {
+                    return config.data_collection.default_response_device;
+                }
+                return 'keyboard';
+            })();
+
+            setFrom('defaultResponseDevice', inferredResponseDevice);
+            setFrom('responseKeys', csv(response.choices ?? config?.response_keys));
+
+            if (response.require_response !== undefined) setFrom('requireResponse', response.require_response, 'checked');
+            if (typeof response.end_condition_on_response === 'boolean') setFrom('endConditionOnResponse', response.end_condition_on_response, 'checked');
+
+            if (response.feedback && typeof response.feedback === 'object') {
+                setFrom('defaultFeedbackType', response.feedback.type);
+                setFrom('defaultFeedbackDuration', response.feedback.duration_ms);
+                setFrom('defaultFeedbackArrowColorMode', response.feedback.arrow_color_mode);
+                setFrom('defaultFeedbackArrowNeutralColor', response.feedback.arrow_neutral_color);
+                setFrom('defaultFeedbackArrowCustomColor', response.feedback.arrow_custom_color);
+                setFrom('defaultFeedbackArrowCorrectColor', response.feedback.arrow_correct_color);
+                setFrom('defaultFeedbackArrowIncorrectColor', response.feedback.arrow_incorrect_color);
+                setFrom('defaultFeedbackArrowSizePx', response.feedback.arrow_size_px);
+                setFrom('defaultFeedbackArrowLineWidthPx', response.feedback.arrow_line_width_px);
+            }
+
+            if (response.mouse_response && typeof response.mouse_response === 'object') {
+                const mouse = response.mouse_response;
+                setFrom('mouseApertureSegments', mouse.segments);
+                setFrom('mouseSegmentStartAngle', mouse.start_angle_deg);
+                setFrom('mouseSelectionMode', mouse.selection_mode);
+                setFrom('mouseAccuracyMode', mouse.accuracy_mode);
+                setFrom('mouseAccuracyToleranceDeg', mouse.accuracy_tolerance_deg);
+                setFrom('mouseAccuracySlackDeg', mouse.accuracy_slack_deg);
+                if (mouse.inactivity_prompt && typeof mouse.inactivity_prompt === 'object') {
+                    setFrom('mouseInactivityPromptEnabled', mouse.inactivity_prompt.enabled === true, 'checked');
+                    setFrom('mouseInactivityThresholdMs', mouse.inactivity_prompt.idle_threshold_ms);
+                    setFrom('mouseInactivityReminderCooldownMs', mouse.inactivity_prompt.reminder_cooldown_ms);
+                    setFrom('mouseInactivityPromptText', mouse.inactivity_prompt.message);
+                }
+            }
             return;
         }
 
@@ -7750,6 +7833,17 @@ class JsonBuilder {
                 type: 'randomize-end',
                 parameters: {
                     random_group_id: { type: 'string', default: '' }
+                }
+            },
+            {
+                id: 'checkpoint',
+                name: 'Save Checkpoint',
+                icon: 'fas fa-bookmark',
+                description: 'Saves participant data to the platform at this point in the timeline without ending the session. Invisible to participants.',
+                category: 'utility',
+                type: 'checkpoint',
+                parameters: {
+                    label: { type: 'string', default: '' }
                 }
             },
             {

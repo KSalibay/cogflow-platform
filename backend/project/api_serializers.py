@@ -46,6 +46,20 @@ class SubmitResultRequestSerializer(serializers.Serializer):
     trials = serializers.ListField(child=serializers.JSONField(), required=False, default=list)
 
 
+class SaveCheckpointRequestSerializer(serializers.Serializer):
+    run_session_id = serializers.UUIDField()
+    # Human-readable label authored in the Builder (e.g. "After Block 1")
+    checkpoint_label = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
+    # Index of this checkpoint within the overall timeline (0-based)
+    checkpoint_index = serializers.IntegerField(min_value=0, required=False, default=0)
+    # How many trials have been completed at this point
+    trial_count = serializers.IntegerField(min_value=0)
+    # The partial result payload accumulated so far
+    result_payload = serializers.JSONField()
+    # Per-trial rows completed so far
+    trials = serializers.ListField(child=serializers.JSONField(), required=False, default=list)
+
+
 class DecryptResultRequestSerializer(serializers.Serializer):
     run_session_id = serializers.UUIDField()
     include_trials = serializers.BooleanField(required=False, default=False)

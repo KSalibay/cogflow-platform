@@ -75,10 +75,11 @@ from project.api_serializers import (
     StudyAnalysisReportRequestSerializer,
     StudyPropertiesRequestSerializer,
     SubmitResultRequestSerializer,
+    SaveCheckpointRequestSerializer,
     TotpSetupRequestSerializer,
     TotpVerifyRequestSerializer,
 )
-from project.constants import RUN_STATUS_COMPLETED
+from project.constants import RUN_STATUS_COMPLETED, RUN_TERMINAL_STATUSES
 from project.security import decrypt_payload, encrypt_payload, hash_identifier
 
 

@@ -4075,6 +4075,30 @@
           continue;
         }
 
+        // Checkpoint marker in continuous mode — flush pending frames then save.
+        if (type === 'checkpoint') {
+          pushRdmContinuousSegment();
+          const label = (typeof item.label === 'string' && item.label.trim()) ? item.label.trim() : '';
+          const checkpointIndex = (typeof item.checkpoint_index === 'number') ? item.checkpoint_index : 0;
+          timeline.push({
+            type: HtmlKeyboard,
+            stimulus: '',
+            choices: 'NO_KEYS',
+            trial_duration: 0,
+            on_finish: function () {
+              try {
+                if (window.CogFlowCheckpoint && typeof window.CogFlowCheckpoint.save === 'function') {
+                  window.CogFlowCheckpoint.save({ label: label, checkpointIndex: checkpointIndex });
+                }
+              } catch {
+                // ignore — checkpoint is non-fatal
+              }
+            },
+            data: { plugin_type: 'checkpoint', checkpoint_label: label, checkpoint_index: checkpointIndex }
+          });
+          continue;
+        }
+
         // Unsupported components in continuous mode: treat as a segment boundary.
         pushRdmContinuousSegment();
       }
@@ -6025,6 +6049,30 @@
           }
         };
         timeline.push(maybeWrapTrialWithRewardPopups(trial, type));
+        continue;
+      }
+
+      // Checkpoint marker — triggers a partial platform save without displaying anything to the participant.
+      // Researchers place this in the Builder Timeline between task sections.
+      if (type === 'checkpoint') {
+        const label = (typeof item.label === 'string' && item.label.trim()) ? item.label.trim() : '';
+        const checkpointIndex = (typeof item.checkpoint_index === 'number') ? item.checkpoint_index : 0;
+        timeline.push({
+          type: HtmlKeyboard,
+          stimulus: '',
+          choices: 'NO_KEYS',
+          trial_duration: 0,
+          on_finish: function () {
+            try {
+              if (window.CogFlowCheckpoint && typeof window.CogFlowCheckpoint.save === 'function') {
+                window.CogFlowCheckpoint.save({ label: label, checkpointIndex: checkpointIndex });
+              }
+            } catch {
+              // ignore — checkpoint is non-fatal
+            }
+          },
+          data: { plugin_type: 'checkpoint', checkpoint_label: label, checkpoint_index: checkpointIndex }
+        });
         continue;
       }
 
