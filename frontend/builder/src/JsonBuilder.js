@@ -2394,6 +2394,43 @@ class JsonBuilder {
                 if (out[k] === undefined) out[k] = v;
             });
 
+            // Unpack response_parameters_override back into flat block editor fields for all RDM block types.
+            if (innerType && innerType.startsWith('rdm-') && src.response_parameters_override && typeof src.response_parameters_override === 'object') {
+                const rpo = src.response_parameters_override;
+                if (typeof rpo.response_device === 'string' && rpo.response_device !== '') out.response_device = rpo.response_device;
+                if (typeof rpo.require_response === 'boolean') out.require_response_mode = rpo.require_response ? 'true' : 'false';
+                if (typeof rpo.end_condition_on_response === 'boolean') out.end_condition_on_response_mode = rpo.end_condition_on_response ? 'true' : 'false';
+                if (rpo.feedback && typeof rpo.feedback === 'object') {
+                    if (typeof rpo.feedback.type === 'string') out.feedback_mode = rpo.feedback.type;
+                    if (rpo.feedback.duration_ms !== undefined) out.feedback_duration_ms = rpo.feedback.duration_ms;
+                    if (typeof rpo.feedback.arrow_color_mode === 'string') out.feedback_arrow_color_mode = rpo.feedback.arrow_color_mode;
+                    if (rpo.feedback.arrow_neutral_color) out.feedback_arrow_neutral_color = rpo.feedback.arrow_neutral_color;
+                    if (rpo.feedback.arrow_custom_color) out.feedback_arrow_custom_color = rpo.feedback.arrow_custom_color;
+                    if (rpo.feedback.arrow_correct_color) out.feedback_arrow_correct_color = rpo.feedback.arrow_correct_color;
+                    if (rpo.feedback.arrow_incorrect_color) out.feedback_arrow_incorrect_color = rpo.feedback.arrow_incorrect_color;
+                    if (rpo.feedback.arrow_size_px !== undefined) out.feedback_arrow_size_px = rpo.feedback.arrow_size_px;
+                    if (rpo.feedback.arrow_line_width_px !== undefined) out.feedback_arrow_line_width_px = rpo.feedback.arrow_line_width_px;
+                } else if (rpo.feedback === null || (rpo.feedback && rpo.feedback.enabled === false)) {
+                    out.feedback_mode = 'off';
+                }
+                if (Array.isArray(rpo.choices) && rpo.choices.length > 0) out.response_keys = rpo.choices.join(',');
+                if (rpo.mouse_response && typeof rpo.mouse_response === 'object') {
+                    const mr = rpo.mouse_response;
+                    if (mr.segments !== undefined) out.mouse_segments = mr.segments;
+                    if (mr.start_angle_deg !== undefined) out.mouse_start_angle_deg = mr.start_angle_deg;
+                    if (typeof mr.selection_mode === 'string') out.mouse_selection_mode = mr.selection_mode;
+                    if (typeof mr.accuracy_mode === 'string') out.mouse_accuracy_mode = mr.accuracy_mode;
+                    if (mr.accuracy_tolerance_deg !== undefined) out.mouse_accuracy_tolerance_deg = mr.accuracy_tolerance_deg;
+                    if (mr.accuracy_slack_deg !== undefined) out.mouse_accuracy_slack_deg = mr.accuracy_slack_deg;
+                }
+                if (typeof rpo.target_group === 'string' && rpo.target_group !== '') out.response_target_group = rpo.target_group;
+                if (rpo.cue_border && typeof rpo.cue_border === 'object') {
+                    if (typeof rpo.cue_border.mode === 'string') out.cue_border_mode = rpo.cue_border.mode;
+                    if (rpo.cue_border.color) out.cue_border_color = rpo.cue_border.color;
+                    if (rpo.cue_border.width !== undefined) out.cue_border_width = rpo.cue_border.width;
+                }
+            }
+
             if (innerType === 'rdm-trial') {
                 if (Array.isArray(values.direction)) out.direction_options = csv(values.direction);
                 if (values.dot_color !== undefined) out.dot_color = values.dot_color;
@@ -12911,10 +12948,11 @@ class JsonBuilder {
      * Get RDM display parameters from UI - SIMPLIFIED
      */
     getRDMDisplayParameters() {
+        const bg = (document.getElementById('backgroundColor')?.value || '').toString().trim();
         return {
             canvas_width: parseInt(document.getElementById('canvasWidth')?.value || 600),
             canvas_height: parseInt(document.getElementById('canvasHeight')?.value || 600),
-            background_color: "#404040"
+            background_color: bg || '#404040'
         };
     }
 
