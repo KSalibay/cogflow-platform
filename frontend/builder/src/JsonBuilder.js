@@ -9368,6 +9368,8 @@ class JsonBuilder {
             const d = this.getCurrentContinuousImageDefaults();
             config.continuous_image_settings = {
                 mask_type: d.mask_type,
+                mask_noise_amp: d.mask_noise_amp,
+                mask_block_size: d.mask_block_size,
                 image_duration_ms: d.image_duration_ms,
                 transition_duration_ms: d.transition_duration_ms,
                 transition_frames: d.transition_frames,
