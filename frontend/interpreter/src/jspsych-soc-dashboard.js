@@ -3022,6 +3022,7 @@
         const cfg = (() => {
           const o = (wSpec.subtask && typeof wSpec.subtask === 'object') ? wSpec.subtask : {};
           return {
+            label: (o.label ?? '').toString().trim(),
             title: (o.title ?? 'Thought Probe').toString(),
             instructions: (o.instructions ?? '').toString(),
             submit_label: (o.submit_label ?? 'Continue').toString(),
@@ -3179,6 +3180,7 @@
             type: 'mw_probe_response',
             subtask_index: i,
             subtask_title: state.title,
+            subtask_label: cfg.label || null,
             ended_reason: reason,
             responses: { ...(responses || {}) },
             rt_ms: Math.max(0, Math.round(nowMs() - (state.subtask_start_ts ?? startTs)))
@@ -3190,6 +3192,7 @@
             type: 'mw_probe_subtask_end',
             subtask_index: i,
             subtask_title: state.title,
+            subtask_label: cfg.label || null,
             ended_reason: reason
           });
 
@@ -3207,7 +3210,8 @@
             t_subtask_ms: 0,
             type: 'mw_probe_subtask_start',
             subtask_index: i,
-            subtask_title: state.title
+            subtask_title: state.title,
+            subtask_label: cfg.label || null
           });
 
           if (formEl) {
@@ -3256,7 +3260,8 @@
             type: 'mw_probe_subtask_forced_end',
             reason: (reason ?? 'forced').toString(),
             subtask_index: i,
-            subtask_title: state.title
+            subtask_title: state.title,
+            subtask_label: cfg.label || null
           });
         };
 

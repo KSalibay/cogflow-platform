@@ -1259,6 +1259,11 @@ class TimelineBuilder {
             </small>
         `;
 
+        // The survey/mw-probe modal uses a custom renderer, so add the shared
+        // timeline label input explicitly (it is otherwise injected only for
+        // schema-driven forms).
+        this._prependLabelFieldToModal(modalBody, component);
+
         // Toggle timeout input enable/disable
         const allowTimeoutEl = modalBody.querySelector('#survey_allow_empty_on_timeout');
         const timeoutEl = modalBody.querySelector('#survey_timeout_ms');

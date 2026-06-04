@@ -4032,16 +4032,22 @@
         if (type === 'mw-probe') {
           pushRdmContinuousSegment();
           const SurveyResponse = requirePlugin('survey-response (window.jsPsychSurveyResponse)', window.jsPsychSurveyResponse);
+          const mwProbeLabel = (item.label ?? item.title ?? '').toString().trim();
+          const mwProbeTitle = (item.title || 'Thought Probe').toString();
           timeline.push({
             type: SurveyResponse,
             on_start: buildMwProbeOnStartHook(),
-            title: item.title || 'Thought Probe',
+            title: mwProbeTitle,
             instructions: item.instructions || '',
             submit_label: item.submit_label || 'Continue',
             allow_empty_on_timeout: item.allow_empty_on_timeout !== false,
             timeout_ms: (item.timeout_ms === null || item.timeout_ms === undefined) ? null : Number(item.timeout_ms),
             questions: Array.isArray(item.questions) ? item.questions : [],
-            data: { plugin_type: 'mw-probe' }
+            data: {
+              plugin_type: 'mw-probe',
+              mw_probe_label: mwProbeLabel,
+              mw_probe_title: mwProbeTitle
+            }
           });
           continue;
         }
@@ -4495,16 +4501,22 @@
 
       if (type === 'mw-probe') {
         const SurveyResponse = requirePlugin('survey-response (window.jsPsychSurveyResponse)', window.jsPsychSurveyResponse);
+        const mwProbeLabel = (item.label ?? item.title ?? '').toString().trim();
+        const mwProbeTitle = (item.title || 'Thought Probe').toString();
         timeline.push({
           type: SurveyResponse,
           on_start: buildMwProbeOnStartHook(),
-          title: item.title || 'Thought Probe',
+          title: mwProbeTitle,
           instructions: item.instructions || '',
           submit_label: item.submit_label || 'Continue',
           allow_empty_on_timeout: item.allow_empty_on_timeout !== false,
           timeout_ms: (item.timeout_ms === null || item.timeout_ms === undefined) ? null : Number(item.timeout_ms),
           questions: Array.isArray(item.questions) ? item.questions : [],
-          data: { plugin_type: 'mw-probe' }
+          data: {
+            plugin_type: 'mw-probe',
+            mw_probe_label: mwProbeLabel,
+            mw_probe_title: mwProbeTitle
+          }
         });
         continue;
       }
