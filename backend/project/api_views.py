@@ -14,6 +14,7 @@ from .api_views_auth import (
     AuthMeView,
     AuthProfileView,
     FeedbackSubmitView,
+    NewsletterSubscribeView,
 )
 from .api_views_admin import (
     AdminUsersView,

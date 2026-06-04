@@ -214,6 +214,12 @@ class FeedbackSubmitRequestSerializer(serializers.Serializer):
     contact_email = serializers.EmailField(required=False, allow_blank=True)
 
 
+class NewsletterSubscribeRequestSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    audience = serializers.CharField(max_length=120, required=False, allow_blank=True, default="Newsletter")
+    source = serializers.CharField(max_length=120, required=False, allow_blank=True, default="website-footer")
+
+
 class CreditsEntrySerializer(serializers.Serializer):
     task_type = serializers.CharField(max_length=80)
     component_type = serializers.CharField(max_length=80)

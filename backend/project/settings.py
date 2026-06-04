@@ -127,6 +127,7 @@ REST_FRAMEWORK = {
         "auth_mfa_verify": os.getenv("THROTTLE_AUTH_MFA_VERIFY", "20/min"),
         "auth_register": os.getenv("THROTTLE_AUTH_REGISTER", "5/min"),
         "feedback_submit": os.getenv("THROTTLE_FEEDBACK_SUBMIT", "10/min"),
+        "newsletter_subscribe": os.getenv("THROTTLE_NEWSLETTER_SUBSCRIBE", "30/min"),
     },
     "DEFAULT_SCHEMA_CLASS": "rest_framework.schemas.openapi.AutoSchema",
 }

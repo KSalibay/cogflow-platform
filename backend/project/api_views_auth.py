@@ -652,3 +652,120 @@ class FeedbackSubmitView(APIView):
         return Response({"ok": True, "delivery": delivered_via}, status=status.HTTP_200_OK)
 
 
+class NewsletterSubscribeView(APIView):
+    """Public newsletter subscription endpoint (Resend audience contacts API)."""
+
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "newsletter_subscribe"
+
+    def _cors_allowed_origins(self) -> set[str]:
+        raw = os.getenv(
+            "NEWSLETTER_CORS_ALLOWED_ORIGINS",
+            "https://cogflow.app,https://www.cogflow.app,http://localhost:4177",
+        )
+        return {x.strip() for x in raw.split(",") if x.strip()}
+
+    def _apply_cors_headers(self, request, response: Response) -> Response:
+        origin = (request.headers.get("Origin") or "").strip()
+        if origin and origin in self._cors_allowed_origins():
+            response["Access-Control-Allow-Origin"] = origin
+            response["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+            response["Access-Control-Allow-Headers"] = "Content-Type"
+            response["Vary"] = "Origin"
+        return response
+
+    def options(self, request):
+        response = Response(status=status.HTTP_204_NO_CONTENT)
+        return self._apply_cors_headers(request, response)
+
+    @transaction.atomic
+    def post(self, request):
+        serializer = NewsletterSubscribeRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        email = (data.get("email") or "").strip().lower()
+        audience = (data.get("audience") or "Newsletter").strip() or "Newsletter"
+        source = (data.get("source") or "website-footer").strip() or "website-footer"
+
+        resend_api_key = os.getenv("RESEND_API_KEY", "").strip()
+        audience_id = (
+            os.getenv("RESEND_AUDIENCE_NEWSLETTER_ID", "").strip()
+            or os.getenv("NEWSLETTER_RESEND_AUDIENCE_ID", "").strip()
+        )
+
+        if not resend_api_key:
+            response = Response({"ok": False, "error": "RESEND_API_KEY is not configured"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return self._apply_cors_headers(request, response)
+        if not audience_id:
+            response = Response({"ok": False, "error": "RESEND_AUDIENCE_NEWSLETTER_ID is not configured"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return self._apply_cors_headers(request, response)
+
+        payload = {
+            "email": email,
+            "unsubscribed": False,
+        }
+
+        req = Request(
+            f"https://api.resend.com/audiences/{quote(audience_id)}/contacts",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {resend_api_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+
+        contact_id = None
+        status_code = status.HTTP_200_OK
+        try:
+            with urlopen(req, timeout=10) as resp:
+                body = resp.read().decode("utf-8", errors="ignore")
+                parsed = json.loads(body) if body else {}
+                contact_id = parsed.get("id") if isinstance(parsed, dict) else None
+        except HTTPError as e:
+            # Treat duplicate contact as success for idempotent subscribe UX.
+            if e.code == 409:
+                status_code = status.HTTP_200_OK
+            else:
+                response = Response(
+                    {
+                        "ok": False,
+                        "error": f"Resend request failed ({e.code})",
+                    },
+                    status=status.HTTP_502_BAD_GATEWAY,
+                )
+                return self._apply_cors_headers(request, response)
+        except (URLError, TimeoutError, ValueError):
+            response = Response(
+                {
+                    "ok": False,
+                    "error": "Newsletter provider is temporarily unavailable",
+                },
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+            return self._apply_cors_headers(request, response)
+
+        record_audit(
+            action="newsletter_subscribed",
+            resource_type="newsletter",
+            resource_id=email,
+            actor="anonymous",
+            metadata={
+                "audience": audience,
+                "source": source,
+                "contact_id": contact_id,
+            },
+        )
+
+        response = Response(
+            {
+                "ok": True,
+                "audience": audience,
+                "contact_id": contact_id,
+            },
+            status=status_code,
+        )
+        return self._apply_cors_headers(request, response)
+
+
