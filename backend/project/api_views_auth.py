@@ -699,21 +699,12 @@ class NewsletterSubscribeView(APIView):
         if not resend_api_key:
             response = Response({"ok": False, "error": "RESEND_API_KEY is not configured"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
             return self._apply_cors_headers(request, response)
-        if not segment_id:
-            response = Response(
-                {
-                    "ok": False,
-                    "error": "RESEND_NEWSLETTER_SEGMENT_ID is not configured",
-                },
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
-            return self._apply_cors_headers(request, response)
-
         payload = {
             "email": email,
             "unsubscribed": False,
-            "segments": [{"id": segment_id}],
         }
+        if segment_id:
+            payload["segments"] = [{"id": segment_id}]
 
         req = Request(
             "https://api.resend.com/contacts",
@@ -721,6 +712,8 @@ class NewsletterSubscribeView(APIView):
             headers={
                 "Authorization": f"Bearer {resend_api_key}",
                 "Content-Type": "application/json",
+                "Accept": "application/json",
+                "User-Agent": "cogflow-platform-newsletter/1.0",
             },
             method="POST",
         )
