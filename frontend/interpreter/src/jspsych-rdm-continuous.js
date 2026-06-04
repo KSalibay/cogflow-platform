@@ -222,10 +222,13 @@
       const firstRdm = first.rdm || {};
       const canvasW = safeNum(firstRdm.canvas_width, 600);
       const canvasH = safeNum(firstRdm.canvas_height, 600);
+      const trialBg = (typeof firstRdm.background_color === 'string' && firstRdm.background_color.trim() !== '')
+        ? firstRdm.background_color
+        : '#404040';
 
       display_element.innerHTML = `
-        <div id="rdm-wrap" style="width:100%; display:flex; justify-content:center; align-items:center; flex-direction:column; gap:10px;">
-          <canvas id="rdm-canvas" width="${canvasW}" height="${canvasH}" style="border: 1px solid rgba(255,255,255,0.15);"></canvas>
+        <div id="rdm-wrap" style="width:100%; min-height:100vh; min-height:100svh; min-height:100dvh; display:flex; justify-content:center; align-items:center; flex-direction:column; gap:10px; background:${trialBg};">
+          <canvas id="rdm-canvas" width="${canvasW}" height="${canvasH}" style="border:0; display:block;"></canvas>
           <div id="rdm-feedback" style="min-height: 24px;"></div>
           <pre id="rdm-debug-panel" style="display:none; margin:0; width:min(980px,95vw); max-height:30vh; overflow:auto; box-sizing:border-box; padding:8px 10px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.58); color:#cfe9ff; font:12px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;"></pre>
         </div>

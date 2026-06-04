@@ -268,10 +268,11 @@ var jsPsychRdm = (function (jspsych) {
 
       const canvasW = Number(rdm.canvas_width ?? 600);
       const canvasH = Number(rdm.canvas_height ?? 600);
+      const bg = (typeof rdm.background_color === 'string' && rdm.background_color.trim() !== '') ? rdm.background_color : '#404040';
 
       display_element.innerHTML = `
-        <div id="rdm-wrap" style="width:100%; display:flex; justify-content:center; align-items:center; flex-direction:column; gap:10px;">
-          <canvas id="rdm-canvas" width="${canvasW}" height="${canvasH}" style="border: 1px solid rgba(255,255,255,0.15);"></canvas>
+        <div id="rdm-wrap" style="width:100%; min-height:100vh; min-height:100svh; min-height:100dvh; display:flex; justify-content:center; align-items:center; flex-direction:column; gap:10px; background:${bg};">
+          <canvas id="rdm-canvas" width="${canvasW}" height="${canvasH}" style="border:0; display:block;"></canvas>
           <div id="rdm-feedback" style="min-height: 24px;"></div>
         </div>
       `;
@@ -280,7 +281,6 @@ var jsPsychRdm = (function (jspsych) {
       const ctx = canvas.getContext('2d');
 
       // Fixation phase: draw cross on blank bg
-      const bg = (typeof rdm.background_color === 'string' && rdm.background_color.trim() !== '') ? rdm.background_color : '#404040';
 
       const showFixation = () => {
         ctx.fillStyle = bg;
