@@ -737,10 +737,19 @@ class NewsletterSubscribeView(APIView):
             if e.code == 409:
                 status_code = status.HTTP_200_OK
             else:
+                raw_error = e.read().decode("utf-8", errors="ignore")
+                provider_error = raw_error
+                try:
+                    parsed_error = json.loads(raw_error) if raw_error else {}
+                    if isinstance(parsed_error, dict):
+                        provider_error = parsed_error.get("message") or parsed_error.get("error") or raw_error
+                except (TypeError, ValueError):
+                    provider_error = raw_error
                 response = Response(
                     {
                         "ok": False,
                         "error": f"Resend request failed ({e.code})",
+                        "provider_error": (provider_error or "").strip()[:500],
                     },
                     status=status.HTTP_502_BAD_GATEWAY,
                 )
