@@ -689,25 +689,34 @@ class NewsletterSubscribeView(APIView):
         source = (data.get("source") or "website-footer").strip() or "website-footer"
 
         resend_api_key = os.getenv("RESEND_API_KEY", "").strip()
-        audience_id = (
-            os.getenv("RESEND_AUDIENCE_NEWSLETTER_ID", "").strip()
+        segment_id = (
+            os.getenv("RESEND_NEWSLETTER_SEGMENT_ID", "").strip()
+            or os.getenv("NEWSLETTER_RESEND_SEGMENT_ID", "").strip()
+            or os.getenv("RESEND_AUDIENCE_NEWSLETTER_ID", "").strip()
             or os.getenv("NEWSLETTER_RESEND_AUDIENCE_ID", "").strip()
         )
 
         if not resend_api_key:
             response = Response({"ok": False, "error": "RESEND_API_KEY is not configured"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
             return self._apply_cors_headers(request, response)
-        if not audience_id:
-            response = Response({"ok": False, "error": "RESEND_AUDIENCE_NEWSLETTER_ID is not configured"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        if not segment_id:
+            response = Response(
+                {
+                    "ok": False,
+                    "error": "RESEND_NEWSLETTER_SEGMENT_ID is not configured",
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
             return self._apply_cors_headers(request, response)
 
         payload = {
             "email": email,
             "unsubscribed": False,
+            "segments": [{"id": segment_id}],
         }
 
         req = Request(
-            f"https://api.resend.com/audiences/{quote(audience_id)}/contacts",
+            "https://api.resend.com/contacts",
             data=json.dumps(payload).encode("utf-8"),
             headers={
                 "Authorization": f"Bearer {resend_api_key}",
@@ -754,6 +763,7 @@ class NewsletterSubscribeView(APIView):
             metadata={
                 "audience": audience,
                 "source": source,
+                "segment_id": segment_id,
                 "contact_id": contact_id,
             },
         )
