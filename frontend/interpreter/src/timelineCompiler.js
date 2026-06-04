@@ -2471,9 +2471,19 @@
         if (shouldShuffle) {
           if (shouldFlattenPool) {
             const pooledItems = childChunks.flatMap((chunk) => Array.isArray(chunk) ? chunk : []);
-            orderedChildChunks = shuffleChunksPreservingInstructionLike(
-              chunkItemsForShuffle(pooledItems, { bundleInstructionRuns: true })
-            );
+            const hasAutoMiniblockBreaks = pooledItems.some((node) => (
+              isObject(node) && node._auto_inserted_miniblock_break === true
+            ));
+
+            if (hasAutoMiniblockBreaks) {
+              // Keep each expanded child chunk intact so auto-inserted miniblock
+              // breaks stay at deterministic intervals within that chunk.
+              orderedChildChunks = shuffleChunksPreservingInstructionLike(childChunks);
+            } else {
+              orderedChildChunks = shuffleChunksPreservingInstructionLike(
+                chunkItemsForShuffle(pooledItems, { bundleInstructionRuns: true })
+              );
+            }
           } else {
           // For two-way counterbalance groups reused by a parent loop, preserve
           // strict alternation (ABAB or BABA) across repeated expansions.

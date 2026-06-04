@@ -6514,6 +6514,22 @@ class TimelineBuilder {
         const forceWait        = modal.querySelector('#mb_force_wait').checked;
         const breakDurationSec = safeFloat('#mb_break_duration_sec');
 
+        if (
+            enabled
+            && Number.isFinite(trialsPerBlock)
+            && Number.isFinite(breakEveryN)
+            && trialsPerBlock > 0
+            && breakEveryN > 0
+            && trialsPerBlock !== breakEveryN
+        ) {
+            const proceed = window.confirm(
+                `You set Trials per mini-block = ${trialsPerBlock} and Break every N trials = ${breakEveryN}.\n\n` +
+                'Break every N overrides mini-block boundary cadence.\n\n' +
+                'Use this only if you intentionally want a different break interval. Continue?'
+            );
+            if (!proceed) return;
+        }
+
         const miniblockStructure = {
             enabled,
             ...(numBlocks        !== null  && { num_blocks: numBlocks }),
