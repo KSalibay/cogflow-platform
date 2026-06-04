@@ -68,6 +68,7 @@ from project.api_serializers import (
     PasswordResetRequestSerializer,
     AuthRegisterRequestSerializer,
     FeedbackSubmitRequestSerializer,
+    NewsletterSubscribeRequestSerializer,
     CreateParticipantLinkRequestSerializer,
     DecryptResultRequestSerializer,
     PublishConfigRequestSerializer,
