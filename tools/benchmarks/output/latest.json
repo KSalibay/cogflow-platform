@@ -1,0 +1,263 @@
+{
+  "generated_at_utc": "2026-06-05T18:31:43.890Z",
+  "scope": "software-layer web timing benchmark only",
+  "caveat": "Does not measure monitor/display-pipeline photon onset latency. Use in-house hardware validation for local/offline monitor-specific claims.",
+  "benchmark_configs": [
+    {
+      "id": "lan_baseline",
+      "label": "LAN baseline",
+      "source": "No emulation; local baseline for software-layer timing",
+      "network": null
+    },
+    {
+      "id": "broadband_sim",
+      "label": "Broadband simulation",
+      "source": "Inspired by practical desktop broadband conditions",
+      "network": {
+        "latency": 20,
+        "downloadKbps": 30000,
+        "uploadKbps": 10000,
+        "connectionType": "wifi"
+      }
+    },
+    {
+      "id": "slow4g_sim",
+      "label": "Slow 4G simulation",
+      "source": "Comparable to common DevTools \"Slow 4G\" style conditions",
+      "network": {
+        "latency": 150,
+        "downloadKbps": 1600,
+        "uploadKbps": 750,
+        "connectionType": "cellular4g"
+      }
+    },
+    {
+      "id": "degraded_link",
+      "label": "Degraded link simulation",
+      "source": "Stress test for high-latency / constrained throughput environments",
+      "network": {
+        "latency": 300,
+        "downloadKbps": 700,
+        "uploadKbps": 300,
+        "connectionType": "cellular3g"
+      }
+    }
+  ],
+  "results": [
+    {
+      "config_id": "lan_baseline",
+      "config_label": "LAN baseline",
+      "config_source": "No emulation; local baseline for software-layer timing",
+      "network_profile": null,
+      "target_url": "http://localhost:8000/interpreter/index.html",
+      "navigation_time_ms": 1156,
+      "metrics": {
+        "frame_interval_ms": {
+          "mean": 16.571250000000003,
+          "p50": 16.699999999999818,
+          "p95": 16.700000000000273,
+          "sd": 1.47053575897019,
+          "n": 240
+        },
+        "frame_jitter_vs_60hz_ms": {
+          "mean": -0.09541666666666633,
+          "p50": 0.03333333333315025,
+          "p95": 0.033333333333605,
+          "sd": 1.47053575897019,
+          "n": 240
+        },
+        "timeout_drift_ms": {
+          "mean": 8.909999998472632,
+          "p50": 9.099999997764826,
+          "p95": 16.299999997019768,
+          "sd": 4.609059401969083,
+          "n": 120
+        },
+        "synthetic_input_registration_ms": {
+          "mean": 0.02199999988079071,
+          "p50": 0,
+          "p95": 0.10000000149011612,
+          "sd": 0.0581693512344955,
+          "n": 50
+        },
+        "same_origin_fetch_rtt_ms": {
+          "mean": 3.150000000372529,
+          "p50": 2.300000000745058,
+          "p95": 6.5,
+          "sd": 1.6177585904953709,
+          "n": 8
+        }
+      },
+      "environment": {
+        "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/148.0.7778.96 Safari/537.36",
+        "device_pixel_ratio": 1,
+        "hardware_concurrency": 16
+      }
+    },
+    {
+      "config_id": "broadband_sim",
+      "config_label": "Broadband simulation",
+      "config_source": "Inspired by practical desktop broadband conditions",
+      "network_profile": {
+        "latency": 20,
+        "downloadKbps": 30000,
+        "uploadKbps": 10000,
+        "connectionType": "wifi"
+      },
+      "target_url": "http://localhost:8000/interpreter/index.html",
+      "navigation_time_ms": 1294,
+      "metrics": {
+        "frame_interval_ms": {
+          "mean": 16.545833333327128,
+          "p50": 16.699999999999818,
+          "p95": 16.700000000000273,
+          "sd": 1.8576268585711555,
+          "n": 240
+        },
+        "frame_jitter_vs_60hz_ms": {
+          "mean": -0.12083333333954181,
+          "p50": 0.03333333333315025,
+          "p95": 0.033333333333605,
+          "sd": 1.8576268585711555,
+          "n": 240
+        },
+        "timeout_drift_ms": {
+          "mean": 10.199166665195177,
+          "p50": 10.299999997019768,
+          "p95": 19.599999997764826,
+          "sd": 5.834517626815675,
+          "n": 120
+        },
+        "synthetic_input_registration_ms": {
+          "mean": 0.03000000014901161,
+          "p50": 0,
+          "p95": 0.10000000149011612,
+          "sd": 0.058028845983226204,
+          "n": 50
+        },
+        "same_origin_fetch_rtt_ms": {
+          "mean": 23.950000000186265,
+          "p50": 24.100000001490116,
+          "p95": 24.699999999254942,
+          "sd": 0.5580578563411784,
+          "n": 8
+        }
+      },
+      "environment": {
+        "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/148.0.7778.96 Safari/537.36",
+        "device_pixel_ratio": 1,
+        "hardware_concurrency": 16
+      }
+    },
+    {
+      "config_id": "slow4g_sim",
+      "config_label": "Slow 4G simulation",
+      "config_source": "Comparable to common DevTools \"Slow 4G\" style conditions",
+      "network_profile": {
+        "latency": 150,
+        "downloadKbps": 1600,
+        "uploadKbps": 750,
+        "connectionType": "cellular4g"
+      },
+      "target_url": "http://localhost:8000/interpreter/index.html",
+      "navigation_time_ms": 8510,
+      "metrics": {
+        "frame_interval_ms": {
+          "mean": 16.55583333333644,
+          "p50": 16.69999999999891,
+          "p95": 16.700000000000728,
+          "sd": 1.7028548921319673,
+          "n": 240
+        },
+        "frame_jitter_vs_60hz_ms": {
+          "mean": -0.11083333333022859,
+          "p50": 0.033333333332240755,
+          "p95": 0.033333333334059745,
+          "sd": 1.7028548921319673,
+          "n": 240
+        },
+        "timeout_drift_ms": {
+          "mean": 9.667499999329447,
+          "p50": 9.800000000745058,
+          "p95": 17.899999998509884,
+          "sd": 5.4199625181102995,
+          "n": 120
+        },
+        "synthetic_input_registration_ms": {
+          "mean": 0.012000000029802322,
+          "p50": 0,
+          "p95": 0.10000000149011612,
+          "sd": 0.038544964693598444,
+          "n": 50
+        },
+        "same_origin_fetch_rtt_ms": {
+          "mean": 163.3625000002794,
+          "p50": 168.19999999925494,
+          "p95": 169,
+          "sd": 6.021138359243774,
+          "n": 8
+        }
+      },
+      "environment": {
+        "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/148.0.7778.96 Safari/537.36",
+        "device_pixel_ratio": 1,
+        "hardware_concurrency": 16
+      }
+    },
+    {
+      "config_id": "degraded_link",
+      "config_label": "Degraded link simulation",
+      "config_source": "Stress test for high-latency / constrained throughput environments",
+      "network_profile": {
+        "latency": 300,
+        "downloadKbps": 700,
+        "uploadKbps": 300,
+        "connectionType": "cellular3g"
+      },
+      "target_url": "http://localhost:8000/interpreter/index.html",
+      "navigation_time_ms": 18399,
+      "metrics": {
+        "frame_interval_ms": {
+          "mean": 16.563333333327122,
+          "p50": 16.700000000000728,
+          "p95": 16.799999999999272,
+          "sd": 1.5932353512731523,
+          "n": 240
+        },
+        "frame_jitter_vs_60hz_ms": {
+          "mean": -0.10333333333954636,
+          "p50": 0.033333333334059745,
+          "p95": 0.13333333333260455,
+          "sd": 1.5932353512731523,
+          "n": 240
+        },
+        "timeout_drift_ms": {
+          "mean": 10.171666668045024,
+          "p50": 10.700000002980232,
+          "p95": 18.700000002980232,
+          "sd": 5.757000609917603,
+          "n": 120
+        },
+        "synthetic_input_registration_ms": {
+          "mean": 0.011999999955296516,
+          "p50": 0,
+          "p95": 0.10000000149011612,
+          "sd": 0.03854496432278605,
+          "n": 50
+        },
+        "same_origin_fetch_rtt_ms": {
+          "mean": 337.3249999997206,
+          "p50": 350.80000000074506,
+          "p95": 368.5,
+          "sd": 22.057052645457162,
+          "n": 8
+        }
+      },
+      "environment": {
+        "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/148.0.7778.96 Safari/537.36",
+        "device_pixel_ratio": 1,
+        "hardware_concurrency": 16
+      }
+    }
+  ]
+}

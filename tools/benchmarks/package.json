@@ -1,0 +1,12 @@
+{
+  "name": "cogflow-benchmarks",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Local software-layer timing benchmarks for CogFlow web runtime",
+  "scripts": {
+    "bench:web-timing": "node web_timing_benchmark.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.60.0"
+  }
+}
