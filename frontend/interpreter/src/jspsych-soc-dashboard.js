@@ -1565,6 +1565,43 @@
     };
 
     const sartStates = [];
+    let globalSartTrialCounter = 0;
+
+    const getLatestSartEntryContext = () => {
+      let latest = null;
+
+      for (let idx = 0; idx < sartStates.length; idx++) {
+        const st = sartStates[idx];
+        if (!st || !Array.isArray(st.entries) || st.entries.length === 0) continue;
+        const entry = st.entries[st.entries.length - 1];
+        if (!entry) continue;
+
+        if (!latest || Number(entry.createdAt) > Number(latest.entry.createdAt)) {
+          latest = { subtask_index: idx, subtask_title: st.title ?? null, entry };
+        }
+      }
+
+      if (!latest) {
+        return {
+          preceding_sart_subtask_index: null,
+          preceding_sart_subtask_title: null,
+          preceding_sart_entry_id: null,
+          preceding_sart_trial_number: null,
+          preceding_sart_frame_number: null,
+          preceding_sart_global_trial_number: null
+        };
+      }
+
+      const e = latest.entry;
+      return {
+        preceding_sart_subtask_index: latest.subtask_index,
+        preceding_sart_subtask_title: latest.subtask_title,
+        preceding_sart_entry_id: e.id ?? null,
+        preceding_sart_trial_number: Number.isFinite(Number(e.trial_number)) ? Number(e.trial_number) : null,
+        preceding_sart_frame_number: Number.isFinite(Number(e.frame_number)) ? Number(e.frame_number) : null,
+        preceding_sart_global_trial_number: Number.isFinite(Number(e.global_trial_number)) ? Number(e.global_trial_number) : null
+      };
+    };
     const nbackStates = [];
     const socHtmlKeyboardStates = [];
 
@@ -3173,6 +3210,7 @@
           state.ended = true;
           if (doneEl) doneEl.style.display = '';
           if (errorEl) errorEl.style.display = 'none';
+          const preProbe = getLatestSartEntryContext();
 
           events.push({
             t_ms: Math.round(nowMs() - startTs),
@@ -3183,7 +3221,8 @@
             subtask_label: cfg.label || null,
             ended_reason: reason,
             responses: { ...(responses || {}) },
-            rt_ms: Math.max(0, Math.round(nowMs() - (state.subtask_start_ts ?? startTs)))
+            rt_ms: Math.max(0, Math.round(nowMs() - (state.subtask_start_ts ?? startTs))),
+            ...preProbe
           });
 
           events.push({
@@ -3193,7 +3232,8 @@
             subtask_index: i,
             subtask_title: state.title,
             subtask_label: cfg.label || null,
-            ended_reason: reason
+            ended_reason: reason,
+            ...preProbe
           });
 
           // Dismiss probe immediately after a valid response so the session can continue.
@@ -3204,6 +3244,7 @@
           if (state.started) return;
           state.started = true;
           state.subtask_start_ts = nowMs();
+          const preProbe = getLatestSartEntryContext();
 
           events.push({
             t_ms: Math.round(nowMs() - startTs),
@@ -3211,7 +3252,8 @@
             type: 'mw_probe_subtask_start',
             subtask_index: i,
             subtask_title: state.title,
-            subtask_label: cfg.label || null
+            subtask_label: cfg.label || null,
+            ...preProbe
           });
 
           if (formEl) {
@@ -4620,6 +4662,9 @@
         }
 
         const id = `LOG-${i + 1}-${String(state.presented + 1).padStart(4, '0')}`;
+          const trialNumber = state.presented + 1;
+          globalSartTrialCounter += 1;
+          const globalTrialNumber = globalSartTrialCounter;
         const createdAt = nowMs();
         const clock = formatClock(Date.now());
 
@@ -4628,6 +4673,9 @@
 
         const entry = {
           id,
+            trial_number: trialNumber,
+            frame_number: trialNumber,
+            global_trial_number: globalTrialNumber,
           kind,
           cls: classifyEntry(kind),
           responded: false,
@@ -4757,6 +4805,9 @@
           subtask_index: i,
           subtask_title: state.title,
           entry_id: entry.id,
+          trial_number: Number.isFinite(Number(entry.trial_number)) ? Number(entry.trial_number) : null,
+          frame_number: Number.isFinite(Number(entry.frame_number)) ? Number(entry.frame_number) : null,
+          global_trial_number: Number.isFinite(Number(entry.global_trial_number)) ? Number(entry.global_trial_number) : null,
           entry_class: entry.cls,
           entry_class_legacy: legacyClassFor(entry.cls),
           is_nogo: !shouldRespond,
