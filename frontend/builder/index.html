@@ -1119,6 +1119,93 @@
                 bsModal.show();
             };
 
+            const ensureLoopOptionsModal = () => {
+                let modalEl = document.getElementById('loopOptionsModal');
+                if (modalEl) return modalEl;
+
+                modalEl = document.createElement('div');
+                modalEl.className = 'modal fade';
+                modalEl.id = 'loopOptionsModal';
+                modalEl.tabIndex = -1;
+                modalEl.setAttribute('aria-hidden', 'true');
+                modalEl.innerHTML = `
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Loop Options</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <label class="form-label" for="loopIterationsInput">Loop iterations</label>
+                                <input type="number" min="1" max="10000" step="1" class="form-control" id="loopIterationsInput" placeholder="e.g. 3">
+                                <div class="form-text">Set to an integer from 1 to 10,000.</div>
+                                <div class="invalid-feedback d-block" id="loopIterationsError" style="display:none !important;"></div>
+                            </div>
+                            <div class="modal-footer d-flex justify-content-between">
+                                <button type="button" class="btn btn-outline-danger" id="removeLoopBtn">Remove Loop</button>
+                                <div class="d-flex gap-2">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                    <button type="button" class="btn btn-primary" id="saveLoopBtn">Save</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                document.body.appendChild(modalEl);
+                return modalEl;
+            };
+
+            const openLoopOptionsModal = (loop, onSave, onRemove) => {
+                const modalEl = ensureLoopOptionsModal();
+                const inputEl = modalEl.querySelector('#loopIterationsInput');
+                const errEl = modalEl.querySelector('#loopIterationsError');
+                const saveBtn = modalEl.querySelector('#saveLoopBtn');
+                const removeBtn = modalEl.querySelector('#removeLoopBtn');
+                const startData = parseComponentData(loop.startEl);
+                const currentIter = Number.parseInt(startData.iterations ?? loop.iterations ?? '1', 10) || 1;
+
+                if (inputEl) inputEl.value = String(currentIter);
+                if (errEl) {
+                    errEl.textContent = '';
+                    errEl.style.display = 'none';
+                }
+
+                const bsModal = new bootstrap.Modal(modalEl);
+
+                const cleanup = () => {
+                    if (saveBtn) saveBtn.onclick = null;
+                    if (removeBtn) removeBtn.onclick = null;
+                    modalEl.removeEventListener('hidden.bs.modal', cleanup);
+                };
+
+                if (saveBtn) {
+                    saveBtn.onclick = () => {
+                        const parsed = Number.parseInt((inputEl?.value ?? '').toString().trim(), 10);
+                        if (!Number.isFinite(parsed) || parsed < 1) {
+                            if (errEl) {
+                                errEl.textContent = 'Iterations must be an integer >= 1.';
+                                errEl.style.display = '';
+                            }
+                            return;
+                        }
+                        onSave(Math.min(10000, parsed));
+                        bsModal.hide();
+                    };
+                }
+
+                if (removeBtn) {
+                    removeBtn.onclick = () => {
+                        onRemove();
+                        bsModal.hide();
+                    };
+                }
+
+                modalEl.addEventListener('hidden.bs.modal', cleanup);
+                bsModal.show();
+                try { inputEl?.focus(); inputEl?.select(); } catch { /* ignore */ }
+            };
+
             const moveLoopBoundaryToVisibleIndex = (loop, handleType, targetVisibleIdx) => {
                 const cards = getVisibleCards();
                 if (cards.length === 0) return;
@@ -1393,37 +1480,30 @@
                         return;
                     }
 
-                    const startData = parseComponentData(loop.startEl);
-                    const currentIter = Number.parseInt(startData.iterations ?? loop.iterations ?? '1', 10) || 1;
-                    const next = window.prompt('Loop iterations (>=1). Enter 0 to remove this loop.', String(currentIter));
-                    if (next === null) return;
-                    const parsed = Number.parseInt(next, 10);
-                    if (Number.isFinite(parsed) && parsed === 0) {
-                        const ok = window.confirm('Remove this loop?');
-                        if (!ok) return;
-                        loop.startEl.remove();
-                        loop.endEl.remove();
-                        if (window.jsonBuilderInstance) {
-                            window.jsonBuilderInstance.updateJSON();
+                    openLoopOptionsModal(
+                        loop,
+                        (iterations) => {
+                            const startData = parseComponentData(loop.startEl);
+                            const updated = {
+                                ...startData,
+                                type: 'loop-start',
+                                iterations
+                            };
+                            loop.startEl.dataset.componentData = JSON.stringify(updated);
+                            if (window.jsonBuilderInstance) {
+                                window.jsonBuilderInstance.updateJSON();
+                            }
+                            refresh();
+                        },
+                        () => {
+                            loop.startEl.remove();
+                            loop.endEl.remove();
+                            if (window.jsonBuilderInstance) {
+                                window.jsonBuilderInstance.updateJSON();
+                            }
+                            refresh();
                         }
-                        refresh();
-                        return;
-                    }
-                    if (!Number.isFinite(parsed) || parsed < 1) {
-                        window.alert('Iterations must be an integer >= 1.');
-                        return;
-                    }
-
-                    const updated = {
-                        ...startData,
-                        type: 'loop-start',
-                        iterations: Math.min(10000, parsed)
-                    };
-                    loop.startEl.dataset.componentData = JSON.stringify(updated);
-                    if (window.jsonBuilderInstance) {
-                        window.jsonBuilderInstance.updateJSON();
-                    }
-                    refresh();
+                    );
                     return;
                 }
 

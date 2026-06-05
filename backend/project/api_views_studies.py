@@ -1492,12 +1492,39 @@ class PublishConfigView(APIView):
         if request.user.is_authenticated:
             profile = get_or_create_profile(request.user)
 
-        existing_study = Study.objects.filter(slug=data["study_slug"]).first()
+        requested_study_slug = data["study_slug"]
+        resolved_study_slug = requested_study_slug
+        study_slug_adjusted = False
+
+        existing_study = Study.objects.filter(slug=requested_study_slug).first()
         if existing_study and request.user.is_authenticated:
             if existing_study.owner_user_id and not _has_study_access(existing_study, request.user, profile):
-                return Response(
-                    {"error": "Study is not shared with the current researcher"},
-                    status=status.HTTP_403_FORBIDDEN,
+                # If a slug already belongs to another owner, auto-fallback to a user-scoped
+                # slug so first-time/tutorial publishes succeed without manual slug editing.
+                owner_hint = (existing_study.owner_user.username if getattr(existing_study, "owner_user", None) else "shared")
+                fallback_base = slugify(f"{requested_study_slug}-{request.user.username}") or slugify(
+                    f"{requested_study_slug}-copy"
+                ) or f"study-{request.user.id}"
+                candidate_slug = fallback_base
+                n = 2
+                while Study.objects.filter(slug=candidate_slug).exists():
+                    candidate_slug = f"{fallback_base}-{n}"
+                    n += 1
+
+                resolved_study_slug = candidate_slug
+                study_slug_adjusted = True
+                existing_study = None
+
+                record_audit(
+                    action="publish_config_slug_fallback",
+                    resource_type="study",
+                    resource_id="slug-collision",
+                    actor=request.user.username,
+                    metadata={
+                        "requested_study_slug": requested_study_slug,
+                        "resolved_study_slug": resolved_study_slug,
+                        "blocked_owner": owner_hint,
+                    },
                 )
 
         if existing_study:
@@ -1507,7 +1534,7 @@ class PublishConfigView(APIView):
             study.save(update_fields=["name", "runtime_mode"])
         else:
             study = Study.objects.create(
-                slug=data["study_slug"],
+                slug=resolved_study_slug,
                 name=data["study_name"],
                 runtime_mode=data["runtime_mode"],
             )
@@ -1583,6 +1610,9 @@ class PublishConfigView(APIView):
             resource_id=study.id,
             actor=actor,
             metadata={
+                "requested_study_slug": requested_study_slug,
+                "resolved_study_slug": study.slug,
+                "study_slug_adjusted": study_slug_adjusted,
                 "requested_version_label": requested_version_label,
                 "version_label": config_version.version_label,
                 "version_label_adjusted": label_adjusted,
@@ -1597,6 +1627,8 @@ class PublishConfigView(APIView):
                 "config_version_label": config_version.version_label,
                 "requested_config_version_label": requested_version_label,
                 "config_version_label_adjusted": label_adjusted,
+                "requested_study_slug": requested_study_slug,
+                "study_slug_adjusted": study_slug_adjusted,
                 "study_slug": study.slug,
                 "owner_username": _get_study_owner_username(study),
                 "owner_usernames": _get_study_owner_usernames(study),
