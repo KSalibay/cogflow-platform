@@ -357,14 +357,17 @@
     const numBlocks = Number.parseInt(mb.num_blocks ?? '', 10);
     const trialsPerBlockExplicit = Number.parseInt(mb.trials_per_block ?? '', 10);
 
-    let trialsPerBlock = Number.isFinite(breakEveryN) && breakEveryN > 0
-      ? breakEveryN
-      : (Number.isFinite(trialsPerBlockExplicit) && trialsPerBlockExplicit > 0
-        ? trialsPerBlockExplicit
-        : null);
-
-    if (!trialsPerBlock && Number.isFinite(numBlocks) && numBlocks > 1) {
+    // Precedence (most explicit to least):
+    // 1) break_every_n_trials
+    // 2) num_blocks (derive trials-per-block from current block length)
+    // 3) trials_per_block
+    let trialsPerBlock = null;
+    if (Number.isFinite(breakEveryN) && breakEveryN > 0) {
+      trialsPerBlock = breakEveryN;
+    } else if (Number.isFinite(numBlocks) && numBlocks > 1) {
       trialsPerBlock = Math.ceil(srcTrials.length / numBlocks);
+    } else if (Number.isFinite(trialsPerBlockExplicit) && trialsPerBlockExplicit > 0) {
+      trialsPerBlock = trialsPerBlockExplicit;
     }
 
     if (!Number.isFinite(trialsPerBlock) || trialsPerBlock <= 0) {

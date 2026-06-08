@@ -222,6 +222,22 @@ section('1. Miniblock forced-wait → explicit continue gate');
   );
 }
 
+{
+  // If both are provided, num_blocks should define cadence unless break_every_n_trials is set.
+  const block = miniblockBlock(100, {
+    break_every_n_trials: null,
+    num_blocks: 20,
+    trials_per_block: 13,
+  });
+  const tl = expandBlock(block);
+  const breakTrials = tl.filter((t) => t._auto_inserted_miniblock_break === true);
+  assert(
+    'When num_blocks and trials_per_block coexist, num_blocks takes precedence (100 trials, 20 blocks => 19 breaks)',
+    breakTrials.length === 19,
+    `got ${breakTrials.length}`
+  );
+}
+
 // ---------------------------------------------------------------------------
 // TEST SECTION 2 — MW PROBE INTERVAL SAMPLING
 // ---------------------------------------------------------------------------
