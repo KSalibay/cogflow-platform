@@ -238,6 +238,51 @@ section('1. Miniblock forced-wait → explicit continue gate');
   );
 }
 
+{
+  const mk = (n) => miniblockBlock(n, {
+    break_every_n_trials: 20,
+    force_wait_for_break: false,
+    break_escape_keys: 'space',
+  });
+
+  const tl = expandTimeline([
+    {
+      type: 'randomize-group',
+      randomizable_across_markers: true,
+      pool_across_randomize_groups: true,
+      items: [mk(100), mk(100), mk(160)],
+    },
+  ], {});
+
+  const breakTrials = tl.filter((t) => t._auto_inserted_miniblock_break === true);
+  const globalCounterBreaks = breakTrials.filter((t) => t._auto_inserted_miniblock_global_counter === true);
+
+  let countableSinceBreak = 0;
+  const spans = [];
+  for (const node of tl) {
+    if (node && node._auto_inserted_miniblock_break === true) {
+      spans.push(countableSinceBreak);
+      countableSinceBreak = 0;
+      continue;
+    }
+    if (node && node._generated_from_block === true) {
+      countableSinceBreak += 1;
+    }
+  }
+
+  const uniqueSpans = [...new Set(spans)].sort((a, b) => a - b);
+  assert(
+    'Pooled interleaving: global miniblock counter is applied',
+    globalCounterBreaks.length > 0,
+    `got ${globalCounterBreaks.length}`
+  );
+  assert(
+    'Pooled interleaving: break spacing across generated trials is globally every 20',
+    uniqueSpans.length === 1 && uniqueSpans[0] === 20,
+    `uniqueSpans=${JSON.stringify(uniqueSpans)}`
+  );
+}
+
 // ---------------------------------------------------------------------------
 // TEST SECTION 2 — MW PROBE INTERVAL SAMPLING
 // ---------------------------------------------------------------------------

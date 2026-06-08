@@ -392,6 +392,14 @@
       .map((s) => normalizeBreakKey(s))
       .filter(Boolean);
 
+    const buildMiniblockMeta = (resolvedKeys) => ({
+      trials_per_block: trialsPerBlock,
+      force_wait_for_break: forceWait,
+      break_duration_ms: Number.isFinite(waitMs) && waitMs > 0 ? waitMs : null,
+      break_message: message,
+      break_escape_keys: Array.isArray(resolvedKeys) ? resolvedKeys.slice() : [' ']
+    });
+
     const out = [];
     for (let i = 0; i < srcTrials.length; i++) {
       out.push(srcTrials[i]);
@@ -401,6 +409,7 @@
       if (!atBoundary || !hasMoreTrials) continue;
 
       const resolvedKeys = escapeKeys.length ? escapeKeys : [' '];
+      const miniblockMeta = buildMiniblockMeta(resolvedKeys);
       if (forceWait && Number.isFinite(waitMs) && waitMs > 0) {
         out.push({
           type: 'html-keyboard-response',
@@ -409,7 +418,8 @@
           response_ends_trial: false,
           trial_duration: waitMs,
           _auto_inserted_miniblock_break: true,
-          _auto_inserted_miniblock_wait: true
+          _auto_inserted_miniblock_wait: true,
+          _auto_miniblock_meta: miniblockMeta
         });
 
         out.push({
@@ -418,7 +428,8 @@
           choices: resolvedKeys,
           response_ends_trial: true,
           _auto_inserted_miniblock_break: true,
-          _auto_inserted_miniblock_continue: true
+          _auto_inserted_miniblock_continue: true,
+          _auto_miniblock_meta: miniblockMeta
         });
       } else {
         out.push({
@@ -426,7 +437,8 @@
           stimulus: `<div style="max-width:720px;margin:0 auto;text-align:center;white-space:pre-wrap;">${escapeHtml(message)}</div>`,
           choices: resolvedKeys,
           response_ends_trial: true,
-          _auto_inserted_miniblock_break: true
+          _auto_inserted_miniblock_break: true,
+          _auto_miniblock_meta: miniblockMeta
         });
       }
     }
@@ -2395,6 +2407,131 @@
       return outChunks;
     };
 
+    const flattenChunksToItems = (chunks) => {
+      const src = Array.isArray(chunks) ? chunks : [];
+      return src.flatMap((chunk) => Array.isArray(chunk) ? chunk : [chunk]);
+    };
+
+    const normalizeMiniblockMeta = (node) => {
+      const meta = isObject(node) && isObject(node._auto_miniblock_meta)
+        ? node._auto_miniblock_meta
+        : null;
+      if (!meta) return null;
+
+      const interval = Number.parseInt(meta.trials_per_block ?? '', 10);
+      if (!Number.isFinite(interval) || interval <= 0) return null;
+
+      const forceWait = meta.force_wait_for_break === true;
+      const waitMsRaw = Number(meta.break_duration_ms);
+      const waitMs = (forceWait && Number.isFinite(waitMsRaw) && waitMsRaw > 0) ? Math.round(waitMsRaw) : null;
+      const message = (meta.break_message ?? 'Take a short break.\n\nPress the key below when you are ready to continue.').toString();
+      const keys = Array.isArray(meta.break_escape_keys) && meta.break_escape_keys.length
+        ? meta.break_escape_keys.map((k) => String(k))
+        : [' '];
+
+      return {
+        trialsPerBlock: interval,
+        forceWait,
+        waitMs,
+        message,
+        keys
+      };
+    };
+
+    const buildAutoBreakTrialsFromMeta = (meta) => {
+      if (!meta) return [];
+      const resolvedKeys = Array.isArray(meta.keys) && meta.keys.length ? meta.keys : [' '];
+      const legacyMeta = {
+        trials_per_block: meta.trialsPerBlock,
+        force_wait_for_break: meta.forceWait,
+        break_duration_ms: meta.waitMs,
+        break_message: meta.message,
+        break_escape_keys: resolvedKeys.slice()
+      };
+
+      if (meta.forceWait && Number.isFinite(meta.waitMs) && meta.waitMs > 0) {
+        return [
+          {
+            type: 'html-keyboard-response',
+            stimulus: `<div style="max-width:720px;margin:0 auto;text-align:center;white-space:pre-wrap;">${escapeHtml(meta.message)}</div>`,
+            choices: 'NO_KEYS',
+            response_ends_trial: false,
+            trial_duration: meta.waitMs,
+            _auto_inserted_miniblock_break: true,
+            _auto_inserted_miniblock_wait: true,
+            _auto_inserted_miniblock_global_counter: true,
+            _auto_miniblock_meta: legacyMeta
+          },
+          {
+            type: 'html-keyboard-response',
+            stimulus: `<div style="max-width:720px;margin:0 auto;text-align:center;white-space:pre-wrap;">${escapeHtml(meta.message)}\n\nPress ${escapeHtml(resolvedKeys.map((k) => k === ' ' ? 'Space' : String(k)).join(' / '))} to continue.</div>`,
+            choices: resolvedKeys,
+            response_ends_trial: true,
+            _auto_inserted_miniblock_break: true,
+            _auto_inserted_miniblock_continue: true,
+            _auto_inserted_miniblock_global_counter: true,
+            _auto_miniblock_meta: legacyMeta
+          }
+        ];
+      }
+
+      return [
+        {
+          type: 'html-keyboard-response',
+          stimulus: `<div style="max-width:720px;margin:0 auto;text-align:center;white-space:pre-wrap;">${escapeHtml(meta.message)}</div>`,
+          choices: resolvedKeys,
+          response_ends_trial: true,
+          _auto_inserted_miniblock_break: true,
+          _auto_inserted_miniblock_global_counter: true,
+          _auto_miniblock_meta: legacyMeta
+        }
+      ];
+    };
+
+    const rebuildGlobalMiniblockBreaksForPooledItems = (items) => {
+      const srcItems = Array.isArray(items) ? items : [];
+      if (!srcItems.length) return srcItems;
+
+      const breakNodes = srcItems.filter((node) => isObject(node) && node._auto_inserted_miniblock_break === true);
+      if (!breakNodes.length) return srcItems;
+
+      const first = breakNodes.map(normalizeMiniblockMeta).find(Boolean);
+      if (!first) return srcItems;
+
+      const trialsPerBlock = first.trialsPerBlock;
+      if (!Number.isFinite(trialsPerBlock) || trialsPerBlock <= 0) return srcItems;
+
+      const nonBreakItems = srcItems.filter((node) => !(isObject(node) && node._auto_inserted_miniblock_break === true));
+
+      const countableTotalGenerated = nonBreakItems.filter((node) => isObject(node) && node._generated_from_block === true).length;
+      const useGeneratedCounter = countableTotalGenerated > 0;
+      const countableTotal = useGeneratedCounter ? countableTotalGenerated : nonBreakItems.length;
+      if (countableTotal <= trialsPerBlock) return nonBreakItems;
+
+      const out = [];
+      let sinceBreak = 0;
+      let remaining = countableTotal;
+
+      for (const node of nonBreakItems) {
+        out.push(node);
+
+        const isCountable = useGeneratedCounter
+          ? (isObject(node) && node._generated_from_block === true)
+          : true;
+        if (!isCountable) continue;
+
+        sinceBreak += 1;
+        remaining -= 1;
+
+        const atBoundary = (sinceBreak % trialsPerBlock) === 0;
+        if (!atBoundary || remaining <= 0) continue;
+
+        out.push(...buildAutoBreakTrialsFromMeta(first));
+      }
+
+      return out;
+    };
+
     const annotateChildTimelineSourcePath = (items, parentPath) => {
       const src = Array.isArray(items) ? items : [];
       const pathPrefix = Array.isArray(parentPath) ? parentPath : [];
@@ -2473,7 +2610,7 @@
         let orderedChildChunks = childChunks;
         if (shouldShuffle) {
           if (shouldFlattenPool) {
-            const pooledItems = childChunks.flatMap((chunk) => Array.isArray(chunk) ? chunk : []);
+            const pooledItems = flattenChunksToItems(childChunks);
             const hasAutoMiniblockBreaks = pooledItems.some((node) => (
               isObject(node) && node._auto_inserted_miniblock_break === true
             ));
@@ -2487,6 +2624,7 @@
                 chunkItemsForShuffle(pooledItems, { bundleInstructionRuns: true })
               );
             }
+
           } else {
           // For two-way counterbalance groups reused by a parent loop, preserve
           // strict alternation (ABAB or BABA) across repeated expansions.
@@ -2519,9 +2657,12 @@
           }
         }
 
-        for (const expandedChunk of orderedChildChunks) {
-          out.push(...expandedChunk);
+        let mergedGroupTimeline = flattenChunksToItems(orderedChildChunks);
+        if (shouldFlattenPool) {
+          mergedGroupTimeline = rebuildGlobalMiniblockBreaksForPooledItems(mergedGroupTimeline);
         }
+
+        out.push(...mergedGroupTimeline);
         return;
       }
 
@@ -2609,9 +2750,9 @@
       const shuffledPool = shuffleChunksPreservingInstructionLike(
         chunkItemsForShuffle(pooledExpandedItems, { bundleInstructionRuns: true })
       );
-      for (const expandedChunk of shuffledPool) {
-        out.push(...expandedChunk);
-      }
+      let pooledTimeline = shuffledPool.flatMap((chunk) => Array.isArray(chunk) ? chunk : [chunk]);
+      pooledTimeline = rebuildGlobalMiniblockBreaksForPooledItems(pooledTimeline);
+      out.push(...pooledTimeline);
 
       i = j - 1;
     }
