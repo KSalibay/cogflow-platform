@@ -871,16 +871,18 @@
         SESSION_ID: "{% templatetag openvariable %}%SESSION_ID%{% templatetag closevariable %}",
       };
 
-      try {
-        const u = new URL(base, location.origin);
-        Object.entries(placeholders).forEach(([k, v]) => u.searchParams.set(k, v));
-        return u.toString();
-      } catch {
-        const qp = Object.entries(placeholders)
-          .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-          .join("&");
-        return `${base}${base.includes("?") ? "&" : "?"}${qp}`;
-      }
+      // Prolific placeholders must remain literal (for example `{{%PROLIFIC_PID%}}`).
+      // URL/searchParams encoding turns `%` and `{}` into `%25`/`%7B`, which Prolific rejects.
+      const qp = Object.entries(placeholders)
+        .map(([k, v]) => `${k}=${v}`)
+        .join("&");
+
+      const hashIndex = base.indexOf("#");
+      const hash = hashIndex >= 0 ? base.slice(hashIndex) : "";
+      const noHash = hashIndex >= 0 ? base.slice(0, hashIndex) : base;
+      const sep = noHash.includes("?") ? "&" : "?";
+
+      return `${noHash}${sep}${qp}${hash}`;
     }
 
     function renderProlificOutput(payload) {
