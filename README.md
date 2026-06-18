@@ -56,6 +56,27 @@ Use this script whenever API contracts change.
 The backend includes a global maintenance gate that can temporarily block portal
 access and return `503` responses while maintenance is in progress.
 
+## Daily API Refresh (Ops)
+
+If you need a temporary operational guard against intermittent API degradation,
+you can run a controlled daily API container refresh.
+
+```bash
+./scripts/daily_api_refresh.sh
+```
+
+To install a daily cron job (default: `03:17 UTC`):
+
+```bash
+./scripts/install_daily_api_refresh_cron.sh
+```
+
+Optional custom schedule:
+
+```bash
+CRON_SCHEDULE="5 4 * * *" ./scripts/install_daily_api_refresh_cron.sh
+```
+
 ## Intended Repository Layout
 
 ```text
