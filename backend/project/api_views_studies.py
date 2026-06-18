@@ -1735,8 +1735,22 @@ class DownloadBuilderAssetView(APIView):
             return Response({"error": "Forbidden asset scope"}, status=status.HTTP_403_FORBIDDEN)
 
         owner_user_id = int(m.group("uid"))
+        scope_slug = (m.group("scope") or "").strip()
+
+        # Backward-compatible policy:
+        # - Uploader can always read their own assets.
+        # - For study-scoped assets, collaborators with study access can also read.
+        # - Unscoped assets remain uploader-private.
         if owner_user_id != request.user.id:
-            return Response({"error": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+            if scope_slug.lower() == "unscoped":
+                return Response({"error": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+            study = Study.objects.filter(slug=scope_slug).first()
+            if not study:
+                return Response({"error": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+            if not _has_study_access(study, request.user, profile):
+                return Response({"error": "Study is not shared with the current researcher"}, status=status.HTTP_403_FORBIDDEN)
 
         if not default_storage.exists(normalized):
             return Response({"error": "Asset not found"}, status=status.HTTP_404_NOT_FOUND)

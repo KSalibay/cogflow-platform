@@ -339,6 +339,17 @@ This works for (examples):
 
 Note: the filename → URL mapping is stored in the browser. If you clear site data or switch browsers, re-run **Upload Assets**.
 
+### Platform asset scope policy (current)
+
+When running Builder in Platform mode (`/api/v1/assets/upload`):
+
+- Assets are stored under uploader + scope path: `builder-assets/u<user_id>/<study_slug|unscoped>/...`.
+- Existing URLs remain valid (no migration needed).
+- **Study-scoped assets** can be read by researchers/admins who already have access to that study (owner or shared collaborator).
+- **Unscoped assets** remain private to the uploader account.
+
+This keeps existing single-user workflows unchanged while enabling collaborative asset reuse for shared studies.
+
 ## Export workflows
 
 ### Local download
