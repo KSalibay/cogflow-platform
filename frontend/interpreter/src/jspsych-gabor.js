@@ -54,6 +54,11 @@
       high_value_color: { type: PT.STRING, default: '#00aa00' },
       low_value_color: { type: PT.STRING, default: '#0066ff' },
       neutral_value_color: { type: PT.STRING, default: '#666666' },
+      placeholder_ring_color: { type: PT.STRING, default: 'rgb(191,191,191)' },
+      cue_background_color: { type: PT.STRING, default: 'rgb(191,191,191)' },
+      cue_indicator_color: { type: PT.STRING, default: 'rgb(114,114,114)' },
+      cue_fixation_color: { type: PT.STRING, default: 'rgb(114,114,114)' },
+      initial_fixation_color: { type: PT.STRING, default: '#ffffff' },
 
       // Patch border (circle around stimulus/mask + placeholders)
       patch_border_enabled: { type: PT.BOOL, default: true },
@@ -227,9 +232,9 @@
     ctx.restore();
   }
 
-  function drawFixation(ctx, x, y) {
+  function drawFixation(ctx, x, y, color = 'rgba(255,255,255,0.75)') {
     ctx.save();
-    ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+    ctx.strokeStyle = color;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(x - 10, y);
@@ -240,9 +245,14 @@
     ctx.restore();
   }
 
-  function drawCueDiamond(ctx, x, y, spatialCue) {
-    if (!spatialCue || spatialCue === 'none') return;
-
+  function drawCueDiamond(ctx, x, y, {
+    spatialCue = 'none',
+    backgroundColor = 'rgb(191,191,191)',
+    indicatorColor = 'rgb(114,114,114)',
+    fixationColor = 'rgb(114,114,114)',
+    showBackground = true,
+    showFixation = true
+  } = {}) {
     const size = 64;
     const half = size / 2;
 
@@ -257,19 +267,20 @@
     ctx.closePath();
     ctx.clip();
 
+    if (showBackground) {
+      ctx.fillStyle = toSolidRgb(backgroundColor, 'rgb(191,191,191)');
+      ctx.fillRect(x - half, y - half, size, size);
+    }
+
     // Fill left/right/both regions.
     if (spatialCue === 'left') {
-      ctx.fillStyle = 'rgba(255,255,255,0.92)';
+      ctx.fillStyle = toSolidRgb(indicatorColor, 'rgb(114,114,114)');
       ctx.fillRect(x - half, y - half, half, size);
-      ctx.fillStyle = 'rgba(255,255,255,0.18)';
-      ctx.fillRect(x, y - half, half, size);
     } else if (spatialCue === 'right') {
-      ctx.fillStyle = 'rgba(255,255,255,0.18)';
-      ctx.fillRect(x - half, y - half, half, size);
-      ctx.fillStyle = 'rgba(255,255,255,0.92)';
+      ctx.fillStyle = toSolidRgb(indicatorColor, 'rgb(114,114,114)');
       ctx.fillRect(x, y - half, half, size);
     } else if (spatialCue === 'both') {
-      ctx.fillStyle = 'rgba(255,255,255,0.92)';
+      ctx.fillStyle = toSolidRgb(indicatorColor, 'rgb(114,114,114)');
       ctx.fillRect(x - half, y - half, size, size);
     }
 
@@ -277,7 +288,7 @@
 
     // Diamond border
     ctx.save();
-    ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+    ctx.strokeStyle = toSolidRgb(backgroundColor, 'rgb(191,191,191)');
     ctx.lineWidth = 2.5;
     ctx.beginPath();
     ctx.moveTo(x, y - half);
@@ -287,16 +298,30 @@
     ctx.closePath();
     ctx.stroke();
 
-    // Fixation cross inside the cue
-    ctx.strokeStyle = 'rgba(16,16,16,0.95)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(x - 8, y);
-    ctx.lineTo(x + 8, y);
-    ctx.moveTo(x, y - 8);
-    ctx.lineTo(x, y + 8);
-    ctx.stroke();
+    if (showFixation) {
+      ctx.strokeStyle = toSolidRgb(fixationColor, 'rgb(114,114,114)');
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x - 8, y);
+      ctx.lineTo(x + 8, y);
+      ctx.moveTo(x, y - 8);
+      ctx.lineTo(x, y + 8);
+      ctx.stroke();
+    }
     ctx.restore();
+  }
+
+  function getGaborRewardState() {
+    try {
+      if (!window.__psy_gabor_reward_state || typeof window.__psy_gabor_reward_state !== 'object') {
+        window.__psy_gabor_reward_state = { total_points: 0 };
+      }
+      const total = Number(window.__psy_gabor_reward_state.total_points);
+      window.__psy_gabor_reward_state.total_points = Number.isFinite(total) ? total : 0;
+      return window.__psy_gabor_reward_state;
+    } catch {
+      return { total_points: 0 };
+    }
   }
 
   function gratingValue(phaseRad, waveform) {
@@ -403,7 +428,7 @@
           data[idx + 0] = 0;
           data[idx + 1] = 0;
           data[idx + 2] = 0;
-          data[idx + 3] = 0;
+          data[idx + 3] = 255;
           continue;
         }
 
@@ -493,7 +518,10 @@
         const idx = (y * w + x) * 4;
 
         if (rr > r * r) {
-          data[idx + 3] = 0;
+          data[idx + 0] = 0;
+          data[idx + 1] = 0;
+          data[idx + 2] = 0;
+          data[idx + 3] = 255;
           continue;
         }
 
@@ -535,8 +563,16 @@
     patchBorder,
     contrast,
     showCue,
+    showFixation,
     showStimulus,
     showMask,
+    ringMode,
+    cueMode,
+    placeholderRingColor,
+    cueBackgroundColor,
+    cueIndicatorColor,
+    cueFixationColor,
+    initialFixationColor,
     debug
   }) {
     const ctx = canvas.getContext('2d');
@@ -581,9 +617,26 @@
       ctx.restore();
     };
 
-    // Cue
-    if (showCue) {
-      drawCueDiamond(ctx, Math.floor(w / 2), cy, spatialCue);
+    const resolvedRingMode = (ringMode || 'value').toString().trim().toLowerCase();
+    const ringLeftColor = resolvedRingMode === 'neutral'
+      ? placeholderRingColor
+      : leftFrameColor;
+    const ringRightColor = resolvedRingMode === 'neutral'
+      ? placeholderRingColor
+      : rightFrameColor;
+
+    const resolvedCueMode = (cueMode || (showCue ? 'cue' : 'none')).toString().trim().toLowerCase();
+    if (resolvedCueMode === 'fixation' || resolvedCueMode === 'cue') {
+      drawCueDiamond(ctx, Math.floor(w / 2), cy, {
+        spatialCue: resolvedCueMode === 'cue' ? spatialCue : 'none',
+        backgroundColor: cueBackgroundColor,
+        indicatorColor: cueIndicatorColor,
+        fixationColor: cueFixationColor,
+        showBackground: true,
+        showFixation: true
+      });
+    } else if (showFixation) {
+      drawFixation(ctx, Math.floor(w / 2), cy, initialFixationColor);
     }
 
     // Stimulus / mask
@@ -596,8 +649,10 @@
     }
 
     // Keep value rings on top so they remain saturated and clearly visible.
-    drawValueRing(leftCx, leftFrameColor);
-    drawValueRing(rightCx, rightFrameColor);
+    if (resolvedRingMode !== 'none') {
+      drawValueRing(leftCx, ringLeftColor);
+      drawValueRing(rightCx, ringRightColor);
+    }
 
     // Optional subtle label for debugging stages (off by default; can be enabled by CSS later)
     if (phase) {
@@ -684,6 +739,25 @@
       const rewardBonusMaxHigh = Number.isFinite(Number(trial.reward_bonus_max_high)) ? Number(trial.reward_bonus_max_high) : 50;
       const rewardBonusMaxLow = Number.isFinite(Number(trial.reward_bonus_max_low)) ? Number(trial.reward_bonus_max_low) : 5;
       const rewardTemplate = (trial.reward_feedback_text_template ?? '+{{points}} points').toString();
+      const placeholderRingColor = (trial.placeholder_ring_color ?? 'rgb(191,191,191)').toString();
+      const cueBackgroundColor = (trial.cue_background_color ?? 'rgb(191,191,191)').toString();
+      const cueIndicatorColor = (trial.cue_indicator_color ?? 'rgb(114,114,114)').toString();
+      const cueFixationColor = (trial.cue_fixation_color ?? 'rgb(114,114,114)').toString();
+      const initialFixationColor = (trial.initial_fixation_color ?? '#ffffff').toString();
+      const isQuestAdaptive = (
+        (trial && trial.data && trial.data.adaptive_mode === 'quest')
+        || trial.adaptive_mode === 'quest'
+        || (trial.adaptive && trial.adaptive.mode === 'quest')
+      );
+      const isLearningBlock = !!(trial && trial.data && trial.data.gabor_learning_block === true);
+      const hasRewardCueContext = (
+        rewardFeedbackEnabled
+        || leftValue !== 'neutral'
+        || rightValue !== 'neutral'
+        || (typeof trial.value_target_value === 'string' && trial.value_target_value.trim() !== '')
+      );
+      const isRewardMainTask = !isQuestAdaptive && !isLearningBlock && hasRewardCueContext;
+      const isPracticeDiamondTask = !isQuestAdaptive && !isLearningBlock && !isRewardMainTask;
 
       // Optional researcher-controlled patch diameter.
       // Preferred: degrees-of-visual-angle via trial.patch_diameter_deg + prior visual-angle calibration.
@@ -705,9 +779,10 @@
       const stimMs0 = Math.max(0, Number(trial.stimulus_duration_ms ?? 67) || 0);
       const maskMs0 = Math.max(0, Number(trial.mask_duration_ms ?? 67) || 0);
       const responseWindowMs0 = Math.max(0, Number(trial.response_window_ms ?? 1500) || 0);
+      const maskEnabled = trial.use_mask === true || trial.mask_enabled === true;
 
       const stimMs = debugGabor ? Math.max(stimMs0, 350) : stimMs0;
-      const maskMs = debugGabor ? Math.max(maskMs0, 250) : maskMs0;
+      const maskMs = maskEnabled ? (debugGabor ? Math.max(maskMs0, 250) : maskMs0) : 0;
       const responseWindowMs = debugGabor ? Math.max(responseWindowMs0, 2000) : responseWindowMs0;
 
       const highColor = (trial.high_value_color ?? '#00aa00').toString();
@@ -855,12 +930,6 @@
           ...(drtEnabled ? { drt_enabled: true, drt_shown: drtShown, drt_rt_ms: drtRt } : {})
         };
 
-        const isQuestAdaptive = (
-          (trial && trial.data && trial.data.adaptive_mode === 'quest')
-          || trial.adaptive_mode === 'quest'
-          || (trial.adaptive && trial.adaptive.mode === 'quest')
-        );
-
         const noResponse = !(responded && Number.isFinite(rt));
         const hasValueCueContext = (
           leftValue !== 'neutral'
@@ -874,6 +943,8 @@
         let rewardBonusPoints = null;
         let rewardTargetValue = computeRewardTargetValue();
         const rewardScoringModeApplied = (rewardScoringMode === 'proportional_linear') ? 'proportional_linear' : 'tiered';
+        const rewardState = getGaborRewardState();
+        const accruedPointsBeforeTrial = Number.isFinite(Number(rewardState.total_points)) ? Number(rewardState.total_points) : 0;
         if (
           rewardFeedbackEnabled
           && !noResponse
@@ -910,6 +981,9 @@
             }
           }
         }
+        const rewardPointsForDisplay = Number.isFinite(Number(rewardPointsAwarded)) ? Number(rewardPointsAwarded) : 0;
+        const rewardTotalAfterTrial = correctness === true ? (accruedPointsBeforeTrial + rewardPointsForDisplay) : accruedPointsBeforeTrial;
+        rewardState.total_points = rewardTotalAfterTrial;
 
         trialData.no_response = noResponse;
         trialData.response_registered = responded;
@@ -919,6 +993,8 @@
         trialData.reward_target_value = rewardTargetValue;
         trialData.reward_base_points = rewardBasePoints;
         trialData.reward_bonus_points = rewardBonusPoints;
+        trialData.reward_total_points_before_trial = accruedPointsBeforeTrial;
+        trialData.reward_total_points_after_trial = rewardTotalAfterTrial;
         trialData.watchdog_triggered = watchdogTriggered;
         trialData.phase_at_watchdog = watchdogTriggered ? currentPhase : null;
         trialData.render_error_message = renderErrorMessage;
@@ -934,6 +1010,14 @@
             if (noResponse && tooSlowFeedbackEnabled && !isQuestAdaptive) {
               fbText = fbTextNoResponse;
               fbColor = '#ffb74d';
+            } else if (rewardFeedbackEnabled && hasValueCueContext) {
+              if (correctness === true) {
+                fbText = `${formatPointsLabel(accruedPointsBeforeTrial)}+${formatPointsLabel(rewardPointsForDisplay)}`;
+                fbColor = '#ffd54f';
+              } else {
+                fbText = formatPointsLabel(accruedPointsBeforeTrial);
+                fbColor = 'rgb(114,114,114)';
+              }
             } else if (rewardRtTier !== null && rewardPointsAwarded !== null) {
               fbText = rewardTemplate
                 .replace(/\{\{\s*points\s*\}\}/gi, formatPointsLabel(rewardPointsAwarded))
@@ -1033,8 +1117,16 @@
             patchBorder,
             contrast,
             showCue: !!opts?.showCue,
+            showFixation: !!opts?.showFixation,
             showStimulus: !!opts?.showStimulus,
             showMask: !!opts?.showMask,
+            ringMode: opts?.ringMode,
+            cueMode: opts?.cueMode,
+            placeholderRingColor,
+            cueBackgroundColor,
+            cueIndicatorColor,
+            cueFixationColor,
+            initialFixationColor,
             debug: debugGabor
           });
         } catch (err) {
@@ -1095,7 +1187,14 @@
       };
 
       // Phase schedule
-      render('fixation', { showCue: false, showStimulus: false, showMask: false });
+      render('fixation', {
+        showCue: false,
+        showFixation: true,
+        showStimulus: false,
+        showMask: false,
+        ringMode: isRewardMainTask ? 'neutral' : 'none',
+        cueMode: (isRewardMainTask || isPracticeDiamondTask) ? 'fixation' : 'none'
+      });
 
       // DRT schedule (during the post-stimulus response window by default)
       if (drtEnabled) {
@@ -1125,7 +1224,14 @@
       // Placeholders
       safeSetTimeout(() => {
         try {
-          render('placeholders', { showCue: false, showStimulus: false, showMask: false });
+          render('placeholders', {
+            showCue: false,
+            showFixation: !(isRewardMainTask || isPracticeDiamondTask),
+            showStimulus: false,
+            showMask: false,
+            ringMode: isRewardMainTask ? 'value' : 'none',
+            cueMode: (isRewardMainTask || isPracticeDiamondTask) ? 'fixation' : 'none'
+          });
         } catch (err) {
           renderErrorMessage = (err && err.message) ? String(err.message) : 'phase_placeholders_failed';
           endTrial('phase_error');
@@ -1135,7 +1241,14 @@
       // Cue
       safeSetTimeout(() => {
         try {
-          render('cue', { showCue: true, showStimulus: false, showMask: false });
+          render('cue', {
+            showCue: true,
+            showFixation: !(isRewardMainTask || isPracticeDiamondTask),
+            showStimulus: false,
+            showMask: false,
+            ringMode: isRewardMainTask ? 'value' : 'none',
+            cueMode: (isRewardMainTask || isPracticeDiamondTask) ? 'cue' : 'none'
+          });
         } catch (err) {
           renderErrorMessage = (err && err.message) ? String(err.message) : 'phase_cue_failed';
           endTrial('phase_error');
@@ -1145,7 +1258,14 @@
       // Cue delay (cue off)
       safeSetTimeout(() => {
         try {
-          render('cue-delay', { showCue: false, showStimulus: false, showMask: false });
+          render('cue-delay', {
+            showCue: isRewardMainTask,
+            showFixation: !(isRewardMainTask || isPracticeDiamondTask),
+            showStimulus: false,
+            showMask: false,
+            ringMode: isRewardMainTask ? 'value' : 'none',
+            cueMode: isRewardMainTask ? 'cue' : ((isPracticeDiamondTask && spatialCue !== 'none') ? 'cue' : (isPracticeDiamondTask ? 'fixation' : 'none'))
+          });
         } catch (err) {
           renderErrorMessage = (err && err.message) ? String(err.message) : 'phase_cue_delay_failed';
           endTrial('phase_error');
@@ -1156,7 +1276,14 @@
       safeSetTimeout(() => {
         try {
           stimulusOnsetTs = nowMs();
-          render('stimulus', { showCue: false, showStimulus: true, showMask: false });
+          render('stimulus', {
+            showCue: false,
+            showFixation: false,
+            showStimulus: true,
+            showMask: false,
+            ringMode: isRewardMainTask ? 'value' : 'none',
+            cueMode: 'none'
+          });
           startResponseListener();
         } catch (err) {
           renderErrorMessage = (err && err.message) ? String(err.message) : 'phase_stimulus_failed';
@@ -1167,7 +1294,14 @@
       // Mask
       safeSetTimeout(() => {
         try {
-          render('mask', { showCue: false, showStimulus: false, showMask: true });
+          render('mask', {
+            showCue: false,
+            showFixation: false,
+            showStimulus: false,
+            showMask: true,
+            ringMode: isRewardMainTask ? 'value' : 'none',
+            cueMode: 'none'
+          });
         } catch (err) {
           renderErrorMessage = (err && err.message) ? String(err.message) : 'phase_mask_failed';
           endTrial('phase_error');
@@ -1177,7 +1311,14 @@
       // Post-mask response window (blank placeholders)
       safeSetTimeout(() => {
         try {
-          render('response', { showCue: false, showStimulus: false, showMask: false });
+          render('response', {
+            showCue: false,
+            showFixation: false,
+            showStimulus: false,
+            showMask: false,
+            ringMode: isRewardMainTask ? 'value' : 'none',
+            cueMode: 'none'
+          });
         } catch (err) {
           renderErrorMessage = (err && err.message) ? String(err.message) : 'phase_response_failed';
           endTrial('phase_error');
