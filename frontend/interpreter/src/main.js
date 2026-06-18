@@ -1124,6 +1124,14 @@
     }
   }
 
+  function peekBufferedDrtRows() {
+    try {
+      return Array.isArray(window.__psy_drt_rows) ? window.__psy_drt_rows.slice() : [];
+    } catch {
+      return [];
+    }
+  }
+
   function stampExportRow(row, config, compiled, configId) {
     if (!row || typeof row !== 'object') return row;
 
@@ -2113,7 +2121,9 @@
         save: function (opts) {
           const options = (opts && typeof opts === 'object') ? opts : {};
           try {
-            const values = jsPsych.data.get().values();
+            const baseValues = getJsPsychValues(jsPsych);
+            const bufferedDrt = peekBufferedDrtRows().map((r) => stampExportRow(r, config, compiled, configId));
+            const values = bufferedDrt.length ? baseValues.concat(bufferedDrt) : baseValues;
             const payload = buildResultPayload({ values, config, compiled, configId, code: null });
             if (window.DjangoRuntimeBackend && typeof window.DjangoRuntimeBackend.saveCheckpoint === 'function') {
               window.DjangoRuntimeBackend.saveCheckpoint(payload, {
@@ -2577,7 +2587,17 @@
         save: function (opts) {
           const options = (opts && typeof opts === 'object') ? opts : {};
           try {
-            const values = jsPsych.data.get().values();
+            const baseValues = getJsPsychValues(jsPsych);
+            const bufferedDrt = peekBufferedDrtRows().map((r) => {
+              const stamped = stampExportRow(r, null, null, null);
+              try {
+                if (stamped && typeof stamped === 'object' && stamped.code == null) stamped.code = code;
+              } catch {
+                // ignore
+              }
+              return stamped;
+            });
+            const values = bufferedDrt.length ? baseValues.concat(bufferedDrt) : baseValues;
             const payload = buildResultPayload({ values, config: null, compiled: null, configId: null, code: code || null });
             if (window.DjangoRuntimeBackend && typeof window.DjangoRuntimeBackend.saveCheckpoint === 'function') {
               window.DjangoRuntimeBackend.saveCheckpoint(payload, {
