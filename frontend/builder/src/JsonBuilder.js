@@ -1005,6 +1005,14 @@ class JsonBuilder {
             });
         }
 
+        const checkAssetsBtn = document.getElementById('checkAssetsBtn');
+        if (checkAssetsBtn && checkAssetsBtn.dataset.bound !== '1') {
+            checkAssetsBtn.dataset.bound = '1';
+            checkAssetsBtn.addEventListener('click', () => {
+                this.showAssetInspectorModal();
+            });
+        }
+
         // Local JSON import -> Token Store upload (batch)
         const importBtn = document.getElementById('importLocalJsonBtn');
         const importInput = document.getElementById('importLocalJsonInput');
@@ -1323,6 +1331,230 @@ class JsonBuilder {
         };
         all[c] = next;
         this.setTokenStoreAssetIndex(all);
+    }
+
+    getAssetInspectorContext() {
+        const isImage = (name) => /\.(png|jpg|jpeg|gif|webp|bmp|svg)$/i.test((name || '').toString());
+
+        if (this.isPlatformMode()) {
+            const studySlug = (window.COGFLOW_STUDY_SLUG || '').toString().trim();
+            const scopeKey = studySlug || 'unscoped';
+            const merged = new Map();
+
+            const ingest = (map, sourceScope) => {
+                if (!map || typeof map !== 'object') return;
+                Object.entries(map).forEach(([filename, meta]) => {
+                    const f = String(filename || '').trim();
+                    const url = String(meta && meta.url ? meta.url : '').trim();
+                    if (!f || !url) return;
+                    if (!merged.has(f)) {
+                        merged.set(f, {
+                            filename: f,
+                            url,
+                            isImage: isImage(f),
+                            sourceLabel: sourceScope,
+                        });
+                    }
+                });
+            };
+
+            ingest(this.getPlatformAssetMap(scopeKey), scopeKey);
+            if (scopeKey !== 'unscoped') {
+                ingest(this.getPlatformAssetMap('unscoped'), 'unscoped');
+            }
+
+            const items = Array.from(merged.values()).sort((a, b) => a.filename.localeCompare(b.filename));
+            const contextLabel = scopeKey === 'unscoped'
+                ? 'Platform scope: unscoped'
+                : `Platform scope: ${scopeKey} (plus unscoped fallback)`;
+            return { items, contextLabel };
+        }
+
+        const code = (localStorage.getItem('cogflow_last_export_code') || localStorage.getItem('psychjson_last_export_code') || '').toString().trim();
+        const taskTypeRaw = (document.getElementById('taskType')?.value || 'task').toString();
+        const taskType = this.normalizeTokenStoreTaskType(taskTypeRaw);
+
+        if (!code) {
+            return {
+                items: [],
+                contextLabel: 'Token Store scope: no export code selected yet. Export or upload assets first.',
+            };
+        }
+
+        const allAssetIndex = this.getTokenStoreAssetIndex() || {};
+        const byCode = (allAssetIndex && typeof allAssetIndex === 'object') ? allAssetIndex[code] : null;
+        const byTask = (byCode && typeof byCode === 'object' && byCode.by_task && typeof byCode.by_task === 'object')
+            ? byCode.by_task
+            : {};
+
+        const merged = new Map();
+        const ingest = (map, sourceTask) => {
+            if (!map || typeof map !== 'object') return;
+            Object.entries(map).forEach(([filename, meta]) => {
+                const f = String(filename || '').trim();
+                const url = String(meta && meta.url ? meta.url : '').trim();
+                if (!f || !url) return;
+                if (!merged.has(f)) {
+                    merged.set(f, {
+                        filename: f,
+                        url,
+                        isImage: isImage(f),
+                        sourceLabel: sourceTask,
+                    });
+                }
+            });
+        };
+
+        const currentTaskMap = this.getTokenStoreAssetMapForCodeAndTask(code, taskType);
+        ingest(currentTaskMap, taskType);
+        Object.entries(byTask).forEach(([t, rec]) => {
+            if (t === taskType) return;
+            const files = rec && typeof rec === 'object' && rec.files && typeof rec.files === 'object' ? rec.files : null;
+            ingest(files, t);
+        });
+
+        const items = Array.from(merged.values()).sort((a, b) => a.filename.localeCompare(b.filename));
+        return {
+            items,
+            contextLabel: `Token Store scope: code ${code}, task ${String(taskType).toUpperCase()} (with cross-task fallback)`,
+        };
+    }
+
+    async copyTextToClipboard(text, successMessage) {
+        const value = (text || '').toString();
+        if (!value) return false;
+
+        try {
+            await navigator.clipboard.writeText(value);
+            if (successMessage) this.showValidationResult('success', successMessage);
+            return true;
+        } catch {
+            // Fallback for environments where async clipboard is blocked.
+        }
+
+        try {
+            const ta = document.createElement('textarea');
+            ta.value = value;
+            ta.setAttribute('readonly', 'readonly');
+            ta.style.position = 'fixed';
+            ta.style.left = '-9999px';
+            document.body.appendChild(ta);
+            ta.select();
+            ta.setSelectionRange(0, ta.value.length);
+            const ok = document.execCommand('copy');
+            ta.remove();
+            if (ok) {
+                if (successMessage) this.showValidationResult('success', successMessage);
+                return true;
+            }
+        } catch {
+            // ignore
+        }
+
+        this.showValidationResult('error', 'Clipboard copy blocked. Select and copy manually.');
+        return false;
+    }
+
+    showAssetInspectorModal() {
+        const modalEl = document.getElementById('checkAssetsModal');
+        const summaryEl = document.getElementById('checkAssetsSummary');
+        const emptyEl = document.getElementById('checkAssetsEmpty');
+        const tableBody = document.getElementById('checkAssetsTableBody');
+
+        if (!modalEl || !summaryEl || !emptyEl || !tableBody || !window.bootstrap?.Modal) {
+            this.showValidationResult('error', 'Check Assets UI is unavailable.');
+            return;
+        }
+
+        const ctx = this.getAssetInspectorContext();
+        const items = Array.isArray(ctx.items) ? ctx.items : [];
+
+        summaryEl.textContent = `${ctx.contextLabel}. Found ${items.length} asset(s).`;
+        tableBody.innerHTML = '';
+        emptyEl.classList.toggle('d-none', items.length > 0);
+
+        items.forEach((item) => {
+            const tr = document.createElement('tr');
+
+            const previewCell = document.createElement('td');
+            if (item.isImage) {
+                const img = document.createElement('img');
+                img.src = item.url;
+                img.alt = item.filename;
+                img.loading = 'lazy';
+                img.style.maxWidth = '90px';
+                img.style.maxHeight = '60px';
+                img.style.objectFit = 'contain';
+                img.style.borderRadius = '4px';
+                img.style.border = '1px solid rgba(0,0,0,0.1)';
+                previewCell.appendChild(img);
+            } else {
+                const span = document.createElement('span');
+                span.className = 'text-muted';
+                span.textContent = 'No preview';
+                previewCell.appendChild(span);
+            }
+
+            const filenameCell = document.createElement('td');
+            const filenameCode = document.createElement('code');
+            filenameCode.textContent = item.filename;
+            filenameCell.appendChild(filenameCode);
+            const sourceDiv = document.createElement('div');
+            sourceDiv.className = 'small text-muted';
+            sourceDiv.textContent = `Source: ${item.sourceLabel}`;
+            filenameCell.appendChild(sourceDiv);
+
+            const urlCell = document.createElement('td');
+            const urlLink = document.createElement('a');
+            urlLink.href = item.url;
+            urlLink.target = '_blank';
+            urlLink.rel = 'noopener noreferrer';
+            urlLink.textContent = item.url;
+            urlCell.appendChild(urlLink);
+
+            const actionCell = document.createElement('td');
+            const group = document.createElement('div');
+            group.className = 'd-flex gap-2 flex-wrap';
+
+            const copyFilenameBtn = document.createElement('button');
+            copyFilenameBtn.type = 'button';
+            copyFilenameBtn.className = 'btn btn-outline-secondary btn-sm';
+            copyFilenameBtn.textContent = 'Copy name';
+            copyFilenameBtn.addEventListener('click', () => {
+                this.copyTextToClipboard(item.filename, 'Copied filename.');
+            });
+
+            const copyUrlBtn = document.createElement('button');
+            copyUrlBtn.type = 'button';
+            copyUrlBtn.className = 'btn btn-outline-primary btn-sm';
+            copyUrlBtn.textContent = 'Copy URL';
+            copyUrlBtn.addEventListener('click', () => {
+                this.copyTextToClipboard(item.url, 'Copied URL.');
+            });
+
+            const copyHtmlBtn = document.createElement('button');
+            copyHtmlBtn.type = 'button';
+            copyHtmlBtn.className = 'btn btn-primary btn-sm';
+            copyHtmlBtn.textContent = 'Copy <img>';
+            copyHtmlBtn.addEventListener('click', () => {
+                const snippet = `<img src="${item.url}" alt="${item.filename}" />`;
+                this.copyTextToClipboard(snippet, 'Copied HTML image snippet.');
+            });
+
+            group.appendChild(copyFilenameBtn);
+            group.appendChild(copyUrlBtn);
+            group.appendChild(copyHtmlBtn);
+            actionCell.appendChild(group);
+
+            tr.appendChild(previewCell);
+            tr.appendChild(filenameCell);
+            tr.appendChild(urlCell);
+            tr.appendChild(actionCell);
+            tableBody.appendChild(tr);
+        });
+
+        const modal = window.bootstrap.Modal.getOrCreateInstance(modalEl);
+        modal.show();
     }
 
     escapeRegex(s) {

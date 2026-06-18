@@ -121,6 +121,9 @@
                 <button class="btn btn-outline-light me-2" id="uploadAssetsFolderBtn" title="Upload a local assets folder to Token Store so you can refer to images by filename in your config">
                     <i class="fas fa-folder-tree"></i> Upload Assets
                 </button>
+                <button class="btn btn-outline-light me-2" id="checkAssetsBtn" title="Review uploaded assets, preview images, and copy internal URLs for HTML fields">
+                    <i class="fas fa-images"></i> Check Assets
+                </button>
                 <button class="btn btn-outline-light me-2" id="saveJsonBtn">
                     <i class="fas fa-download"></i> Save JSON
                 </button>
@@ -387,6 +390,46 @@
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                         <button type="button" class="btn btn-primary" id="loadStudyConfirmBtn" disabled>Load Selected Study</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Uploaded Assets Inspector Modal -->
+        <div class="modal fade" id="checkAssetsModal" tabindex="-1" aria-labelledby="checkAssetsModalTitle" aria-hidden="true">
+            <div class="modal-dialog modal-xl modal-dialog-scrollable">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="checkAssetsModalTitle">
+                            <i class="fas fa-images"></i> Uploaded Assets
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div id="checkAssetsSummary" class="text-muted mb-3">Loading uploaded assets...</div>
+                        <div id="checkAssetsEmpty" class="alert alert-secondary d-none" role="status">
+                            No uploaded assets found for the current scope.
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 120px;">Preview</th>
+                                        <th style="width: 240px;">Filename</th>
+                                        <th>Internal URL</th>
+                                        <th style="width: 220px;">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="checkAssetsTableBody"></tbody>
+                            </table>
+                        </div>
+                        <div class="form-text">
+                            Tip for HTML+Keyboard: copy a URL and place it in your HTML, for example
+                            <code>&lt;img src="..." alt="stimulus" /&gt;</code>.
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     </div>
                 </div>
             </div>

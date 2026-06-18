@@ -330,6 +330,7 @@ The **Upload Assets** tool uploads a local folder and stores a **filename → UR
 
 - After uploading, you can reference images in parameters by filename (e.g., `b1.png`) instead of pasting full URLs.
 - The Preview modal also resolves bare filenames via the saved index.
+- Use **Check Assets** in the top navbar to preview uploaded files and copy a filename, direct URL, or ready-to-paste `<img src="..." />` snippet for HTML+Keyboard components.
 
 This works for (examples):
 
