@@ -647,6 +647,89 @@
     return null;
   }
 
+  function firstNonEmpty(...vals) {
+    for (const raw of vals) {
+      const s = (raw === null || raw === undefined) ? '' : String(raw).trim();
+      if (s) return s;
+    }
+    return '';
+  }
+
+  function isRuntimePlaceholderValue(value) {
+    const s = (value === null || value === undefined) ? '' : String(value).trim();
+    if (!s) return false;
+    const u = s.toUpperCase();
+    return (
+      u.includes('%PROLIFIC_PID%') ||
+      u.includes('%STUDY_ID%') ||
+      u.includes('%SESSION_ID%') ||
+      u.includes('{PARTICIPANT_EXTERNAL_ID}')
+    );
+  }
+
+  function normalizeParticipantIdValue(value) {
+    const s = (value === null || value === undefined) ? '' : String(value).trim();
+    if (!s) return null;
+    return isRuntimePlaceholderValue(s) ? null : s;
+  }
+
+  function getPlatformContext() {
+    const prolificPid = normalizeParticipantIdValue(firstNonEmpty(
+      getQueryParam('PROLIFIC_PID'),
+      getQueryParam('prolific_pid')
+    ));
+    const prolificStudyId = normalizeParticipantIdValue(firstNonEmpty(
+      getQueryParam('STUDY_ID'),
+      getQueryParam('study_id')
+    ));
+    const prolificSessionId = normalizeParticipantIdValue(firstNonEmpty(
+      getQueryParam('SESSION_ID'),
+      getQueryParam('session_id')
+    ));
+
+    const sonaId = normalizeParticipantIdValue(firstNonEmpty(
+      getQueryParam('SONA_ID'),
+      getQueryParam('sona_id'),
+      getQueryParam('survey_code')
+    ));
+
+    const participantExternalId = normalizeParticipantIdValue(firstNonEmpty(
+      (typeof window.COGFLOW_PARTICIPANT_ID === 'string' ? window.COGFLOW_PARTICIPANT_ID : ''),
+      getQueryParam('participant_external_id'),
+      getQueryParam('participant'),
+      getQueryParam('code'),
+      getJatosParam('participant_external_id')
+    ));
+
+    if (prolificPid) {
+      return {
+        platform_name: 'prolific',
+        platform_id: prolificPid,
+        platform_study_id: prolificStudyId,
+        platform_session_id: prolificSessionId,
+        participant_external_id: prolificPid,
+      };
+    }
+
+    if (sonaId) {
+      return {
+        platform_name: 'sona',
+        platform_id: sonaId,
+        platform_study_id: null,
+        platform_session_id: null,
+        participant_external_id: sonaId,
+      };
+    }
+
+    return {
+      platform_name: null,
+      platform_id: participantExternalId,
+      platform_study_id: prolificStudyId,
+      platform_session_id: prolificSessionId,
+      participant_external_id: participantExternalId,
+    };
+  }
+
   function getPlatformLaunchToken() {
     try {
       if (typeof window !== 'undefined' && typeof window.COGFLOW_LAUNCH_TOKEN === 'string') {
@@ -1110,6 +1193,8 @@
       const vals = jsPsych.data.get().values();
       return Array.isArray(vals) ? vals : [];
     } catch {
+      const platformContext = getPlatformContext();
+
       return [];
     }
   }
@@ -1117,6 +1202,10 @@
   function consumeBufferedDrtRows() {
     try {
       const rows = Array.isArray(window.__psy_drt_rows) ? window.__psy_drt_rows.slice() : [];
+        platform_name: platformContext.platform_name,
+        platform_id: platformContext.platform_id,
+        platform_study_id: platformContext.platform_study_id,
+        platform_session_id: platformContext.platform_session_id,
       window.__psy_drt_rows = [];
       return rows;
     } catch {
@@ -2719,12 +2808,17 @@
         return true;
       }
 
-      const participantId = (
-        (typeof window.COGFLOW_PARTICIPANT_ID === 'string' && window.COGFLOW_PARTICIPANT_ID.trim()) ||
-        getQueryParam('participant') ||
-        getQueryParam('code') ||
-        null
-      );
+      const participantId = normalizeParticipantIdValue(firstNonEmpty(
+        (typeof window.COGFLOW_PARTICIPANT_ID === 'string' ? window.COGFLOW_PARTICIPANT_ID : ''),
+        getQueryParam('participant_external_id'),
+        getQueryParam('PROLIFIC_PID'),
+        getQueryParam('prolific_pid'),
+        getQueryParam('SONA_ID'),
+        getQueryParam('sona_id'),
+        getQueryParam('survey_code'),
+        getQueryParam('participant'),
+        getQueryParam('code')
+      ));
 
       setStatus('Starting run from launch link...');
       renderBlockingStatus('Starting', 'Claiming launch link and loading config from CogFlow Platform...');

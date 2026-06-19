@@ -1080,9 +1080,14 @@
 
     function bundleRows(bundle) {
       const trials = Array.isArray(bundle?.result_payload?.trials) ? bundle.result_payload.trials : [];
+      const payload = (bundle && bundle.result_payload && typeof bundle.result_payload === "object") ? bundle.result_payload : {};
       const base = { run_session_id: bundle.run_session_id, status: bundle.status,
                      started_at: bundle.started_at, completed_at: bundle.completed_at,
-                     participant_key_preview: bundle.participant_key_preview, trial_count: bundle.trial_count };
+                     participant_key_preview: bundle.participant_key_preview, trial_count: bundle.trial_count,
+                     platform_name: payload.platform_name ?? null,
+                     platform_id: payload.platform_id ?? null,
+                     platform_study_id: payload.platform_study_id ?? null,
+                     platform_session_id: payload.platform_session_id ?? null };
       if (!trials.length) return [base];
       return trials.map((t, i) => ({ ...base, trial_row_index: i, ...flatCsv(t, "trial") }));
     }

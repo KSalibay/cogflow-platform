@@ -504,8 +504,12 @@ def infer_study_analysis_defaults(study, include_completed_only=True, max_runs=4
             if payload is None:
                 continue
 
-            task_type = str(payload.get("task_type") or "").strip().lower()
             plugin_type = str(payload.get("plugin_type") or "").strip().lower()
+            if plugin_type == "checkpoint":
+                # Checkpoint marker rows are progress snapshots, not behavioral trials.
+                continue
+
+            task_type = str(payload.get("task_type") or "").strip().lower()
             experiment_type = str(payload.get("experiment_type") or "").strip().lower()
 
             if task_type:
@@ -788,6 +792,9 @@ def build_study_analysis_outputs(study, engine, options, include_completed_only=
         for trial in run.trial_results.all().order_by("trial_index"):
             payload = _safe_get_decrypted_trial(trial)
             if payload is None:
+                continue
+            plugin_type = str(payload.get("plugin_type") or "").strip().lower()
+            if plugin_type == "checkpoint":
                 continue
             category = _categorize_trial_payload(payload if isinstance(payload, dict) else {})
             if selected_categories != ["all"] and category not in selected_categories:
