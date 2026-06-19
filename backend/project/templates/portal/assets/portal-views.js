@@ -866,9 +866,9 @@
       if (!base || base === "-") return "";
 
       const placeholders = {
-        PROLIFIC_PID: "{% templatetag openvariable %}%PROLIFIC_PID%{% templatetag closevariable %}",
-        STUDY_ID: "{% templatetag openvariable %}%STUDY_ID%{% templatetag closevariable %}",
-        SESSION_ID: "{% templatetag openvariable %}%SESSION_ID%{% templatetag closevariable %}",
+        PROLIFIC_PID: "{{%PROLIFIC_PID%}}",
+        STUDY_ID: "{{%STUDY_ID%}}",
+        SESSION_ID: "{{%SESSION_ID%}}",
       };
 
       // Prolific placeholders must remain literal (for example `{{%PROLIFIC_PID%}}`).
@@ -992,7 +992,7 @@
 
       try {
         const r = await fetch(`${API}/api/v1/studies/${encodeURIComponent(slug)}/participant-links`, postOpts({
-          participant_external_id: "{% templatetag openvariable %}%PROLIFIC_PID%{% templatetag closevariable %}",
+          participant_external_id: "{{%PROLIFIC_PID%}}",
           use_flow_variants: useFlowVariants,
           expires_in_hours: 72,
           completion_redirect_url: completionRedirect,
