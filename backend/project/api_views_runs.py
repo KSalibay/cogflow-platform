@@ -274,7 +274,8 @@ class SubmitResultView(APIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        run_session = RunSession.objects.filter(id=data["run_session_id"]).first()
+        # Serialize writes against the same run to avoid checkpoint/final races.
+        run_session = RunSession.objects.select_for_update().filter(id=data["run_session_id"]).first()
         if not run_session:
             return Response({"error": "Run session not found"}, status=status.HTTP_404_NOT_FOUND)
 
@@ -333,7 +334,8 @@ class SaveCheckpointView(APIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        run_session = RunSession.objects.filter(id=data["run_session_id"]).first()
+        # Serialize writes against the same run to avoid checkpoint/final races.
+        run_session = RunSession.objects.select_for_update().filter(id=data["run_session_id"]).first()
         if not run_session:
             return Response({"error": "Run session not found"}, status=status.HTTP_404_NOT_FOUND)
 
