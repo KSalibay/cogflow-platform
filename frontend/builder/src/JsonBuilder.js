@@ -2586,6 +2586,7 @@ class JsonBuilder {
                 mapWindow('stimulus_duration_ms', 'sart_stimulus_duration_min', 'sart_stimulus_duration_max');
                 mapWindow('mask_duration_ms', 'sart_mask_duration_min', 'sart_mask_duration_max');
                 mapWindow('trial_duration_ms', 'sart_trial_duration_min', 'sart_trial_duration_max');
+                mapWindow('feedback_duration_ms', 'sart_feedback_duration_min', 'sart_feedback_duration_max');
                 mapWindow('iti_ms', 'sart_iti_min', 'sart_iti_max');
             } else if (innerType === 'mot-trial') {
                 mapWindow('speed_px_per_s', 'mot_speed_px_per_s_min', 'mot_speed_px_per_s_max');
@@ -2699,6 +2700,11 @@ class JsonBuilder {
                 if (values.nogo_digit !== undefined) out.sart_nogo_digit = values.nogo_digit;
                 if (values.nogo_probability !== undefined) out.sart_nogo_probability = values.nogo_probability;
                 if (values.go_key !== undefined) out.sart_go_key = values.go_key;
+                if (values.show_feedback !== undefined) out.sart_show_feedback = !!values.show_feedback;
+                if (values.feedback_text_correct !== undefined) out.sart_feedback_text_correct = values.feedback_text_correct;
+                if (values.feedback_text_incorrect !== undefined) out.sart_feedback_text_incorrect = values.feedback_text_incorrect;
+                if (values.feedback_color_correct !== undefined) out.sart_feedback_color_correct = values.feedback_color_correct;
+                if (values.feedback_color_incorrect !== undefined) out.sart_feedback_color_incorrect = values.feedback_color_incorrect;
             } else if (innerType === 'mot-trial') {
                 if (Array.isArray(values.num_objects)) out.mot_num_objects_options = csv(values.num_objects);
                 if (Array.isArray(values.num_targets)) out.mot_num_targets_options = csv(values.num_targets);
@@ -11716,6 +11722,10 @@ class JsonBuilder {
                     delete instructionsComponent[key];
                 }
             });
+
+            if (component.label !== undefined && component.label !== null && component.label !== '') {
+                instructionsComponent.label = component.label;
+            }
             
             console.log('Transformed Instructions component:', instructionsComponent);
             return instructionsComponent;
@@ -11731,6 +11741,9 @@ class JsonBuilder {
                 type: component.type,
                 ...component.parameters
             };
+            if (component.label !== undefined && component.label !== null && component.label !== '') {
+                baseComponent.label = component.label;
+            }
         } else {
             // Flat structure (like from component library) - spread all properties except type and name
             console.log('Using flat structure for component:', component.type);
@@ -12864,6 +12877,10 @@ class JsonBuilder {
             sampling_mode: samplingMode,
             parameter_windows: windows
         };
+
+        if (blockComponent.label !== undefined && blockComponent.label !== null && blockComponent.label !== '') {
+            out.label = blockComponent.label;
+        }
 
         if (this.experimentType === 'continuous') {
             out.block_sizing_mode = sizingMode;
