@@ -1193,8 +1193,6 @@
       const vals = jsPsych.data.get().values();
       return Array.isArray(vals) ? vals : [];
     } catch {
-      const platformContext = getPlatformContext();
-
       return [];
     }
   }
@@ -1202,10 +1200,6 @@
   function consumeBufferedDrtRows() {
     try {
       const rows = Array.isArray(window.__psy_drt_rows) ? window.__psy_drt_rows.slice() : [];
-        platform_name: platformContext.platform_name,
-        platform_id: platformContext.platform_id,
-        platform_study_id: platformContext.platform_study_id,
-        platform_session_id: platformContext.platform_session_id,
       window.__psy_drt_rows = [];
       return rows;
     } catch {
