@@ -573,6 +573,7 @@
     cueIndicatorColor,
     cueFixationColor,
     initialFixationColor,
+    fixationColor,
     debug
   }) {
     const ctx = canvas.getContext('2d');
@@ -631,12 +632,12 @@
         spatialCue: resolvedCueMode === 'cue' ? spatialCue : 'none',
         backgroundColor: cueBackgroundColor,
         indicatorColor: cueIndicatorColor,
-        fixationColor: cueFixationColor,
+        fixationColor: fixationColor ?? cueFixationColor,
         showBackground: true,
         showFixation: true
       });
     } else if (showFixation) {
-      drawFixation(ctx, Math.floor(w / 2), cy, initialFixationColor);
+      drawFixation(ctx, Math.floor(w / 2), cy, fixationColor ?? initialFixationColor);
     }
 
     // Stimulus / mask
@@ -758,6 +759,7 @@
       );
       const isRewardMainTask = !isQuestAdaptive && !isLearningBlock && hasRewardCueContext;
       const isPracticeDiamondTask = !isQuestAdaptive && !isLearningBlock && !isRewardMainTask;
+      const useAdaptivePracticePrime = isQuestAdaptive || isLearningBlock;
 
       // Optional researcher-controlled patch diameter.
       // Preferred: degrees-of-visual-angle via trial.patch_diameter_deg + prior visual-angle calibration.
@@ -807,6 +809,12 @@
         const hi = Math.max(cueDelayMin, cueDelayMax);
         if (hi <= lo) return lo;
         return lo + Math.floor(Math.random() * (hi - lo + 1));
+      })();
+
+      const initialPrimeMs = (() => {
+        if (!useAdaptivePracticePrime) return 0;
+        if (!Number.isFinite(fixationMs) || fixationMs <= 0) return 0;
+        return clamp(Math.round(fixationMs * 0.25), 120, 350);
       })();
 
       const drtEnabled = trial.detection_response_task_enabled === true;
@@ -1127,6 +1135,7 @@
             cueIndicatorColor,
             cueFixationColor,
             initialFixationColor,
+            fixationColor: opts?.fixationColor,
             debug: debugGabor
           });
         } catch (err) {
@@ -1187,14 +1196,44 @@
       };
 
       // Phase schedule
-      render('fixation', {
-        showCue: false,
-        showFixation: true,
-        showStimulus: false,
-        showMask: false,
-        ringMode: isRewardMainTask ? 'neutral' : 'none',
-        cueMode: (isRewardMainTask || isPracticeDiamondTask) ? 'fixation' : 'none'
-      });
+      if (useAdaptivePracticePrime && initialPrimeMs > 0) {
+        render('fixation-prime', {
+          showCue: false,
+          showFixation: true,
+          showStimulus: false,
+          showMask: false,
+          ringMode: 'none',
+          cueMode: 'none',
+          fixationColor: cueFixationColor
+        });
+
+        safeSetTimeout(() => {
+          try {
+            render('fixation', {
+              showCue: false,
+              showFixation: true,
+              showStimulus: false,
+              showMask: false,
+              ringMode: 'neutral',
+              cueMode: 'none',
+              fixationColor: initialFixationColor
+            });
+          } catch (err) {
+            renderErrorMessage = (err && err.message) ? String(err.message) : 'phase_fixation_failed';
+            endTrial('phase_error');
+          }
+        }, initialPrimeMs);
+      } else {
+        render('fixation', {
+          showCue: false,
+          showFixation: true,
+          showStimulus: false,
+          showMask: false,
+          ringMode: (isRewardMainTask || isPracticeDiamondTask) ? 'neutral' : 'none',
+          cueMode: (isRewardMainTask || isPracticeDiamondTask) ? 'fixation' : 'none',
+          fixationColor: (isRewardMainTask || isPracticeDiamondTask) ? cueFixationColor : initialFixationColor
+        });
+      }
 
       // DRT schedule (during the post-stimulus response window by default)
       if (drtEnabled) {
@@ -1229,7 +1268,7 @@
             showFixation: !(isRewardMainTask || isPracticeDiamondTask),
             showStimulus: false,
             showMask: false,
-            ringMode: isRewardMainTask ? 'value' : 'none',
+            ringMode: isRewardMainTask ? 'value' : (isPracticeDiamondTask ? 'neutral' : 'none'),
             cueMode: (isRewardMainTask || isPracticeDiamondTask) ? 'fixation' : 'none'
           });
         } catch (err) {
@@ -1263,8 +1302,8 @@
             showFixation: !(isRewardMainTask || isPracticeDiamondTask),
             showStimulus: false,
             showMask: false,
-            ringMode: isRewardMainTask ? 'value' : 'none',
-            cueMode: isRewardMainTask ? 'cue' : ((isPracticeDiamondTask && spatialCue !== 'none') ? 'cue' : (isPracticeDiamondTask ? 'fixation' : 'none'))
+            ringMode: isRewardMainTask ? 'value' : (isPracticeDiamondTask ? 'neutral' : 'none'),
+            cueMode: (isRewardMainTask || isPracticeDiamondTask) ? 'fixation' : 'none'
           });
         } catch (err) {
           renderErrorMessage = (err && err.message) ? String(err.message) : 'phase_cue_delay_failed';
@@ -1281,8 +1320,8 @@
             showFixation: false,
             showStimulus: true,
             showMask: false,
-            ringMode: isRewardMainTask ? 'value' : 'none',
-            cueMode: 'none'
+            ringMode: isRewardMainTask ? 'value' : (isPracticeDiamondTask ? 'neutral' : 'none'),
+            cueMode: (isRewardMainTask || isPracticeDiamondTask) ? 'fixation' : 'none'
           });
           startResponseListener();
         } catch (err) {
@@ -1299,8 +1338,8 @@
             showFixation: false,
             showStimulus: false,
             showMask: true,
-            ringMode: isRewardMainTask ? 'value' : 'none',
-            cueMode: 'none'
+            ringMode: isRewardMainTask ? 'value' : (isPracticeDiamondTask ? 'neutral' : 'none'),
+            cueMode: (isRewardMainTask || isPracticeDiamondTask) ? 'fixation' : 'none'
           });
         } catch (err) {
           renderErrorMessage = (err && err.message) ? String(err.message) : 'phase_mask_failed';
@@ -1316,8 +1355,8 @@
             showFixation: false,
             showStimulus: false,
             showMask: false,
-            ringMode: isRewardMainTask ? 'value' : 'none',
-            cueMode: 'none'
+            ringMode: isRewardMainTask ? 'value' : (isPracticeDiamondTask ? 'neutral' : 'none'),
+            cueMode: (isRewardMainTask || isPracticeDiamondTask) ? 'fixation' : 'none'
           });
         } catch (err) {
           renderErrorMessage = (err && err.message) ? String(err.message) : 'phase_response_failed';

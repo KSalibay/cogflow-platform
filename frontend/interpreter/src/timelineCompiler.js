@@ -359,15 +359,19 @@
 
     // Precedence (most explicit to least):
     // 1) break_every_n_trials
-    // 2) num_blocks (derive trials-per-block from current block length)
-    // 3) trials_per_block
+    // 2) trials_per_block
+    // 3) num_blocks (derive trials-per-block from current block length)
+    //
+    // `num_blocks` is often provided alongside an explicit trials-per-block target.
+    // Prefer the explicit cadence to avoid accidental break-every-trial behavior when
+    // srcTrials.length is smaller than num_blocks.
     let trialsPerBlock = null;
     if (Number.isFinite(breakEveryN) && breakEveryN > 0) {
       trialsPerBlock = breakEveryN;
-    } else if (Number.isFinite(numBlocks) && numBlocks > 1) {
-      trialsPerBlock = Math.ceil(srcTrials.length / numBlocks);
     } else if (Number.isFinite(trialsPerBlockExplicit) && trialsPerBlockExplicit > 0) {
       trialsPerBlock = trialsPerBlockExplicit;
+    } else if (Number.isFinite(numBlocks) && numBlocks > 1) {
+      trialsPerBlock = Math.ceil(srcTrials.length / numBlocks);
     }
 
     if (!Number.isFinite(trialsPerBlock) || trialsPerBlock <= 0) {
