@@ -409,6 +409,85 @@
     }
   }
 
+  function renderPlatformRedirectFallback(url, label) {
+    const safeUrl = (url || '').toString().trim();
+    if (!safeUrl) return;
+
+    const targetLabel = (label || 'destination').toString();
+    const open = () => {
+      try {
+        window.location.assign(safeUrl);
+      } catch {
+        try { window.location.href = safeUrl; } catch { /* ignore */ }
+      }
+    };
+
+    const onKey = () => {
+      try { document.removeEventListener('keydown', onKey); } catch { /* ignore */ }
+      open();
+    };
+
+    try { document.addEventListener('keydown', onKey, { once: true }); } catch { /* ignore */ }
+
+    try {
+      const host = els.jspsychTarget || document.getElementById('jspsych-target') || document.body;
+      if (!host) return;
+      host.innerHTML = wrapPsyScreenHtml(
+        `<h2>Study complete</h2>
+         <p class="psy-muted" style="margin-top:10px;">Automatic redirect did not start. Press any key or use the link below.</p>
+         <p style="margin-top:14px;"><a href="${escapeHtml(safeUrl)}" style="color:#8ec5ff;word-break:break-all;">Continue to ${escapeHtml(targetLabel)}</a></p>`,
+        'Press any key to continue.'
+      );
+    } catch {
+      // ignore
+    }
+  }
+
+  function handlePlatformCompletionAfterSubmit() {
+    const backend = window.DjangoRuntimeBackend;
+    const runInfo = (backend && typeof backend.getRunInfo === 'function') ? (backend.getRunInfo() || {}) : {};
+
+    const modeRaw = (runInfo.prolific_completion_mode || 'default').toString().trim().toLowerCase();
+    const completionCode = (runInfo.prolific_completion_code || '').toString().trim();
+    const completionRedirect = (runInfo.completion_redirect_url || '').toString().trim();
+
+    const redirectUrl = completionRedirect
+      || (completionCode ? `https://app.prolific.com/submissions/complete?cc=${encodeURIComponent(completionCode)}` : '');
+
+    if (modeRaw === 'show_code') {
+      if (completionCode) {
+        renderBlockingStatus('Study complete', `Your Prolific completion code is: ${completionCode}`);
+      } else {
+        renderBlockingStatus('Study complete', 'Results saved to CogFlow Platform.');
+      }
+      return;
+    }
+
+    if (redirectUrl) {
+      renderBlockingStatus('Study complete', 'Redirecting to Prolific...');
+      try {
+        window.location.assign(redirectUrl);
+      } catch {
+        try { window.location.href = redirectUrl; } catch { /* ignore */ }
+      }
+
+      // If navigation fails due to browser/environment restrictions, provide a manual path.
+      window.setTimeout(() => {
+        try {
+          const stillHere = !!document && document.visibilityState !== 'hidden';
+          if (stillHere) {
+            renderPlatformRedirectFallback(redirectUrl, 'Prolific');
+          }
+        } catch {
+          renderPlatformRedirectFallback(redirectUrl, 'Prolific');
+        }
+      }, 1500);
+      return;
+    }
+
+    renderBlockingStatus('Submitted to Platform', 'Results saved to CogFlow Platform.');
+  }
+
   function sanitizeFilenamePart(x) {
     return String(x || '')
       .replace(/\s+/g, '_')
@@ -465,6 +544,7 @@
     const experimentType = (config && config.experiment_type)
       ? String(config.experiment_type)
       : (compiled && compiled.experimentType ? String(compiled.experimentType) : null);
+    const platformContext = getPlatformContext();
 
     return {
       format: 'cogflow-jatos-result-v1',
@@ -473,6 +553,11 @@
       config_id: cfgId,
       task_type: taskType,
       experiment_type: experimentType,
+      platform_name: platformContext.platform_name,
+      platform_id: platformContext.platform_id,
+      platform_study_id: platformContext.platform_study_id,
+      platform_session_id: platformContext.platform_session_id,
+      participant_external_id: platformContext.participant_external_id,
       trial_count: trials.length,
       trials
     };
@@ -2143,7 +2228,7 @@
               });
             }
             await window.DjangoRuntimeBackend.submitResult(payload);
-            renderBlockingStatus('Submitted to Platform', 'Results saved to CogFlow Platform.');
+            handlePlatformCompletionAfterSubmit();
           } catch (e) {
             console.error('[DjangoRuntimeBackend]', e);
             renderBlockingStatus('Platform submit failed', e && e.message ? e.message : String(e));
@@ -2190,6 +2275,19 @@
       }
     });
 
+    try {
+      const pctx = getPlatformContext();
+      jsPsych.data.addProperties({
+        platform_name: pctx.platform_name,
+        platform_id: pctx.platform_id,
+        platform_study_id: pctx.platform_study_id,
+        platform_session_id: pctx.platform_session_id,
+        participant_external_id: pctx.participant_external_id,
+      });
+    } catch (e) {
+      console.warn('Failed to add global platform properties (multi):', e);
+    }
+
     // Make the instance accessible to background helpers (e.g., DRT, eye tracking fallbacks).
     try {
       window.__psy_jsPsych = jsPsych;
@@ -2231,10 +2329,16 @@
       const taskType = (config && config.task_type ? String(config.task_type) : 'task');
       const experimentType = (config && config.experiment_type ? String(config.experiment_type) : (compiled.experimentType || 'trial-based'));
       const cfgId = (typeof configId === 'string' && configId.trim()) ? configId.trim() : null;
+      const pctx = getPlatformContext();
       jsPsych.data.addProperties({
         task_type: taskType,
         experiment_type: experimentType,
-        config_id: cfgId
+        config_id: cfgId,
+        platform_name: pctx.platform_name,
+        platform_id: pctx.platform_id,
+        platform_study_id: pctx.platform_study_id,
+        platform_session_id: pctx.platform_session_id,
+        participant_external_id: pctx.participant_external_id,
       });
     } catch (e) {
       console.warn('Failed to add global data properties:', e);
@@ -2620,7 +2724,7 @@
               });
             }
             await window.DjangoRuntimeBackend.submitResult(payload);
-            renderBlockingStatus('Submitted to Platform', 'Results saved to CogFlow Platform.');
+            handlePlatformCompletionAfterSubmit();
           } catch (e) {
             console.error('[DjangoRuntimeBackend]', e);
             renderBlockingStatus('Platform submit failed', e && e.message ? e.message : String(e));
