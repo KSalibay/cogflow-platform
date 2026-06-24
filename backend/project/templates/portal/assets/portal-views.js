@@ -1483,10 +1483,29 @@
     }
 
     async function exportAll(slug, format) {
-      const st   = getStudyState(slug);
-      const runs = (st.runs || []).filter(r => r.has_result);
-      if (!runs.length) return;
+      const st = getStudyState(slug);
       st.exportBusy = true; loadStudies();
+
+      // Fetch all runs from the server (up to the max allowed limit) so the
+      // export is not restricted to however many happen to be loaded in the UI.
+      let allRuns = st.runs || [];
+      try {
+        const r = await fetch(`${API}/api/v1/studies/${encodeURIComponent(slug)}/runs?limit=500`, { credentials: "include" });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && Array.isArray(d.runs)) {
+          allRuns = d.runs;
+          // Also refresh the cached state so the UI reflects the full count.
+          st.runs = allRuns;
+          st.totalRunCount = Number.isFinite(Number(d.total_run_count)) ? Number(d.total_run_count) : null;
+          st.runsLimit = Number.isFinite(Number(d.runs_limit)) ? Number(d.runs_limit) : null;
+          st.runsLoaded = true;
+        }
+      } catch (_) {
+        // Fall back to whatever is already cached if the fetch fails.
+      }
+
+      const runs = allRuns.filter(r => r.has_result);
+      if (!runs.length) { st.exportBusy = false; loadStudies(); return; }
       const exported = [], failures = [];
       const files = [];
       for (const run of runs) {
