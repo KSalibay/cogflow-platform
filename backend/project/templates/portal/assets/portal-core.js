@@ -58,7 +58,7 @@
       if (!studyUiState[k]) {
         studyUiState[k] = {
           expanded: false, rollout: null,
-          runs: [], runsLoaded: false, runsLoading: false, runsError: null,
+          runs: [], runsLoaded: false, runsLoading: false, runsError: null, totalRunCount: null, runsLimit: null,
           decryptions: {}, exportBusy: false,
           taskProfile: null,
           flowVariants: null,

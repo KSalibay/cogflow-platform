@@ -919,8 +919,17 @@ class StudyRunsView(APIView):
         if not perms.get("can_view_run_rows"):
             return Response({"error": "Run-level access is not enabled for this study"}, status=status.HTTP_403_FORBIDDEN)
 
+        _MAX_RUNS = 500
+        _DEFAULT_RUNS = 200
+        try:
+            limit = int(request.query_params.get("limit", _DEFAULT_RUNS))
+            limit = max(1, min(limit, _MAX_RUNS))
+        except (TypeError, ValueError):
+            limit = _DEFAULT_RUNS
+
+        total_run_count = study.run_sessions.count()
         run_batch = list(
-            study.run_sessions.select_related("owner_user", "result_envelope", "config_version").order_by("-started_at")[:20]
+            study.run_sessions.select_related("owner_user", "result_envelope", "config_version").order_by("-started_at")[:limit]
         )
         run_ids = [str(getattr(run, "id", "") or "").strip() for run in run_batch if str(getattr(run, "id", "") or "").strip()]
         variant_by_run_id = {str(run.id): {
@@ -988,6 +997,9 @@ class StudyRunsView(APIView):
                 "owner_username": _get_study_owner_username(study),
                 "owner_usernames": _get_study_owner_usernames(study),
                 "runs": runs,
+                "total_run_count": total_run_count,
+                "runs_returned": len(runs),
+                "runs_limit": limit,
             },
             status=status.HTTP_200_OK,
         )

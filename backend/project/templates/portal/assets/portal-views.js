@@ -719,7 +719,8 @@
         const busy = state.exportBusy;
         resultsCard = `<article class="detail-card">
           <div class="detail-header" style="margin-bottom:10px;">
-            <h3 style="margin:0;">Results <span style="font-size:.78rem;color:var(--muted);font-weight:400;">(${state.runs.length} total, ${completedCount} completed)</span></h3>
+            <h3 style="margin:0;">Results <span style="font-size:.78rem;color:var(--muted);font-weight:400;">(${state.totalRunCount != null ? state.totalRunCount : state.runs.length} total, ${completedCount} completed${state.totalRunCount != null && state.runs.length < state.totalRunCount ? `, showing ${state.runs.length}` : ""})</span></h3>
+            ${state.totalRunCount != null && state.runs.length < state.totalRunCount ? `<div style="font-size:.8rem;color:var(--warning,#ffb74d);margin:4px 0 0;">Showing ${state.runs.length} most recent of ${state.totalRunCount} total runs. Use Export All to download all results.</div>` : ""}
             <div style="display:flex;gap:6px;flex-wrap:wrap;">
               <button class="btn btn-ghost btn-xs" data-action="export-all-json" data-slug="${slug}" ${busy ? "disabled" : ""}>Export All JSON ZIP</button>
               <button class="btn btn-ghost btn-xs" data-action="export-all-csv"  data-slug="${slug}" ${busy ? "disabled" : ""}>Export All CSV ZIP</button>
@@ -770,6 +771,8 @@
         const d = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
         st.runs = Array.isArray(d.runs) ? d.runs : [];
+        st.totalRunCount = (Number.isFinite(Number(d.total_run_count)) ? Number(d.total_run_count) : null);
+        st.runsLimit = (Number.isFinite(Number(d.runs_limit)) ? Number(d.runs_limit) : null);
         st.runsLoaded = true; st.runsError = null;
       } catch (err) {
         st.runs = []; st.runsLoaded = false; st.runsError = err?.message || String(err);
