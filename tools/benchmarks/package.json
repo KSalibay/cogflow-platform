@@ -4,7 +4,9 @@
   "version": "0.1.0",
   "description": "Local software-layer timing benchmarks for CogFlow web runtime",
   "scripts": {
-    "bench:web-timing": "node web_timing_benchmark.js"
+    "bench:web-timing": "node web_timing_benchmark.js",
+    "bench:study-runtime": "node study_runtime_benchmark.js",
+    "bench:portal-links-multirun": "node portal_link_multirun_benchmark.js"
   },
   "devDependencies": {
     "playwright": "^1.60.0"

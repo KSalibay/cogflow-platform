@@ -382,6 +382,8 @@
     const forceWait = mb.force_wait_for_break === true;
     const durationSec = Number(mb.break_duration_sec);
     const waitMs = (forceWait && Number.isFinite(durationSec) && durationSec > 0) ? Math.round(durationSec * 1000) : null;
+    const showTotalPointsAtBreak = mb.show_total_points_at_break === true;
+    const showCurrentBlockPointsAtBreak = mb.show_current_block_points_at_break === true;
     const escapeKeysRaw = (mb.break_escape_keys ?? 'space').toString();
     const normalizeBreakKey = (raw) => {
       const k = (raw ?? '').toString().trim().toLowerCase();
@@ -396,12 +398,82 @@
       .map((s) => normalizeBreakKey(s))
       .filter(Boolean);
 
+    const formatBreakPointsLabel = (points) => {
+      const n = Number(points);
+      if (!Number.isFinite(n)) return '0';
+      return Number.isInteger(n)
+        ? String(n)
+        : n.toFixed(2).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+    };
+
+    const getBreakPointsSnapshot = () => {
+      if (typeof jsPsych === 'undefined' || !jsPsych || !jsPsych.data || typeof jsPsych.data.get !== 'function') {
+        return { totalPoints: 0, currentBlockPoints: 0 };
+      }
+
+      const allValues = jsPsych.data.get().values();
+      let totalPoints = 0;
+      let currentBlockPoints = 0;
+      let sinceBreakStart = allValues.length - 1;
+
+      for (let i = allValues.length - 1; i >= 0; i--) {
+        const row = allValues[i];
+        if (row && row._auto_inserted_miniblock_break === true) {
+          sinceBreakStart = i + 1;
+          break;
+        }
+      }
+
+      for (let i = allValues.length - 1; i >= 0; i--) {
+        const row = allValues[i];
+        const after = Number(row && row.reward_total_points_after_trial);
+        const before = Number(row && row.reward_total_points_before_trial);
+        if (Number.isFinite(after)) {
+          totalPoints = after;
+          break;
+        }
+        if (Number.isFinite(before)) {
+          totalPoints = before;
+          break;
+        }
+      }
+
+      for (let i = sinceBreakStart; i < allValues.length; i++) {
+        const row = allValues[i];
+        const awarded = Number(row && row.reward_points_awarded);
+        if (Number.isFinite(awarded)) currentBlockPoints += awarded;
+      }
+
+      return { totalPoints, currentBlockPoints };
+    };
+
+    const buildBreakStimulus = (meta, withContinuePrompt) => {
+      const lines = [String(meta.message || '')];
+      const pointsSnapshot = getBreakPointsSnapshot();
+
+      if (meta.showTotalPointsAtBreak) {
+        lines.push('');
+        lines.push(`Total points: ${formatBreakPointsLabel(pointsSnapshot.totalPoints)}`);
+      }
+      if (meta.showCurrentBlockPointsAtBreak) {
+        lines.push(`Current block points: ${formatBreakPointsLabel(pointsSnapshot.currentBlockPoints)}`);
+      }
+      if (withContinuePrompt) {
+        lines.push('');
+        lines.push(`Press ${meta.keys.map((k) => k === ' ' ? 'Space' : String(k)).join(' / ')} to continue.`);
+      }
+
+      return `<div style="max-width:720px;margin:0 auto;text-align:center;white-space:pre-wrap;">${escapeHtml(lines.join('\n'))}</div>`;
+    };
+
     const buildMiniblockMeta = (resolvedKeys) => ({
       trials_per_block: trialsPerBlock,
       force_wait_for_break: forceWait,
       break_duration_ms: Number.isFinite(waitMs) && waitMs > 0 ? waitMs : null,
       break_message: message,
-      break_escape_keys: Array.isArray(resolvedKeys) ? resolvedKeys.slice() : [' ']
+      break_escape_keys: Array.isArray(resolvedKeys) ? resolvedKeys.slice() : [' '],
+      show_total_points_at_break: showTotalPointsAtBreak,
+      show_current_block_points_at_break: showCurrentBlockPointsAtBreak
     });
 
     const out = [];
@@ -417,7 +489,12 @@
       if (forceWait && Number.isFinite(waitMs) && waitMs > 0) {
         out.push({
           type: 'html-keyboard-response',
-          stimulus: `<div style="max-width:720px;margin:0 auto;text-align:center;white-space:pre-wrap;">${escapeHtml(message)}</div>`,
+          stimulus: () => buildBreakStimulus({
+            message,
+            keys: resolvedKeys,
+            showTotalPointsAtBreak,
+            showCurrentBlockPointsAtBreak
+          }, false),
           choices: 'NO_KEYS',
           response_ends_trial: false,
           trial_duration: waitMs,
@@ -428,7 +505,12 @@
 
         out.push({
           type: 'html-keyboard-response',
-          stimulus: `<div style="max-width:720px;margin:0 auto;text-align:center;white-space:pre-wrap;">${escapeHtml(message)}\n\nPress ${escapeHtml(resolvedKeys.map((k) => k === ' ' ? 'Space' : String(k)).join(' / '))} to continue.</div>`,
+          stimulus: () => buildBreakStimulus({
+            message,
+            keys: resolvedKeys,
+            showTotalPointsAtBreak,
+            showCurrentBlockPointsAtBreak
+          }, true),
           choices: resolvedKeys,
           response_ends_trial: true,
           _auto_inserted_miniblock_break: true,
@@ -438,7 +520,12 @@
       } else {
         out.push({
           type: 'html-keyboard-response',
-          stimulus: `<div style="max-width:720px;margin:0 auto;text-align:center;white-space:pre-wrap;">${escapeHtml(message)}</div>`,
+          stimulus: () => buildBreakStimulus({
+            message,
+            keys: resolvedKeys,
+            showTotalPointsAtBreak,
+            showCurrentBlockPointsAtBreak
+          }, false),
           choices: resolvedKeys,
           response_ends_trial: true,
           _auto_inserted_miniblock_break: true,
@@ -2432,13 +2519,17 @@
       const keys = Array.isArray(meta.break_escape_keys) && meta.break_escape_keys.length
         ? meta.break_escape_keys.map((k) => String(k))
         : [' '];
+      const showTotalPointsAtBreak = meta.show_total_points_at_break === true;
+      const showCurrentBlockPointsAtBreak = meta.show_current_block_points_at_break === true;
 
       return {
         trialsPerBlock: interval,
         forceWait,
         waitMs,
         message,
-        keys
+        keys,
+        showTotalPointsAtBreak,
+        showCurrentBlockPointsAtBreak
       };
     };
 
@@ -2450,14 +2541,56 @@
         force_wait_for_break: meta.forceWait,
         break_duration_ms: meta.waitMs,
         break_message: meta.message,
-        break_escape_keys: resolvedKeys.slice()
+        break_escape_keys: resolvedKeys.slice(),
+        show_total_points_at_break: meta.showTotalPointsAtBreak === true,
+        show_current_block_points_at_break: meta.showCurrentBlockPointsAtBreak === true
       };
 
       if (meta.forceWait && Number.isFinite(meta.waitMs) && meta.waitMs > 0) {
         return [
           {
             type: 'html-keyboard-response',
-            stimulus: `<div style="max-width:720px;margin:0 auto;text-align:center;white-space:pre-wrap;">${escapeHtml(meta.message)}</div>`,
+            stimulus: () => {
+              const lines = [String(meta.message || '')];
+              const pointsRows = (typeof jsPsych !== 'undefined' && jsPsych?.data?.get)
+                ? jsPsych.data.get().values()
+                : [];
+
+              let totalPoints = 0;
+              let blockPoints = 0;
+              let sinceBreakStart = pointsRows.length - 1;
+              for (let i = pointsRows.length - 1; i >= 0; i--) {
+                if (pointsRows[i] && pointsRows[i]._auto_inserted_miniblock_break === true) {
+                  sinceBreakStart = i + 1;
+                  break;
+                }
+              }
+              for (let i = pointsRows.length - 1; i >= 0; i--) {
+                const after = Number(pointsRows[i] && pointsRows[i].reward_total_points_after_trial);
+                const before = Number(pointsRows[i] && pointsRows[i].reward_total_points_before_trial);
+                if (Number.isFinite(after)) { totalPoints = after; break; }
+                if (Number.isFinite(before)) { totalPoints = before; break; }
+              }
+              for (let i = sinceBreakStart; i < pointsRows.length; i++) {
+                const awarded = Number(pointsRows[i] && pointsRows[i].reward_points_awarded);
+                if (Number.isFinite(awarded)) blockPoints += awarded;
+              }
+
+              const fmt = (n) => {
+                if (!Number.isFinite(Number(n))) return '0';
+                return Number.isInteger(Number(n)) ? String(Number(n)) : Number(n).toFixed(2).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+              };
+
+              if (meta.showTotalPointsAtBreak) {
+                lines.push('');
+                lines.push(`Total points: ${fmt(totalPoints)}`);
+              }
+              if (meta.showCurrentBlockPointsAtBreak) {
+                lines.push(`Current block points: ${fmt(blockPoints)}`);
+              }
+
+              return `<div style="max-width:720px;margin:0 auto;text-align:center;white-space:pre-wrap;">${escapeHtml(lines.join('\n'))}</div>`;
+            },
             choices: 'NO_KEYS',
             response_ends_trial: false,
             trial_duration: meta.waitMs,
@@ -2468,7 +2601,49 @@
           },
           {
             type: 'html-keyboard-response',
-            stimulus: `<div style="max-width:720px;margin:0 auto;text-align:center;white-space:pre-wrap;">${escapeHtml(meta.message)}\n\nPress ${escapeHtml(resolvedKeys.map((k) => k === ' ' ? 'Space' : String(k)).join(' / '))} to continue.</div>`,
+            stimulus: () => {
+              const lines = [String(meta.message || '')];
+              const pointsRows = (typeof jsPsych !== 'undefined' && jsPsych?.data?.get)
+                ? jsPsych.data.get().values()
+                : [];
+
+              let totalPoints = 0;
+              let blockPoints = 0;
+              let sinceBreakStart = pointsRows.length - 1;
+              for (let i = pointsRows.length - 1; i >= 0; i--) {
+                if (pointsRows[i] && pointsRows[i]._auto_inserted_miniblock_break === true) {
+                  sinceBreakStart = i + 1;
+                  break;
+                }
+              }
+              for (let i = pointsRows.length - 1; i >= 0; i--) {
+                const after = Number(pointsRows[i] && pointsRows[i].reward_total_points_after_trial);
+                const before = Number(pointsRows[i] && pointsRows[i].reward_total_points_before_trial);
+                if (Number.isFinite(after)) { totalPoints = after; break; }
+                if (Number.isFinite(before)) { totalPoints = before; break; }
+              }
+              for (let i = sinceBreakStart; i < pointsRows.length; i++) {
+                const awarded = Number(pointsRows[i] && pointsRows[i].reward_points_awarded);
+                if (Number.isFinite(awarded)) blockPoints += awarded;
+              }
+
+              const fmt = (n) => {
+                if (!Number.isFinite(Number(n))) return '0';
+                return Number.isInteger(Number(n)) ? String(Number(n)) : Number(n).toFixed(2).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+              };
+
+              if (meta.showTotalPointsAtBreak) {
+                lines.push('');
+                lines.push(`Total points: ${fmt(totalPoints)}`);
+              }
+              if (meta.showCurrentBlockPointsAtBreak) {
+                lines.push(`Current block points: ${fmt(blockPoints)}`);
+              }
+              lines.push('');
+              lines.push(`Press ${resolvedKeys.map((k) => k === ' ' ? 'Space' : String(k)).join(' / ')} to continue.`);
+
+              return `<div style="max-width:720px;margin:0 auto;text-align:center;white-space:pre-wrap;">${escapeHtml(lines.join('\n'))}</div>`;
+            },
             choices: resolvedKeys,
             response_ends_trial: true,
             _auto_inserted_miniblock_break: true,
@@ -2482,7 +2657,47 @@
       return [
         {
           type: 'html-keyboard-response',
-          stimulus: `<div style="max-width:720px;margin:0 auto;text-align:center;white-space:pre-wrap;">${escapeHtml(meta.message)}</div>`,
+          stimulus: () => {
+            const lines = [String(meta.message || '')];
+            const pointsRows = (typeof jsPsych !== 'undefined' && jsPsych?.data?.get)
+              ? jsPsych.data.get().values()
+              : [];
+
+            let totalPoints = 0;
+            let blockPoints = 0;
+            let sinceBreakStart = pointsRows.length - 1;
+            for (let i = pointsRows.length - 1; i >= 0; i--) {
+              if (pointsRows[i] && pointsRows[i]._auto_inserted_miniblock_break === true) {
+                sinceBreakStart = i + 1;
+                break;
+              }
+            }
+            for (let i = pointsRows.length - 1; i >= 0; i--) {
+              const after = Number(pointsRows[i] && pointsRows[i].reward_total_points_after_trial);
+              const before = Number(pointsRows[i] && pointsRows[i].reward_total_points_before_trial);
+              if (Number.isFinite(after)) { totalPoints = after; break; }
+              if (Number.isFinite(before)) { totalPoints = before; break; }
+            }
+            for (let i = sinceBreakStart; i < pointsRows.length; i++) {
+              const awarded = Number(pointsRows[i] && pointsRows[i].reward_points_awarded);
+              if (Number.isFinite(awarded)) blockPoints += awarded;
+            }
+
+            const fmt = (n) => {
+              if (!Number.isFinite(Number(n))) return '0';
+              return Number.isInteger(Number(n)) ? String(Number(n)) : Number(n).toFixed(2).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+            };
+
+            if (meta.showTotalPointsAtBreak) {
+              lines.push('');
+              lines.push(`Total points: ${fmt(totalPoints)}`);
+            }
+            if (meta.showCurrentBlockPointsAtBreak) {
+              lines.push(`Current block points: ${fmt(blockPoints)}`);
+            }
+
+            return `<div style="max-width:720px;margin:0 auto;text-align:center;white-space:pre-wrap;">${escapeHtml(lines.join('\n'))}</div>`;
+          },
           choices: resolvedKeys,
           response_ends_trial: true,
           _auto_inserted_miniblock_break: true,

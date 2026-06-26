@@ -6431,6 +6431,8 @@ class TimelineBuilder {
         const breakEscapeKeys    = mb.break_escape_keys ?? 'space';
         const forceWait          = mb.force_wait_for_break ?? false;
         const breakDurationSec   = mb.break_duration_sec ?? '';
+        const showTotalPoints    = mb.show_total_points_at_break ?? false;
+        const showBlockPoints    = mb.show_current_block_points_at_break ?? false;
 
         const modal = document.getElementById('miniblockModal');
         if (!modal) {
@@ -6448,6 +6450,8 @@ class TimelineBuilder {
         modal.querySelector('#mb_break_escape_keys').value      = breakEscapeKeys;
         modal.querySelector('#mb_force_wait').checked           = !!forceWait;
         modal.querySelector('#mb_break_duration_sec').value     = breakDurationSec;
+        modal.querySelector('#mb_show_total_points').checked    = !!showTotalPoints;
+        modal.querySelector('#mb_show_current_block_points').checked = !!showBlockPoints;
 
         this._miniblockTargetElement = componentElement;
 
@@ -6513,6 +6517,8 @@ class TimelineBuilder {
         const breakEscapeKeys  = modal.querySelector('#mb_break_escape_keys').value.trim();
         const forceWait        = modal.querySelector('#mb_force_wait').checked;
         const breakDurationSec = safeFloat('#mb_break_duration_sec');
+        const showTotalPoints = modal.querySelector('#mb_show_total_points').checked;
+        const showCurrentBlockPoints = modal.querySelector('#mb_show_current_block_points').checked;
 
         if (
             enabled
@@ -6539,6 +6545,8 @@ class TimelineBuilder {
             break_message:    breakMessage || 'Take a short break.\n\nPress the key below when you are ready to continue.',
             break_escape_keys: breakEscapeKeys || 'space',
             force_wait_for_break: forceWait,
+            show_total_points_at_break: showTotalPoints,
+            show_current_block_points_at_break: showCurrentBlockPoints,
             ...(forceWait && breakDurationSec !== null && { break_duration_sec: breakDurationSec })
         };
 

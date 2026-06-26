@@ -759,7 +759,9 @@
       );
       const isRewardMainTask = !isQuestAdaptive && !isLearningBlock && hasRewardCueContext;
       const isPracticeDiamondTask = !isQuestAdaptive && !isLearningBlock && !isRewardMainTask;
-      const useAdaptivePracticePrime = isQuestAdaptive || isLearningBlock;
+      const useNeutralTrainingRings = isQuestAdaptive || isLearningBlock || isPracticeDiamondTask;
+      const showCenterDiamondFlow = isRewardMainTask;
+      const useAdaptivePracticePrime = trial.adaptive_practice_prime_enabled === true;
 
       // Optional researcher-controlled patch diameter.
       // Preferred: degrees-of-visual-angle via trial.patch_diameter_deg + prior visual-angle calibration.
@@ -781,7 +783,11 @@
       const stimMs0 = Math.max(0, Number(trial.stimulus_duration_ms ?? 67) || 0);
       const maskMs0 = Math.max(0, Number(trial.mask_duration_ms ?? 67) || 0);
       const responseWindowMs0 = Math.max(0, Number(trial.response_window_ms ?? 1500) || 0);
-      const maskEnabled = trial.use_mask === true || trial.mask_enabled === true;
+      const maskEnabled = (
+        trial.use_mask === true
+        || trial.mask_enabled === true
+        || maskMs0 > 0
+      );
 
       const stimMs = debugGabor ? Math.max(stimMs0, 350) : stimMs0;
       const maskMs = maskEnabled ? (debugGabor ? Math.max(maskMs0, 250) : maskMs0) : 0;
@@ -1038,6 +1044,14 @@
             }
 
             if (fbText) {
+              render('feedback-base', {
+                showCue: false,
+                showFixation: false,
+                showStimulus: false,
+                showMask: false,
+                ringMode: isRewardMainTask ? 'value' : (useNeutralTrainingRings ? 'neutral' : 'none'),
+                cueMode: 'none'
+              });
               const cw = canvas.width;
               const ch = canvas.height;
               fbCtx.save();
@@ -1229,9 +1243,9 @@
           showFixation: true,
           showStimulus: false,
           showMask: false,
-          ringMode: (isRewardMainTask || isPracticeDiamondTask) ? 'neutral' : 'none',
-          cueMode: (isRewardMainTask || isPracticeDiamondTask) ? 'fixation' : 'none',
-          fixationColor: (isRewardMainTask || isPracticeDiamondTask) ? cueFixationColor : initialFixationColor
+          ringMode: isRewardMainTask ? 'neutral' : (useNeutralTrainingRings ? 'neutral' : 'none'),
+          cueMode: showCenterDiamondFlow ? 'fixation' : 'none',
+          fixationColor: showCenterDiamondFlow ? cueFixationColor : initialFixationColor
         });
       }
 
@@ -1265,11 +1279,11 @@
         try {
           render('placeholders', {
             showCue: false,
-            showFixation: !(isRewardMainTask || isPracticeDiamondTask),
+            showFixation: !showCenterDiamondFlow,
             showStimulus: false,
             showMask: false,
-            ringMode: isRewardMainTask ? 'value' : (isPracticeDiamondTask ? 'neutral' : 'none'),
-            cueMode: (isRewardMainTask || isPracticeDiamondTask) ? 'fixation' : 'none'
+            ringMode: isRewardMainTask ? 'value' : (useNeutralTrainingRings ? 'neutral' : 'none'),
+            cueMode: showCenterDiamondFlow ? 'fixation' : 'none'
           });
         } catch (err) {
           renderErrorMessage = (err && err.message) ? String(err.message) : 'phase_placeholders_failed';
@@ -1282,11 +1296,11 @@
         try {
           render('cue', {
             showCue: true,
-            showFixation: !(isRewardMainTask || isPracticeDiamondTask),
+            showFixation: !showCenterDiamondFlow,
             showStimulus: false,
             showMask: false,
-            ringMode: isRewardMainTask ? 'value' : 'none',
-            cueMode: (isRewardMainTask || isPracticeDiamondTask) ? 'cue' : 'none'
+            ringMode: isRewardMainTask ? 'value' : (useNeutralTrainingRings ? 'neutral' : 'none'),
+            cueMode: showCenterDiamondFlow ? 'cue' : 'none'
           });
         } catch (err) {
           renderErrorMessage = (err && err.message) ? String(err.message) : 'phase_cue_failed';
@@ -1299,11 +1313,11 @@
         try {
           render('cue-delay', {
             showCue: isRewardMainTask,
-            showFixation: !(isRewardMainTask || isPracticeDiamondTask),
+            showFixation: !showCenterDiamondFlow,
             showStimulus: false,
             showMask: false,
-            ringMode: isRewardMainTask ? 'value' : (isPracticeDiamondTask ? 'neutral' : 'none'),
-            cueMode: (isRewardMainTask || isPracticeDiamondTask) ? 'fixation' : 'none'
+            ringMode: isRewardMainTask ? 'value' : (useNeutralTrainingRings ? 'neutral' : 'none'),
+            cueMode: showCenterDiamondFlow ? 'fixation' : 'none'
           });
         } catch (err) {
           renderErrorMessage = (err && err.message) ? String(err.message) : 'phase_cue_delay_failed';
@@ -1320,8 +1334,8 @@
             showFixation: false,
             showStimulus: true,
             showMask: false,
-            ringMode: isRewardMainTask ? 'value' : (isPracticeDiamondTask ? 'neutral' : 'none'),
-            cueMode: (isRewardMainTask || isPracticeDiamondTask) ? 'fixation' : 'none'
+            ringMode: isRewardMainTask ? 'value' : (useNeutralTrainingRings ? 'neutral' : 'none'),
+            cueMode: showCenterDiamondFlow ? 'fixation' : 'none'
           });
           startResponseListener();
         } catch (err) {
@@ -1330,22 +1344,24 @@
         }
       }, fixationMs + placeholdersMs + cueMs + cueDelay);
 
-      // Mask
-      safeSetTimeout(() => {
-        try {
-          render('mask', {
-            showCue: false,
-            showFixation: false,
-            showStimulus: false,
-            showMask: true,
-            ringMode: isRewardMainTask ? 'value' : (isPracticeDiamondTask ? 'neutral' : 'none'),
-            cueMode: (isRewardMainTask || isPracticeDiamondTask) ? 'fixation' : 'none'
-          });
-        } catch (err) {
-          renderErrorMessage = (err && err.message) ? String(err.message) : 'phase_mask_failed';
-          endTrial('phase_error');
-        }
-      }, fixationMs + placeholdersMs + cueMs + cueDelay + stimMs);
+      // Mask (optional)
+      if (maskEnabled && maskMs > 0) {
+        safeSetTimeout(() => {
+          try {
+            render('mask', {
+              showCue: false,
+              showFixation: false,
+              showStimulus: false,
+              showMask: true,
+              ringMode: isRewardMainTask ? 'value' : (useNeutralTrainingRings ? 'neutral' : 'none'),
+              cueMode: showCenterDiamondFlow ? 'fixation' : 'none'
+            });
+          } catch (err) {
+            renderErrorMessage = (err && err.message) ? String(err.message) : 'phase_mask_failed';
+            endTrial('phase_error');
+          }
+        }, fixationMs + placeholdersMs + cueMs + cueDelay + stimMs);
+      }
 
       // Post-mask response window (blank placeholders)
       safeSetTimeout(() => {
@@ -1355,8 +1371,8 @@
             showFixation: false,
             showStimulus: false,
             showMask: false,
-            ringMode: isRewardMainTask ? 'value' : (isPracticeDiamondTask ? 'neutral' : 'none'),
-            cueMode: (isRewardMainTask || isPracticeDiamondTask) ? 'fixation' : 'none'
+            ringMode: isRewardMainTask ? 'value' : (useNeutralTrainingRings ? 'neutral' : 'none'),
+            cueMode: 'none'
           });
         } catch (err) {
           renderErrorMessage = (err && err.message) ? String(err.message) : 'phase_response_failed';
