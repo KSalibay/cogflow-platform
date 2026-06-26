@@ -1,0 +1,503 @@
+{
+  "generated_at_utc": "2026-06-26T17:45:44.664Z",
+  "scope": "Interpreter study runtime benchmark with inline sample configs and emulated network conditions",
+  "caveat": "Software-layer benchmark only. Does not measure display photon onset or device-specific keyboard hardware latency.",
+  "target_url": "http://localhost:8000/interpreter/index.html",
+  "network_profiles": [
+    {
+      "id": "lan_baseline",
+      "label": "LAN baseline",
+      "network": null
+    },
+    {
+      "id": "broadband_sim",
+      "label": "Broadband simulation",
+      "network": {
+        "latency": 20,
+        "downloadKbps": 30000,
+        "uploadKbps": 10000,
+        "connectionType": "wifi"
+      }
+    },
+    {
+      "id": "slow4g_sim",
+      "label": "Slow 4G simulation",
+      "network": {
+        "latency": 150,
+        "downloadKbps": 1600,
+        "uploadKbps": 750,
+        "connectionType": "cellular4g"
+      }
+    },
+    {
+      "id": "degraded_link",
+      "label": "Degraded link simulation",
+      "network": {
+        "latency": 300,
+        "downloadKbps": 700,
+        "uploadKbps": 300,
+        "connectionType": "cellular3g"
+      }
+    }
+  ],
+  "study_configs": [
+    {
+      "id": "basic_rdm_template",
+      "label": "Basic RDM Template",
+      "source": "frontend/builder/src/templates/basic_rdm_template.json"
+    },
+    {
+      "id": "rdm_stress_dense",
+      "label": "RDM Dense Stress Variant",
+      "source": "Derived from basic_rdm_template.json with dense dots and expanded timeline"
+    }
+  ],
+  "results": [
+    {
+      "study_config_id": "basic_rdm_template",
+      "study_config_label": "Basic RDM Template",
+      "study_config_source": "frontend/builder/src/templates/basic_rdm_template.json",
+      "network_profile_id": "lan_baseline",
+      "network_profile": null,
+      "target_url": "http://localhost:8000/interpreter/index.html",
+      "navigation_time_ms": 524,
+      "first_trial_visible_ms_from_nav_start": 6777.5999999996275,
+      "metrics": {
+        "frame_interval_ms": {
+          "mean": 16.65583333333333,
+          "p50": 16.699999999999818,
+          "p95": 16.700000000000728,
+          "sd": 0.16302364401421354,
+          "n": 240
+        },
+        "frame_jitter_vs_60hz_ms": {
+          "mean": -0.010833333333336033,
+          "p50": 0.03333333333315025,
+          "p95": 0.033333333334059745,
+          "sd": 0.16302364401421285,
+          "n": 240
+        },
+        "timeout_drift_ms": {
+          "mean": 17.234166666585953,
+          "p50": 12.099999999627471,
+          "p95": 44,
+          "sd": 14.202198290191248,
+          "n": 120
+        },
+        "synthetic_input_registration_ms": {
+          "mean": 0.01599999997764826,
+          "p50": 0,
+          "p95": 0.09999999962747097,
+          "sd": 0.04218520866206441,
+          "n": 50
+        },
+        "same_origin_fetch_rtt_ms": {
+          "mean": 4.6749999998137355,
+          "p50": 3.5,
+          "p95": 12.399999998509884,
+          "sd": 3.397372933965058,
+          "n": 8
+        }
+      },
+      "environment": {
+        "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/148.0.7778.96 Safari/537.36",
+        "device_pixel_ratio": 1,
+        "hardware_concurrency": 16
+      }
+    },
+    {
+      "study_config_id": "basic_rdm_template",
+      "study_config_label": "Basic RDM Template",
+      "study_config_source": "frontend/builder/src/templates/basic_rdm_template.json",
+      "network_profile_id": "broadband_sim",
+      "network_profile": {
+        "latency": 20,
+        "downloadKbps": 30000,
+        "uploadKbps": 10000,
+        "connectionType": "wifi"
+      },
+      "target_url": "http://localhost:8000/interpreter/index.html",
+      "navigation_time_ms": 555,
+      "first_trial_visible_ms_from_nav_start": 6880.9000000003725,
+      "metrics": {
+        "frame_interval_ms": {
+          "mean": 16.540000000003104,
+          "p50": 16.699999999999818,
+          "p95": 16.799999999999955,
+          "sd": 1.948152219653899,
+          "n": 240
+        },
+        "frame_jitter_vs_60hz_ms": {
+          "mean": -0.1266666666635627,
+          "p50": 0.03333333333315025,
+          "p95": 0.13333333333328667,
+          "sd": 1.948152219653899,
+          "n": 240
+        },
+        "timeout_drift_ms": {
+          "mean": 14.42500000076058,
+          "p50": 10.400000000372529,
+          "p95": 30.40000000037253,
+          "sd": 10.422142314324082,
+          "n": 120
+        },
+        "synthetic_input_registration_ms": {
+          "mean": 0.03599999997764826,
+          "p50": 0,
+          "p95": 0.10000000149011612,
+          "sd": 0.052527932332346323,
+          "n": 50
+        },
+        "same_origin_fetch_rtt_ms": {
+          "mean": 24.600000000093132,
+          "p50": 24.199999999254942,
+          "p95": 28.09999999962747,
+          "sd": 1.5269016245613118,
+          "n": 8
+        }
+      },
+      "environment": {
+        "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/148.0.7778.96 Safari/537.36",
+        "device_pixel_ratio": 1,
+        "hardware_concurrency": 16
+      }
+    },
+    {
+      "study_config_id": "basic_rdm_template",
+      "study_config_label": "Basic RDM Template",
+      "study_config_source": "frontend/builder/src/templates/basic_rdm_template.json",
+      "network_profile_id": "slow4g_sim",
+      "network_profile": {
+        "latency": 150,
+        "downloadKbps": 1600,
+        "uploadKbps": 750,
+        "connectionType": "cellular4g"
+      },
+      "target_url": "http://localhost:8000/interpreter/index.html",
+      "navigation_time_ms": 7599,
+      "first_trial_visible_ms_from_nav_start": 14932.299999998882,
+      "metrics": {
+        "frame_interval_ms": {
+          "mean": 16.64708333333333,
+          "p50": 16.69999999999891,
+          "p95": 16.799999999999272,
+          "sd": 0.29442489387126314,
+          "n": 240
+        },
+        "frame_jitter_vs_60hz_ms": {
+          "mean": -0.01958333333333755,
+          "p50": 0.033333333332240755,
+          "p95": 0.13333333333260455,
+          "sd": 0.2944248938712631,
+          "n": 240
+        },
+        "timeout_drift_ms": {
+          "mean": 16.61833333259759,
+          "p50": 10.799999998882413,
+          "p95": 43,
+          "sd": 13.739154520807539,
+          "n": 120
+        },
+        "synthetic_input_registration_ms": {
+          "mean": 0.02,
+          "p50": 0,
+          "p95": 0.09999999962747097,
+          "sd": 0.04517539519574997,
+          "n": 50
+        },
+        "same_origin_fetch_rtt_ms": {
+          "mean": 163.2874999998603,
+          "p50": 167.90000000037253,
+          "p95": 169.09999999962747,
+          "sd": 6.073699155265585,
+          "n": 8
+        }
+      },
+      "environment": {
+        "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/148.0.7778.96 Safari/537.36",
+        "device_pixel_ratio": 1,
+        "hardware_concurrency": 16
+      }
+    },
+    {
+      "study_config_id": "basic_rdm_template",
+      "study_config_label": "Basic RDM Template",
+      "study_config_source": "frontend/builder/src/templates/basic_rdm_template.json",
+      "network_profile_id": "degraded_link",
+      "network_profile": {
+        "latency": 300,
+        "downloadKbps": 700,
+        "uploadKbps": 300,
+        "connectionType": "cellular3g"
+      },
+      "target_url": "http://localhost:8000/interpreter/index.html",
+      "navigation_time_ms": 17193,
+      "first_trial_visible_ms_from_nav_start": 25753,
+      "metrics": {
+        "frame_interval_ms": {
+          "mean": 16.55708333333799,
+          "p50": 16.69999999999709,
+          "p95": 16.799999999999272,
+          "sd": 1.690049587392551,
+          "n": 240
+        },
+        "frame_jitter_vs_60hz_ms": {
+          "mean": -0.10958333332867791,
+          "p50": 0.033333333330421766,
+          "p95": 0.13333333333260455,
+          "sd": 1.690049587392551,
+          "n": 240
+        },
+        "timeout_drift_ms": {
+          "mean": 16.095833332588274,
+          "p50": 9.099999999627471,
+          "p95": 44.59999999962747,
+          "sd": 14.527125574286323,
+          "n": 120
+        },
+        "synthetic_input_registration_ms": {
+          "mean": 0.014000000022351742,
+          "p50": 0,
+          "p95": 0.10000000149011612,
+          "sd": 0.04045657789234596,
+          "n": 50
+        },
+        "same_origin_fetch_rtt_ms": {
+          "mean": 338.8375000001397,
+          "p50": 351.30000000074506,
+          "p95": 367.8999999985099,
+          "sd": 19.460945322623957,
+          "n": 8
+        }
+      },
+      "environment": {
+        "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/148.0.7778.96 Safari/537.36",
+        "device_pixel_ratio": 1,
+        "hardware_concurrency": 16
+      }
+    },
+    {
+      "study_config_id": "rdm_stress_dense",
+      "study_config_label": "RDM Dense Stress Variant",
+      "study_config_source": "Derived from basic_rdm_template.json with dense dots and expanded timeline",
+      "network_profile_id": "lan_baseline",
+      "network_profile": null,
+      "target_url": "http://localhost:8000/interpreter/index.html",
+      "navigation_time_ms": 5499,
+      "first_trial_visible_ms_from_nav_start": 11707.199999999255,
+      "metrics": {
+        "frame_interval_ms": {
+          "mean": 16.635416666669773,
+          "p50": 16.699999999999818,
+          "p95": 16.700000000000728,
+          "sd": 0.4792294998044849,
+          "n": 240
+        },
+        "frame_jitter_vs_60hz_ms": {
+          "mean": -0.031249999996893745,
+          "p50": 0.03333333333315025,
+          "p95": 0.033333333334059745,
+          "sd": 0.47922949980448354,
+          "n": 240
+        },
+        "timeout_drift_ms": {
+          "mean": 11.577499999292195,
+          "p50": 11.299999998882413,
+          "p95": 27.799999998882413,
+          "sd": 7.787346583142704,
+          "n": 120
+        },
+        "synthetic_input_registration_ms": {
+          "mean": 0.01800000000745058,
+          "p50": 0,
+          "p95": 0.10000000149011612,
+          "sd": 0.04375255092553453,
+          "n": 50
+        },
+        "same_origin_fetch_rtt_ms": {
+          "mean": 4,
+          "p50": 3.900000000372529,
+          "p95": 6.300000000745058,
+          "sd": 1.3341664066878667,
+          "n": 8
+        }
+      },
+      "environment": {
+        "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/148.0.7778.96 Safari/537.36",
+        "device_pixel_ratio": 1,
+        "hardware_concurrency": 16
+      }
+    },
+    {
+      "study_config_id": "rdm_stress_dense",
+      "study_config_label": "RDM Dense Stress Variant",
+      "study_config_source": "Derived from basic_rdm_template.json with dense dots and expanded timeline",
+      "network_profile_id": "broadband_sim",
+      "network_profile": {
+        "latency": 20,
+        "downloadKbps": 30000,
+        "uploadKbps": 10000,
+        "connectionType": "wifi"
+      },
+      "target_url": "http://localhost:8000/interpreter/index.html",
+      "navigation_time_ms": 514,
+      "first_trial_visible_ms_from_nav_start": 6842.5999999996275,
+      "metrics": {
+        "frame_interval_ms": {
+          "mean": 16.59125000000155,
+          "p50": 16.699999999999818,
+          "p95": 16.700000000000273,
+          "sd": 1.1610333461647753,
+          "n": 240
+        },
+        "frame_jitter_vs_60hz_ms": {
+          "mean": -0.07541666666511565,
+          "p50": 0.03333333333315025,
+          "p95": 0.033333333333605,
+          "sd": 1.1610333461647753,
+          "n": 240
+        },
+        "timeout_drift_ms": {
+          "mean": 10.88000000033838,
+          "p50": 9.599999999627471,
+          "p95": 27.5,
+          "sd": 7.706971633803665,
+          "n": 120
+        },
+        "synthetic_input_registration_ms": {
+          "mean": 0.01799999997019768,
+          "p50": 0,
+          "p95": 0.09999999962747097,
+          "sd": 0.03880879338490521,
+          "n": 50
+        },
+        "same_origin_fetch_rtt_ms": {
+          "mean": 23.800000000046566,
+          "p50": 23.90000000037253,
+          "p95": 25.100000001490116,
+          "sd": 0.7464200279338631,
+          "n": 8
+        }
+      },
+      "environment": {
+        "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/148.0.7778.96 Safari/537.36",
+        "device_pixel_ratio": 1,
+        "hardware_concurrency": 16
+      }
+    },
+    {
+      "study_config_id": "rdm_stress_dense",
+      "study_config_label": "RDM Dense Stress Variant",
+      "study_config_source": "Derived from basic_rdm_template.json with dense dots and expanded timeline",
+      "network_profile_id": "slow4g_sim",
+      "network_profile": {
+        "latency": 150,
+        "downloadKbps": 1600,
+        "uploadKbps": 750,
+        "connectionType": "cellular4g"
+      },
+      "target_url": "http://localhost:8000/interpreter/index.html",
+      "navigation_time_ms": 7588,
+      "first_trial_visible_ms_from_nav_start": 14909.099999999627,
+      "metrics": {
+        "frame_interval_ms": {
+          "mean": 16.574166666668216,
+          "p50": 16.69999999999891,
+          "p95": 16.700000000000728,
+          "sd": 1.4318549184892788,
+          "n": 240
+        },
+        "frame_jitter_vs_60hz_ms": {
+          "mean": -0.0924999999984505,
+          "p50": 0.033333333332240755,
+          "p95": 0.033333333334059745,
+          "sd": 1.4318549184892788,
+          "n": 240
+        },
+        "timeout_drift_ms": {
+          "mean": 12.079166666651144,
+          "p50": 11.099999999627471,
+          "p95": 27,
+          "sd": 7.871380943374024,
+          "n": 120
+        },
+        "synthetic_input_registration_ms": {
+          "mean": 0.034000000096857545,
+          "p50": 0,
+          "p95": 0.10000000149011612,
+          "sd": 0.05928141136489533,
+          "n": 50
+        },
+        "same_origin_fetch_rtt_ms": {
+          "mean": 164.3125,
+          "p50": 168.2000000011176,
+          "p95": 169,
+          "sd": 4.637252111184688,
+          "n": 8
+        }
+      },
+      "environment": {
+        "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/148.0.7778.96 Safari/537.36",
+        "device_pixel_ratio": 1,
+        "hardware_concurrency": 16
+      }
+    },
+    {
+      "study_config_id": "rdm_stress_dense",
+      "study_config_label": "RDM Dense Stress Variant",
+      "study_config_source": "Derived from basic_rdm_template.json with dense dots and expanded timeline",
+      "network_profile_id": "degraded_link",
+      "network_profile": {
+        "latency": 300,
+        "downloadKbps": 700,
+        "uploadKbps": 300,
+        "connectionType": "cellular3g"
+      },
+      "target_url": "http://localhost:8000/interpreter/index.html",
+      "navigation_time_ms": 17219,
+      "first_trial_visible_ms_from_nav_start": 25785.300000000745,
+      "metrics": {
+        "frame_interval_ms": {
+          "mean": 16.55916666666511,
+          "p50": 16.69999999999709,
+          "p95": 16.700000000000728,
+          "sd": 1.6576939082726585,
+          "n": 240
+        },
+        "frame_jitter_vs_60hz_ms": {
+          "mean": -0.10750000000155945,
+          "p50": 0.033333333330421766,
+          "p95": 0.033333333334059745,
+          "sd": 1.6576939082726585,
+          "n": 240
+        },
+        "timeout_drift_ms": {
+          "mean": 11.45333333335196,
+          "p50": 10.800000000745058,
+          "p95": 27.300000000745058,
+          "sd": 7.669112263716958,
+          "n": 120
+        },
+        "synthetic_input_registration_ms": {
+          "mean": 0.029999999888241292,
+          "p50": 0,
+          "p95": 0.09999999962747097,
+          "sd": 0.04629100481618014,
+          "n": 50
+        },
+        "same_origin_fetch_rtt_ms": {
+          "mean": 339.89999999990687,
+          "p50": 351.59999999962747,
+          "p95": 370,
+          "sd": 20.79532914595663,
+          "n": 8
+        }
+      },
+      "environment": {
+        "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/148.0.7778.96 Safari/537.36",
+        "device_pixel_ratio": 1,
+        "hardware_concurrency": 16
+      }
+    }
+  ]
+}

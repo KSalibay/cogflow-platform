@@ -1,0 +1,894 @@
+{
+  "started_at": "2026-06-26T18:46:51.666Z",
+  "finished_at": "2026-06-26T18:51:31.889Z",
+  "repeats_per_condition": 6,
+  "targets": [
+    {
+      "id": "basic",
+      "label": "Basic benchmark study",
+      "url": "https://portal.cogflow.app/interpreter/index.html?launch=.eJx1kN1OwzAMhd_Ft6woa6eJ9jm4Q8hyE5dFy0_lJDCEeHdcJtAu4PZ857OO_AGlNveOJbQXmGDmZE-R5NyJi91MxVvYgXBhEntiwVZYEkXWLrnok9KVpHrrV0oV-VI3HtA7bSi0uSWNZgqULCMnmgMrq9J4B3oNl5Df8JXEq19gWigUJZXKGbM4FpieYBgGeL4NsVTxtv7W-bJ6XYmkEfSmP3bm2PXj4_5hGvppf7jvx3E87O-MmYz5nhXXwNXnhMJOVVuxSbhupjlL_SNfJQe_eIs3dsxu-4XjhVqo_5TstaQ0UNMH_1hRFb-9FD6_AOwziK8:1wdBLa:zdSewdZM_SXkA-4Lq_hDvVp8R1fW8-H9snoTo5ph2_o"
+    },
+    {
+      "id": "stress",
+      "label": "Stress benchmark study",
+      "url": "https://portal.cogflow.app/interpreter/index.html?launch=.eJx1kM1OxDAMhN8lV7aotKVAnoMbQpabuGy0-akcBxYh3h0vK9Ae4GRpvhlrNB-mSvPvUGN7MdYslN0-IR869qmrwlSr2Rk9hOz2xNAqccZEakafQla6IUtwYcMsQEc58QjBq0OhKy2rtGDE7Ago4xJJmXCjndFvsMbyBq_IQfPV2BVjVSJYD1DYExv7ZMZxMs-XImi34OTXTsctaEtAlczQD3PXz93w8Hhzb8fB3o7X8zzdDdNV39u-_66VtkgSSgYmr1En0DieO-NSWP7QNy4xrMHBRToVf9rC04otyj8mdzYpjdh04Z9U0kg4TWo-vwDchYlQ:1wdBMD:kIpt-zG0jyEP-lhpkboPbKlrI8qzF0akEzE3LA5ccz0"
+    }
+  ],
+  "profiles": [
+    {
+      "id": "lan_baseline",
+      "label": "LAN baseline",
+      "network": null
+    },
+    {
+      "id": "slow4g_sim",
+      "label": "Slow 4G simulation",
+      "network": {
+        "latency": 150,
+        "downloadKbps": 1600,
+        "uploadKbps": 750,
+        "connectionType": "cellular4g"
+      }
+    }
+  ],
+  "run_level_data": [
+    {
+      "target": "basic",
+      "profile": "lan_baseline",
+      "iteration": 1,
+      "navigation_ms": 4697,
+      "study_ready_ms": 4710,
+      "frame_interval_mean_ms": 16.609444444446517,
+      "frame_interval_sd_ms": 0.7672556639328779,
+      "frame_interval_p95_ms": 16.700000000000728,
+      "frame_bias_vs_60hz_ms": -0.05722222222015105,
+      "timeout_drift_mean_ms": 7.36888888956358,
+      "timeout_drift_sd_ms": 4.171267272853628,
+      "timeout_drift_p95_ms": 13.900000000372529,
+      "input_reg_mean_ms": 0.027499999897554517,
+      "input_reg_sd_ms": 0.059860949763893785,
+      "input_reg_p95_ms": 0.09999999962747097,
+      "raw_counts": {
+        "raf_n": 180,
+        "timeout_n": 90,
+        "input_n": 40
+      }
+    },
+    {
+      "target": "basic",
+      "profile": "lan_baseline",
+      "iteration": 2,
+      "navigation_ms": 5048,
+      "study_ready_ms": 5063,
+      "frame_interval_mean_ms": 16.60611111111525,
+      "frame_interval_sd_ms": 0.8042598796263669,
+      "frame_interval_p95_ms": 16.700000000000728,
+      "frame_bias_vs_60hz_ms": -0.06055555555141723,
+      "timeout_drift_mean_ms": 8.182222222267754,
+      "timeout_drift_sd_ms": 4.833394549451917,
+      "timeout_drift_p95_ms": 15.800000000745058,
+      "input_reg_mean_ms": 0.025,
+      "input_reg_sd_ms": 0.04935481173734384,
+      "input_reg_p95_ms": 0.09999999962747097,
+      "raw_counts": {
+        "raf_n": 180,
+        "timeout_n": 90,
+        "input_n": 40
+      }
+    },
+    {
+      "target": "basic",
+      "profile": "lan_baseline",
+      "iteration": 3,
+      "navigation_ms": 4615,
+      "study_ready_ms": 4635,
+      "frame_interval_mean_ms": 16.61999999999586,
+      "frame_interval_sd_ms": 0.625831290795297,
+      "frame_interval_p95_ms": 16.700000000000728,
+      "frame_bias_vs_60hz_ms": -0.04666666667080932,
+      "timeout_drift_mean_ms": 6.795555555551417,
+      "timeout_drift_sd_ms": 3.739882564797942,
+      "timeout_drift_p95_ms": 12.699999999254942,
+      "input_reg_mean_ms": 0.022499999962747097,
+      "input_reg_sd_ms": 0.04797167957804879,
+      "input_reg_p95_ms": 0.09999999962747097,
+      "raw_counts": {
+        "raf_n": 180,
+        "timeout_n": 90,
+        "input_n": 40
+      }
+    },
+    {
+      "target": "basic",
+      "profile": "lan_baseline",
+      "iteration": 4,
+      "navigation_ms": 4690,
+      "study_ready_ms": 4710,
+      "frame_interval_mean_ms": 16.571666666670808,
+      "frame_interval_sd_ms": 1.2734624862041657,
+      "frame_interval_p95_ms": 16.800000000000182,
+      "frame_bias_vs_60hz_ms": -0.09499999999585995,
+      "timeout_drift_mean_ms": 7.643333332923551,
+      "timeout_drift_sd_ms": 4.706224661181957,
+      "timeout_drift_p95_ms": 15.199999999254942,
+      "input_reg_mean_ms": 0.017500000074505806,
+      "input_reg_sd_ms": 0.05494752760116748,
+      "input_reg_p95_ms": 0.10000000149011612,
+      "raw_counts": {
+        "raf_n": 180,
+        "timeout_n": 90,
+        "input_n": 40
+      }
+    },
+    {
+      "target": "basic",
+      "profile": "lan_baseline",
+      "iteration": 5,
+      "navigation_ms": 4695,
+      "study_ready_ms": 4725,
+      "frame_interval_mean_ms": 16.62111111111318,
+      "frame_interval_sd_ms": 0.6114356115770444,
+      "frame_interval_p95_ms": 16.700000000000728,
+      "frame_bias_vs_60hz_ms": -0.04555555555348789,
+      "timeout_drift_mean_ms": 7.993333332964943,
+      "timeout_drift_sd_ms": 4.3353472704116145,
+      "timeout_drift_p95_ms": 14.5,
+      "input_reg_mean_ms": 0.044999999925494194,
+      "input_reg_sd_ms": 0.08755950352909089,
+      "input_reg_p95_ms": 0.09999999962747097,
+      "raw_counts": {
+        "raf_n": 180,
+        "timeout_n": 90,
+        "input_n": 40
+      }
+    },
+    {
+      "target": "basic",
+      "profile": "lan_baseline",
+      "iteration": 6,
+      "navigation_ms": 4687,
+      "study_ready_ms": 4709,
+      "frame_interval_mean_ms": 16.596666666662525,
+      "frame_interval_sd_ms": 0.9382558406162163,
+      "frame_interval_p95_ms": 16.700000000000728,
+      "frame_bias_vs_60hz_ms": -0.07000000000414275,
+      "timeout_drift_mean_ms": 7.492222222271892,
+      "timeout_drift_sd_ms": 4.550965517421974,
+      "timeout_drift_p95_ms": 14.599999999627471,
+      "input_reg_mean_ms": 0.0125,
+      "input_reg_sd_ms": 0.04043037695588023,
+      "input_reg_p95_ms": 0.09999999962747097,
+      "raw_counts": {
+        "raf_n": 180,
+        "timeout_n": 90,
+        "input_n": 40
+      }
+    },
+    {
+      "target": "basic",
+      "profile": "slow4g_sim",
+      "iteration": 1,
+      "navigation_ms": 9103,
+      "study_ready_ms": 9130,
+      "frame_interval_mean_ms": 16.612777777777772,
+      "frame_interval_sd_ms": 0.7153567345065904,
+      "frame_interval_p95_ms": 16.700000000000728,
+      "frame_bias_vs_60hz_ms": -0.053888888888895536,
+      "timeout_drift_mean_ms": 7.706666666269302,
+      "timeout_drift_sd_ms": 4.432662222875571,
+      "timeout_drift_p95_ms": 14.900000000372529,
+      "input_reg_mean_ms": 0.025000000046566127,
+      "input_reg_sd_ms": 0.058834840667278974,
+      "input_reg_p95_ms": 0.10000000149011612,
+      "raw_counts": {
+        "raf_n": 180,
+        "timeout_n": 90,
+        "input_n": 40
+      }
+    },
+    {
+      "target": "basic",
+      "profile": "slow4g_sim",
+      "iteration": 2,
+      "navigation_ms": 9175,
+      "study_ready_ms": 9196,
+      "frame_interval_mean_ms": 16.64777777777985,
+      "frame_interval_sd_ms": 0.2493467566993529,
+      "frame_interval_p95_ms": 16.700000000000728,
+      "frame_bias_vs_60hz_ms": -0.018888888886817057,
+      "timeout_drift_mean_ms": 7.906666667076449,
+      "timeout_drift_sd_ms": 4.201733189772039,
+      "timeout_drift_p95_ms": 14.200000001117587,
+      "input_reg_mean_ms": 0.009999999962747096,
+      "input_reg_sd_ms": 0.037893237196090335,
+      "input_reg_p95_ms": 0.09999999962747097,
+      "raw_counts": {
+        "raf_n": 180,
+        "timeout_n": 90,
+        "input_n": 40
+      }
+    },
+    {
+      "target": "basic",
+      "profile": "slow4g_sim",
+      "iteration": 3,
+      "navigation_ms": 9126,
+      "study_ready_ms": 9146,
+      "frame_interval_mean_ms": 16.56222222222429,
+      "frame_interval_sd_ms": 1.3924840371937832,
+      "frame_interval_p95_ms": 16.700000000000728,
+      "frame_bias_vs_60hz_ms": -0.10444444444237888,
+      "timeout_drift_mean_ms": 9.058888889269696,
+      "timeout_drift_sd_ms": 5.241706010253885,
+      "timeout_drift_p95_ms": 17.300000000745058,
+      "input_reg_mean_ms": 0.022499999962747097,
+      "input_reg_sd_ms": 0.05767948576957359,
+      "input_reg_p95_ms": 0.09999999962747097,
+      "raw_counts": {
+        "raf_n": 180,
+        "timeout_n": 90,
+        "input_n": 40
+      }
+    },
+    {
+      "target": "basic",
+      "profile": "slow4g_sim",
+      "iteration": 4,
+      "navigation_ms": 9111,
+      "study_ready_ms": 9131,
+      "frame_interval_mean_ms": 16.573888888888884,
+      "frame_interval_sd_ms": 1.2287234547966053,
+      "frame_interval_p95_ms": 16.799999999999272,
+      "frame_bias_vs_60hz_ms": -0.0927777777777834,
+      "timeout_drift_mean_ms": 8.433333334057695,
+      "timeout_drift_sd_ms": 4.647144828405699,
+      "timeout_drift_p95_ms": 15.300000000745058,
+      "input_reg_mean_ms": 0.027500000037252902,
+      "input_reg_sd_ms": 0.05986095009699668,
+      "input_reg_p95_ms": 0.10000000149011612,
+      "raw_counts": {
+        "raf_n": 180,
+        "timeout_n": 90,
+        "input_n": 40
+      }
+    },
+    {
+      "target": "basic",
+      "profile": "slow4g_sim",
+      "iteration": 5,
+      "navigation_ms": 9141,
+      "study_ready_ms": 9159,
+      "frame_interval_mean_ms": 16.602222222213943,
+      "frame_interval_sd_ms": 0.8641174370108604,
+      "frame_interval_p95_ms": 16.799999999999272,
+      "frame_bias_vs_60hz_ms": -0.06444444445272524,
+      "timeout_drift_mean_ms": 8.515555555911527,
+      "timeout_drift_sd_ms": 4.939815561063445,
+      "timeout_drift_p95_ms": 16.09999999962747,
+      "input_reg_mean_ms": 0.025,
+      "input_reg_sd_ms": 0.04935481164057488,
+      "input_reg_p95_ms": 0.10000000149011612,
+      "raw_counts": {
+        "raf_n": 180,
+        "timeout_n": 90,
+        "input_n": 40
+      }
+    },
+    {
+      "target": "basic",
+      "profile": "slow4g_sim",
+      "iteration": 6,
+      "navigation_ms": 9198,
+      "study_ready_ms": 9213,
+      "frame_interval_mean_ms": 16.579999999997927,
+      "frame_interval_sd_ms": 1.1541230437279866,
+      "frame_interval_p95_ms": 16.700000000000728,
+      "frame_bias_vs_60hz_ms": -0.08666666666874079,
+      "timeout_drift_mean_ms": 8.417777778146167,
+      "timeout_drift_sd_ms": 4.8423361846918676,
+      "timeout_drift_p95_ms": 16.200000001117587,
+      "input_reg_mean_ms": 0.03249999997206032,
+      "input_reg_sd_ms": 0.052562538990531364,
+      "input_reg_p95_ms": 0.10000000149011612,
+      "raw_counts": {
+        "raf_n": 180,
+        "timeout_n": 90,
+        "input_n": 40
+      }
+    },
+    {
+      "target": "stress",
+      "profile": "lan_baseline",
+      "iteration": 1,
+      "navigation_ms": 4643,
+      "study_ready_ms": 4656,
+      "frame_interval_mean_ms": 16.595555555555556,
+      "frame_interval_sd_ms": 0.93842982029694,
+      "frame_interval_p95_ms": 16.799999999999272,
+      "frame_bias_vs_60hz_ms": -0.07111111111111157,
+      "timeout_drift_mean_ms": 16.27777777703272,
+      "timeout_drift_sd_ms": 12.209158266183888,
+      "timeout_drift_p95_ms": 33,
+      "input_reg_mean_ms": 0.025000000046566127,
+      "input_reg_sd_ms": 0.058834840667278974,
+      "input_reg_p95_ms": 0.10000000149011612,
+      "raw_counts": {
+        "raf_n": 180,
+        "timeout_n": 90,
+        "input_n": 40
+      }
+    },
+    {
+      "target": "stress",
+      "profile": "lan_baseline",
+      "iteration": 2,
+      "navigation_ms": 4863,
+      "study_ready_ms": 4879,
+      "frame_interval_mean_ms": 16.619444444446515,
+      "frame_interval_sd_ms": 0.6257149851743928,
+      "frame_interval_p95_ms": 16.700000000000728,
+      "frame_bias_vs_60hz_ms": -0.04722222222015304,
+      "timeout_drift_mean_ms": 16.532222221874527,
+      "timeout_drift_sd_ms": 12.115852998568466,
+      "timeout_drift_p95_ms": 32.5,
+      "input_reg_mean_ms": 0.03249999997206032,
+      "input_reg_sd_ms": 0.052562538990531364,
+      "input_reg_p95_ms": 0.10000000149011612,
+      "raw_counts": {
+        "raf_n": 180,
+        "timeout_n": 90,
+        "input_n": 40
+      }
+    },
+    {
+      "target": "stress",
+      "profile": "lan_baseline",
+      "iteration": 3,
+      "navigation_ms": 4784,
+      "study_ready_ms": 4803,
+      "frame_interval_mean_ms": 16.60888888888889,
+      "frame_interval_sd_ms": 0.7673715486846288,
+      "frame_interval_p95_ms": 16.700000000000728,
+      "frame_bias_vs_60hz_ms": -0.05777777777777615,
+      "timeout_drift_mean_ms": 16.787777778526976,
+      "timeout_drift_sd_ms": 12.343317600581255,
+      "timeout_drift_p95_ms": 33.70000000111759,
+      "input_reg_mean_ms": 0.030000000074505807,
+      "input_reg_sd_ms": 0.060764362175929953,
+      "input_reg_p95_ms": 0.10000000149011612,
+      "raw_counts": {
+        "raf_n": 180,
+        "timeout_n": 90,
+        "input_n": 40
+      }
+    },
+    {
+      "target": "stress",
+      "profile": "lan_baseline",
+      "iteration": 4,
+      "navigation_ms": 4650,
+      "study_ready_ms": 4673,
+      "frame_interval_mean_ms": 16.593333333329195,
+      "frame_interval_sd_ms": 0.9829041452594337,
+      "frame_interval_p95_ms": 16.700000000000728,
+      "frame_bias_vs_60hz_ms": -0.07333333333747305,
+      "timeout_drift_mean_ms": 16.245555555240976,
+      "timeout_drift_sd_ms": 12.242348319916431,
+      "timeout_drift_p95_ms": 33.09999999962747,
+      "input_reg_mean_ms": 0.019999999925494193,
+      "input_reg_sd_ms": 0.046409547916336696,
+      "input_reg_p95_ms": 0.09999999962747097,
+      "raw_counts": {
+        "raf_n": 180,
+        "timeout_n": 90,
+        "input_n": 40
+      }
+    },
+    {
+      "target": "stress",
+      "profile": "lan_baseline",
+      "iteration": 5,
+      "navigation_ms": 4602,
+      "study_ready_ms": 4613,
+      "frame_interval_mean_ms": 16.591111111106972,
+      "frame_interval_sd_ms": 1.0052537348827482,
+      "frame_interval_p95_ms": 16.700000000000728,
+      "frame_bias_vs_60hz_ms": -0.07555555555969562,
+      "timeout_drift_mean_ms": 16.189999999561245,
+      "timeout_drift_sd_ms": 11.710775312909242,
+      "timeout_drift_p95_ms": 31.59999999962747,
+      "input_reg_mean_ms": 0.019999999925494193,
+      "input_reg_sd_ms": 0.04050957453243675,
+      "input_reg_p95_ms": 0.09999999962747097,
+      "raw_counts": {
+        "raf_n": 180,
+        "timeout_n": 90,
+        "input_n": 40
+      }
+    },
+    {
+      "target": "stress",
+      "profile": "lan_baseline",
+      "iteration": 6,
+      "navigation_ms": 4580,
+      "study_ready_ms": 4600,
+      "frame_interval_mean_ms": 16.63000000000828,
+      "frame_interval_sd_ms": 0.4856487913052665,
+      "frame_interval_p95_ms": 16.800000000000182,
+      "frame_bias_vs_60hz_ms": -0.03666666665838747,
+      "timeout_drift_mean_ms": 16.764444444452725,
+      "timeout_drift_sd_ms": 11.900319239546981,
+      "timeout_drift_p95_ms": 32.5,
+      "input_reg_mean_ms": 0.01749999993480742,
+      "input_reg_sd_ms": 0.044649633019055605,
+      "input_reg_p95_ms": 0.09999999962747097,
+      "raw_counts": {
+        "raf_n": 180,
+        "timeout_n": 90,
+        "input_n": 40
+      }
+    },
+    {
+      "target": "stress",
+      "profile": "slow4g_sim",
+      "iteration": 1,
+      "navigation_ms": 9165,
+      "study_ready_ms": 9193,
+      "frame_interval_mean_ms": 16.591666666662523,
+      "frame_interval_sd_ms": 0.9982036939601651,
+      "frame_interval_p95_ms": 16.799999999999272,
+      "frame_bias_vs_60hz_ms": -0.0750000000041453,
+      "timeout_drift_mean_ms": 15.69999999962747,
+      "timeout_drift_sd_ms": 11.525613878744345,
+      "timeout_drift_p95_ms": 31.199999999254942,
+      "input_reg_mean_ms": 0.017499999981373547,
+      "input_reg_sd_ms": 0.044649633107302925,
+      "input_reg_p95_ms": 0.09999999962747097,
+      "raw_counts": {
+        "raf_n": 180,
+        "timeout_n": 90,
+        "input_n": 40
+      }
+    },
+    {
+      "target": "stress",
+      "profile": "slow4g_sim",
+      "iteration": 2,
+      "navigation_ms": 9208,
+      "study_ready_ms": 9228,
+      "frame_interval_mean_ms": 16.589444444442375,
+      "frame_interval_sd_ms": 1.0199406940108404,
+      "frame_interval_p95_ms": 16.700000000000728,
+      "frame_bias_vs_60hz_ms": -0.07722222222429309,
+      "timeout_drift_mean_ms": 16.25555555553486,
+      "timeout_drift_sd_ms": 12.535765562062773,
+      "timeout_drift_p95_ms": 33.69999999925494,
+      "input_reg_mean_ms": 0.010000000009313226,
+      "input_reg_sd_ms": 0.04961389373749455,
+      "input_reg_p95_ms": 0,
+      "raw_counts": {
+        "raf_n": 180,
+        "timeout_n": 90,
+        "input_n": 40
+      }
+    },
+    {
+      "target": "stress",
+      "profile": "slow4g_sim",
+      "iteration": 3,
+      "navigation_ms": 9134,
+      "study_ready_ms": 9153,
+      "frame_interval_mean_ms": 16.573888888897173,
+      "frame_interval_sd_ms": 1.2435470931108061,
+      "frame_interval_p95_ms": 16.700000000000728,
+      "frame_bias_vs_60hz_ms": -0.09277777776949492,
+      "timeout_drift_mean_ms": 15.698888888499804,
+      "timeout_drift_sd_ms": 11.651527309254897,
+      "timeout_drift_p95_ms": 31.799999998882413,
+      "input_reg_mean_ms": 0.022500000009313226,
+      "input_reg_sd_ms": 0.04797167965520704,
+      "input_reg_p95_ms": 0.10000000149011612,
+      "raw_counts": {
+        "raf_n": 180,
+        "timeout_n": 90,
+        "input_n": 40
+      }
+    },
+    {
+      "target": "stress",
+      "profile": "slow4g_sim",
+      "iteration": 4,
+      "navigation_ms": 9167,
+      "study_ready_ms": 9184,
+      "frame_interval_mean_ms": 16.64277777777778,
+      "frame_interval_sd_ms": 0.31552573057401934,
+      "frame_interval_p95_ms": 16.700000000000728,
+      "frame_bias_vs_60hz_ms": -0.023888888888887294,
+      "timeout_drift_mean_ms": 15.760000000397364,
+      "timeout_drift_sd_ms": 11.294115003317149,
+      "timeout_drift_p95_ms": 30.90000000037253,
+      "input_reg_mean_ms": 0.03999999999068678,
+      "input_reg_sd_ms": 0.07089175582251324,
+      "input_reg_p95_ms": 0.2000000011175871,
+      "raw_counts": {
+        "raf_n": 180,
+        "timeout_n": 90,
+        "input_n": 40
+      }
+    },
+    {
+      "target": "stress",
+      "profile": "slow4g_sim",
+      "iteration": 5,
+      "navigation_ms": 9302,
+      "study_ready_ms": 9316,
+      "frame_interval_mean_ms": 16.61444444444652,
+      "frame_interval_sd_ms": 0.6930720392618523,
+      "frame_interval_p95_ms": 16.799999999999272,
+      "frame_bias_vs_60hz_ms": -0.052222222220148495,
+      "timeout_drift_mean_ms": 16.63888888851636,
+      "timeout_drift_sd_ms": 11.657853546537213,
+      "timeout_drift_p95_ms": 32.5,
+      "input_reg_mean_ms": 0.010000000009313226,
+      "input_reg_sd_ms": 0.037893237435563824,
+      "input_reg_p95_ms": 0.09999999962747097,
+      "raw_counts": {
+        "raf_n": 180,
+        "timeout_n": 90,
+        "input_n": 40
+      }
+    },
+    {
+      "target": "stress",
+      "profile": "slow4g_sim",
+      "iteration": 6,
+      "navigation_ms": 9257,
+      "study_ready_ms": 9269,
+      "frame_interval_mean_ms": 16.608888888890963,
+      "frame_interval_sd_ms": 0.7673715486568997,
+      "frame_interval_p95_ms": 16.700000000000728,
+      "frame_bias_vs_60hz_ms": -0.05777777777570492,
+      "timeout_drift_mean_ms": 15.95999999932117,
+      "timeout_drift_sd_ms": 11.796874467016721,
+      "timeout_drift_p95_ms": 31.799999998882413,
+      "input_reg_mean_ms": 0.022499999962747097,
+      "input_reg_sd_ms": 0.04229020610660678,
+      "input_reg_p95_ms": 0.09999999962747097,
+      "raw_counts": {
+        "raf_n": 180,
+        "timeout_n": 90,
+        "input_n": 40
+      }
+    }
+  ],
+  "condition_summaries": [
+    {
+      "target": "basic",
+      "profile": "lan_baseline",
+      "repeats": 6,
+      "navigation_ms": {
+        "n": 6,
+        "mean": 4738.666666666667,
+        "sd": 154.70057099657606,
+        "p50": 4695,
+        "p95": 5048,
+        "min": 4615,
+        "max": 5048,
+        "ci95": {
+          "lower": 4614.880429126121,
+          "upper": 4862.452904207213
+        }
+      },
+      "study_ready_ms": {
+        "n": 6,
+        "mean": 4758.666666666667,
+        "sd": 152.47906960191835,
+        "p50": 4710,
+        "p95": 5063,
+        "min": 4635,
+        "max": 5063,
+        "ci95": {
+          "lower": 4636.65800045352,
+          "upper": 4880.675332879814
+        }
+      },
+      "frame_p95_ms": {
+        "n": 6,
+        "mean": 16.716666666667304,
+        "sd": 0.04082482904616352,
+        "p50": 16.700000000000728,
+        "p95": 16.800000000000182,
+        "min": 16.700000000000728,
+        "max": 16.800000000000182,
+        "ci95": {
+          "lower": 16.684000000000815,
+          "upper": 16.749333333333794
+        }
+      },
+      "timeout_p95_ms": {
+        "n": 6,
+        "mean": 14.449999999875823,
+        "sd": 1.07470926328754,
+        "p50": 14.599999999627471,
+        "p95": 15.800000000745058,
+        "min": 12.699999999254942,
+        "max": 15.800000000745058,
+        "ci95": {
+          "lower": 13.590053489689504,
+          "upper": 15.309946510062142
+        }
+      },
+      "input_p95_ms": {
+        "n": 6,
+        "mean": 0.09999999993791182,
+        "sd": 7.604216979143452e-10,
+        "p50": 0.09999999962747097,
+        "p95": 0.10000000149011612,
+        "min": 0.09999999962747097,
+        "max": 0.10000000149011612,
+        "ci95": {
+          "lower": 0.09999999932944774,
+          "upper": 0.10000000054637591
+        }
+      },
+      "precision_variability_ms": {
+        "mean_precision": 1.7609837476686903,
+        "frame_var_sd": 0.8367501287919947,
+        "timeout_var_sd": 4.389513639353172,
+        "input_var_sd": 0.056687474860904176
+      },
+      "lag_bias_ms": {
+        "startup_bias_mean": 4758.666666666667,
+        "frame_bias_mean": -0.06249999999931136,
+        "timeout_bias_mean": 7.579259259257189,
+        "input_bias_mean": 0.02499999997671694
+      }
+    },
+    {
+      "target": "basic",
+      "profile": "slow4g_sim",
+      "repeats": 6,
+      "navigation_ms": {
+        "n": 6,
+        "mean": 9142.333333333334,
+        "sd": 37.318449414018616,
+        "p50": 9141,
+        "p95": 9198,
+        "min": 9103,
+        "max": 9198,
+        "ci95": {
+          "lower": 9112.472354708305,
+          "upper": 9172.194311958363
+        }
+      },
+      "study_ready_ms": {
+        "n": 6,
+        "mean": 9162.5,
+        "sd": 34.656889646937444,
+        "p50": 9159,
+        "p95": 9213,
+        "min": 9130,
+        "max": 9213,
+        "ci95": {
+          "lower": 9134.768712735733,
+          "upper": 9190.231287264267
+        }
+      },
+      "frame_p95_ms": {
+        "n": 6,
+        "mean": 16.733333333333576,
+        "sd": 0.051639777948680764,
+        "p50": 16.700000000000728,
+        "p95": 16.799999999999272,
+        "min": 16.700000000000728,
+        "max": 16.799999999999272,
+        "ci95": {
+          "lower": 16.69201290524131,
+          "upper": 16.774653761425842
+        }
+      },
+      "timeout_p95_ms": {
+        "n": 6,
+        "mean": 15.666666667287549,
+        "sd": 1.096661600699193,
+        "p50": 16.09999999962747,
+        "p95": 17.300000000745058,
+        "min": 14.200000001117587,
+        "max": 17.300000000745058,
+        "ci95": {
+          "lower": 14.789154628830044,
+          "upper": 16.544178705745054
+        }
+      },
+      "input_p95_ms": {
+        "n": 6,
+        "mean": 0.1000000008692344,
+        "sd": 9.618658190487366e-10,
+        "p50": 0.10000000149011612,
+        "p95": 0.10000000149011612,
+        "min": 0.09999999962747097,
+        "max": 0.10000000149011612,
+        "ci95": {
+          "lower": 0.10000000009958145,
+          "upper": 0.10000000163888735
+        }
+      },
+      "precision_variability_ms": {
+        "mean_precision": 1.9014297402977072,
+        "frame_var_sd": 0.9340252439891965,
+        "timeout_var_sd": 4.7175663328437505,
+        "input_var_sd": 0.052697644060174305
+      },
+      "lag_bias_ms": {
+        "startup_bias_mean": 9162.5,
+        "frame_bias_mean": -0.07018518518622348,
+        "timeout_bias_mean": 8.339814815121805,
+        "input_bias_mean": 0.02374999999689559
+      }
+    },
+    {
+      "target": "stress",
+      "profile": "slow4g_sim",
+      "repeats": 6,
+      "navigation_ms": {
+        "n": 6,
+        "mean": 9205.5,
+        "sd": 63.56964684501558,
+        "p50": 9208,
+        "p95": 9302,
+        "min": 9134,
+        "max": 9302,
+        "ci95": {
+          "lower": 9154.633688686257,
+          "upper": 9256.366311313743
+        }
+      },
+      "study_ready_ms": {
+        "n": 6,
+        "mean": 9223.833333333334,
+        "sd": 60.177792138517894,
+        "p50": 9228,
+        "p95": 9316,
+        "min": 9153,
+        "max": 9316,
+        "ci95": {
+          "lower": 9175.681071035033,
+          "upper": 9271.985595631635
+        }
+      },
+      "frame_p95_ms": {
+        "n": 6,
+        "mean": 16.733333333333576,
+        "sd": 0.051639777948680764,
+        "p50": 16.700000000000728,
+        "p95": 16.799999999999272,
+        "min": 16.700000000000728,
+        "max": 16.799999999999272,
+        "ci95": {
+          "lower": 16.69201290524131,
+          "upper": 16.774653761425842
+        }
+      },
+      "timeout_p95_ms": {
+        "n": 6,
+        "mean": 31.98333333277454,
+        "sd": 1.006810144163732,
+        "p50": 31.799999998882413,
+        "p95": 33.69999999925494,
+        "min": 30.90000000037253,
+        "max": 33.69999999925494,
+        "ci95": {
+          "lower": 31.177717433228562,
+          "upper": 32.78894923232052
+        }
+      },
+      "input_p95_ms": {
+        "n": 6,
+        "mean": 0.10000000024835269,
+        "sd": 0.06324555355677966,
+        "p50": 0.09999999962747097,
+        "p95": 0.2000000011175871,
+        "min": 0,
+        "max": 0.2000000011175871,
+        "ci95": {
+          "lower": 0.04939301757512055,
+          "upper": 0.15060698292158484
+        }
+      },
+      "precision_variability_ms": {
+        "mean_precision": 4.210706720687354,
+        "frame_var_sd": 0.8396101332624305,
+        "timeout_var_sd": 11.743624961155517,
+        "input_var_sd": 0.04888506764411473
+      },
+      "lag_bias_ms": {
+        "startup_bias_mean": 9223.833333333334,
+        "frame_bias_mean": -0.06314814814711234,
+        "timeout_bias_mean": 16.002222221982837,
+        "input_bias_mean": 0.02041666666045785
+      }
+    },
+    {
+      "target": "stress",
+      "profile": "lan_baseline",
+      "repeats": 6,
+      "navigation_ms": {
+        "n": 6,
+        "mean": 4687,
+        "sd": 111.68169053161758,
+        "p50": 4650,
+        "p95": 4863,
+        "min": 4580,
+        "max": 4863,
+        "ci95": {
+          "lower": 4597.636035898132,
+          "upper": 4776.363964101868
+        }
+      },
+      "study_ready_ms": {
+        "n": 6,
+        "mean": 4704,
+        "sd": 112.06069783826977,
+        "p50": 4673,
+        "p95": 4879,
+        "min": 4600,
+        "max": 4879,
+        "ci95": {
+          "lower": 4614.332766891504,
+          "upper": 4793.667233108496
+        }
+      },
+      "frame_p95_ms": {
+        "n": 6,
+        "mean": 16.73333333333373,
+        "sd": 0.051639777948915604,
+        "p50": 16.700000000000728,
+        "p95": 16.800000000000182,
+        "min": 16.700000000000728,
+        "max": 16.800000000000182,
+        "ci95": {
+          "lower": 16.692012905241274,
+          "upper": 16.774653761426183
+        }
+      },
+      "timeout_p95_ms": {
+        "n": 6,
+        "mean": 32.73333333339542,
+        "sd": 0.7118052171858833,
+        "p50": 33,
+        "p95": 33.70000000111759,
+        "min": 31.59999999962747,
+        "max": 33.70000000111759,
+        "ci95": {
+          "lower": 32.163770537799,
+          "upper": 33.30289612899184
+        }
+      },
+      "input_p95_ms": {
+        "n": 6,
+        "mean": 0.10000000055879354,
+        "sd": 1.0202127648613715e-9,
+        "p50": 0.10000000149011612,
+        "p95": 0.10000000149011612,
+        "min": 0.09999999962747097,
+        "max": 0.10000000149011612,
+        "ci95": {
+          "lower": 0.09999999974245331,
+          "upper": 0.10000000137513378
+        }
+      },
+      "precision_variability_ms": {
+        "mean_precision": 4.312823625589513,
+        "frame_var_sd": 0.8008871709339017,
+        "timeout_var_sd": 12.086961956284377,
+        "input_var_sd": 0.05062174955026155
+      },
+      "lag_bias_ms": {
+        "startup_bias_mean": 4704,
+        "frame_bias_mean": -0.06027777777743282,
+        "timeout_bias_mean": 16.466296296114862,
+        "input_bias_mean": 0.02416666664648801
+      }
+    }
+  ]
+}

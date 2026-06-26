@@ -1,0 +1,176 @@
+{
+  "started_at": "2026-06-26T18:34:09.449Z",
+  "finished_at": "2026-06-26T18:34:56.106Z",
+  "targets": [
+    {
+      "id": "basic",
+      "url": "https://portal.cogflow.app/interpreter/index.html?launch=.eJx1kN1OwzAMhd_Ft6woa6eJ9jm4Q8hyE5dFy0_lJDCEeHdcJtAu4PZ857OO_AGlNveOJbQXmGDmZE-R5NyJi91MxVvYgXBhEntiwVZYEkXWLrnok9KVpHrrV0oV-VI3HtA7bSi0uSWNZgqULCMnmgMrq9J4B3oNl5Df8JXEq19gWigUJZXKGbM4FpieYBgGeL4NsVTxtv7W-bJ6XYmkEfSmP3bm2PXj4_5hGvppf7jvx3E87O-MmYz5nhXXwNXnhMJOVVuxSbhupjlL_SNfJQe_eIs3dsxu-4XjhVqo_5TstaQ0UNMH_1hRFb-9FD6_AOwziK8:1wdBLa:zdSewdZM_SXkA-4Lq_hDvVp8R1fW8-H9snoTo5ph2_o"
+    },
+    {
+      "id": "stress",
+      "url": "https://portal.cogflow.app/interpreter/index.html?launch=.eJx1kM1OxDAMhN8lV7aotKVAnoMbQpabuGy0-akcBxYh3h0vK9Ae4GRpvhlrNB-mSvPvUGN7MdYslN0-IR869qmrwlSr2Rk9hOz2xNAqccZEakafQla6IUtwYcMsQEc58QjBq0OhKy2rtGDE7Ago4xJJmXCjndFvsMbyBq_IQfPV2BVjVSJYD1DYExv7ZMZxMs-XImi34OTXTsctaEtAlczQD3PXz93w8Hhzb8fB3o7X8zzdDdNV39u-_66VtkgSSgYmr1En0DieO-NSWP7QNy4xrMHBRToVf9rC04otyj8mdzYpjdh04Z9U0kg4TWo-vwDchYlQ:1wdBMD:kIpt-zG0jyEP-lhpkboPbKlrI8qzF0akEzE3LA5ccz0"
+    }
+  ],
+  "profiles": [
+    "lan_baseline",
+    "slow4g_sim"
+  ],
+  "results": [
+    {
+      "target": "basic",
+      "profile": "lan_baseline",
+      "navigation_ms": 4683,
+      "study_ready_ms": 4715,
+      "metrics": {
+        "frame_interval_ms": {
+          "mean": 16.56111111111111,
+          "p50": 16.699999999999818,
+          "p95": 16.700000000000728,
+          "sd": 1.4147423670898618,
+          "n": 180
+        },
+        "timeout_drift_ms": {
+          "mean": 7.82666666665011,
+          "p50": 8,
+          "p95": 14.400000000372529,
+          "sd": 4.307031095083811,
+          "n": 90
+        },
+        "synthetic_input_registration_ms": {
+          "mean": 0.02000000001862645,
+          "p50": 0,
+          "p95": 0.09999999962747097,
+          "sd": 0.05638694166369946,
+          "n": 40
+        }
+      },
+      "raw_counts": {
+        "raf_samples": 180,
+        "timeout_samples": 90,
+        "input_samples": 40
+      },
+      "environment": {
+        "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/148.0.7778.96 Safari/537.36",
+        "hardware_concurrency": 16,
+        "device_pixel_ratio": 1
+      }
+    },
+    {
+      "target": "basic",
+      "profile": "slow4g_sim",
+      "navigation_ms": 9178,
+      "study_ready_ms": 9203,
+      "metrics": {
+        "frame_interval_ms": {
+          "mean": 16.535555555555554,
+          "p50": 16.69999999999891,
+          "p95": 16.700000000000728,
+          "sd": 1.7574938423319677,
+          "n": 180
+        },
+        "timeout_drift_ms": {
+          "mean": 7.561111111131807,
+          "p50": 7.800000000745058,
+          "p95": 14.199999999254942,
+          "sd": 4.209798480540616,
+          "n": 90
+        },
+        "synthetic_input_registration_ms": {
+          "mean": 0.022499999916180968,
+          "p50": 0,
+          "p95": 0.09999999962747097,
+          "sd": 0.05767948553979628,
+          "n": 40
+        }
+      },
+      "raw_counts": {
+        "raf_samples": 180,
+        "timeout_samples": 90,
+        "input_samples": 40
+      },
+      "environment": {
+        "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/148.0.7778.96 Safari/537.36",
+        "hardware_concurrency": 16,
+        "device_pixel_ratio": 1
+      }
+    },
+    {
+      "target": "stress",
+      "profile": "lan_baseline",
+      "navigation_ms": 4604,
+      "study_ready_ms": 4625,
+      "metrics": {
+        "frame_interval_ms": {
+          "mean": 16.59222222222429,
+          "p50": 16.699999999999818,
+          "p95": 16.700000000000728,
+          "sd": 0.9904829562386974,
+          "n": 180
+        },
+        "timeout_drift_ms": {
+          "mean": 17.418888888176944,
+          "p50": 18.5,
+          "p95": 34.09999999962747,
+          "sd": 12.449510566909186,
+          "n": 90
+        },
+        "synthetic_input_registration_ms": {
+          "mean": 0.017500000027939677,
+          "p50": 0,
+          "p95": 0.09999999962747097,
+          "sd": 0.054947527529458924,
+          "n": 40
+        }
+      },
+      "raw_counts": {
+        "raf_samples": 180,
+        "timeout_samples": 90,
+        "input_samples": 40
+      },
+      "environment": {
+        "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/148.0.7778.96 Safari/537.36",
+        "hardware_concurrency": 16,
+        "device_pixel_ratio": 1
+      }
+    },
+    {
+      "target": "stress",
+      "profile": "slow4g_sim",
+      "navigation_ms": 9207,
+      "study_ready_ms": 9226,
+      "metrics": {
+        "frame_interval_ms": {
+          "mean": 16.578888888882677,
+          "p50": 16.69999999999891,
+          "p95": 16.700000000000728,
+          "sd": 1.169156162807666,
+          "n": 180
+        },
+        "timeout_drift_ms": {
+          "mean": 16.763333332538604,
+          "p50": 17.09999999962747,
+          "p95": 32.899999998509884,
+          "sd": 12.264669730397435,
+          "n": 90
+        },
+        "synthetic_input_registration_ms": {
+          "mean": 0.022499999916180968,
+          "p50": 0,
+          "p95": 0.09999999962747097,
+          "sd": 0.06975230877279028,
+          "n": 40
+        }
+      },
+      "raw_counts": {
+        "raf_samples": 180,
+        "timeout_samples": 90,
+        "input_samples": 40
+      },
+      "environment": {
+        "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/148.0.7778.96 Safari/537.36",
+        "hardware_concurrency": 16,
+        "device_pixel_ratio": 1
+      }
+    }
+  ]
+}

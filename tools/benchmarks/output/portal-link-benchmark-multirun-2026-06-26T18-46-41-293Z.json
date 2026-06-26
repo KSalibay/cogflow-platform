@@ -1,0 +1,394 @@
+{
+  "started_at": "2026-06-26T18:45:54.501Z",
+  "finished_at": "2026-06-26T18:46:41.293Z",
+  "repeats_per_condition": 1,
+  "targets": [
+    {
+      "id": "basic",
+      "label": "Basic benchmark study",
+      "url": "https://portal.cogflow.app/interpreter/index.html?launch=.eJx1kN1OwzAMhd_Ft6woa6eJ9jm4Q8hyE5dFy0_lJDCEeHdcJtAu4PZ857OO_AGlNveOJbQXmGDmZE-R5NyJi91MxVvYgXBhEntiwVZYEkXWLrnok9KVpHrrV0oV-VI3HtA7bSi0uSWNZgqULCMnmgMrq9J4B3oNl5Df8JXEq19gWigUJZXKGbM4FpieYBgGeL4NsVTxtv7W-bJ6XYmkEfSmP3bm2PXj4_5hGvppf7jvx3E87O-MmYz5nhXXwNXnhMJOVVuxSbhupjlL_SNfJQe_eIs3dsxu-4XjhVqo_5TstaQ0UNMH_1hRFb-9FD6_AOwziK8:1wdBLa:zdSewdZM_SXkA-4Lq_hDvVp8R1fW8-H9snoTo5ph2_o"
+    },
+    {
+      "id": "stress",
+      "label": "Stress benchmark study",
+      "url": "https://portal.cogflow.app/interpreter/index.html?launch=.eJx1kM1OxDAMhN8lV7aotKVAnoMbQpabuGy0-akcBxYh3h0vK9Ae4GRpvhlrNB-mSvPvUGN7MdYslN0-IR869qmrwlSr2Rk9hOz2xNAqccZEakafQla6IUtwYcMsQEc58QjBq0OhKy2rtGDE7Ago4xJJmXCjndFvsMbyBq_IQfPV2BVjVSJYD1DYExv7ZMZxMs-XImi34OTXTsctaEtAlczQD3PXz93w8Hhzb8fB3o7X8zzdDdNV39u-_66VtkgSSgYmr1En0DieO-NSWP7QNy4xrMHBRToVf9rC04otyj8mdzYpjdh04Z9U0kg4TWo-vwDchYlQ:1wdBMD:kIpt-zG0jyEP-lhpkboPbKlrI8qzF0akEzE3LA5ccz0"
+    }
+  ],
+  "profiles": [
+    {
+      "id": "lan_baseline",
+      "label": "LAN baseline",
+      "network": null
+    },
+    {
+      "id": "slow4g_sim",
+      "label": "Slow 4G simulation",
+      "network": {
+        "latency": 150,
+        "downloadKbps": 1600,
+        "uploadKbps": 750,
+        "connectionType": "cellular4g"
+      }
+    }
+  ],
+  "run_level_data": [
+    {
+      "target": "basic",
+      "profile": "lan_baseline",
+      "iteration": 1,
+      "navigation_ms": 4680,
+      "study_ready_ms": 4729,
+      "frame_interval_mean_ms": 16.61833333334161,
+      "frame_interval_sd_ms": 0.6410078480882141,
+      "frame_interval_p95_ms": 16.700000000000728,
+      "frame_bias_vs_60hz_ms": -0.04833333332505774,
+      "timeout_drift_mean_ms": 8.047777778179281,
+      "timeout_drift_sd_ms": 4.533774075295799,
+      "timeout_drift_p95_ms": 14.900000000372529,
+      "input_reg_mean_ms": 0.025000000093132257,
+      "input_reg_sd_ms": 0.04935481178572831,
+      "input_reg_p95_ms": 0.10000000149011612,
+      "raw_counts": {
+        "raf_n": 180,
+        "timeout_n": 90,
+        "input_n": 40
+      }
+    },
+    {
+      "target": "basic",
+      "profile": "slow4g_sim",
+      "iteration": 1,
+      "navigation_ms": 9228,
+      "study_ready_ms": 9247,
+      "frame_interval_mean_ms": 16.629444444448584,
+      "frame_interval_sd_ms": 0.4930463078114397,
+      "frame_interval_p95_ms": 16.799999999999272,
+      "frame_bias_vs_60hz_ms": -0.0372222222180838,
+      "timeout_drift_mean_ms": 8.838888888868192,
+      "timeout_drift_sd_ms": 4.796082072477931,
+      "timeout_drift_p95_ms": 16.09999999962747,
+      "input_reg_mean_ms": 0.019999999972060322,
+      "input_reg_sd_ms": 0.04640954810157494,
+      "input_reg_p95_ms": 0.09999999962747097,
+      "raw_counts": {
+        "raf_n": 180,
+        "timeout_n": 90,
+        "input_n": 40
+      }
+    },
+    {
+      "target": "stress",
+      "profile": "lan_baseline",
+      "iteration": 1,
+      "navigation_ms": 4640,
+      "study_ready_ms": 4665,
+      "frame_interval_mean_ms": 16.633888888890958,
+      "frame_interval_sd_ms": 0.4335334733070523,
+      "frame_interval_p95_ms": 16.700000000000728,
+      "frame_bias_vs_60hz_ms": -0.03277777777570989,
+      "timeout_drift_mean_ms": 16.3422222222512,
+      "timeout_drift_sd_ms": 12.077837236414544,
+      "timeout_drift_p95_ms": 32.90000000037253,
+      "input_reg_mean_ms": 0.02000000006519258,
+      "input_reg_sd_ms": 0.04640954826623116,
+      "input_reg_p95_ms": 0.10000000149011612,
+      "raw_counts": {
+        "raf_n": 180,
+        "timeout_n": 90,
+        "input_n": 40
+      }
+    },
+    {
+      "target": "stress",
+      "profile": "slow4g_sim",
+      "iteration": 1,
+      "navigation_ms": 9241,
+      "study_ready_ms": 9265,
+      "frame_interval_mean_ms": 16.57111111111318,
+      "frame_interval_sd_ms": 1.273164749407811,
+      "frame_interval_p95_ms": 16.700000000000728,
+      "frame_bias_vs_60hz_ms": -0.0955555555534886,
+      "timeout_drift_mean_ms": 16.406666665876077,
+      "timeout_drift_sd_ms": 12.145677549963247,
+      "timeout_drift_p95_ms": 33.29999999888241,
+      "input_reg_mean_ms": 0.025000000046566127,
+      "input_reg_sd_ms": 0.04935481171315157,
+      "input_reg_p95_ms": 0.10000000149011612,
+      "raw_counts": {
+        "raf_n": 180,
+        "timeout_n": 90,
+        "input_n": 40
+      }
+    }
+  ],
+  "condition_summaries": [
+    {
+      "target": "basic",
+      "profile": "lan_baseline",
+      "repeats": 1,
+      "navigation_ms": {
+        "n": 1,
+        "mean": 4680,
+        "sd": 0,
+        "p50": 4680,
+        "p95": 4680,
+        "min": 4680,
+        "max": 4680,
+        "ci95": null
+      },
+      "study_ready_ms": {
+        "n": 1,
+        "mean": 4729,
+        "sd": 0,
+        "p50": 4729,
+        "p95": 4729,
+        "min": 4729,
+        "max": 4729,
+        "ci95": null
+      },
+      "frame_p95_ms": {
+        "n": 1,
+        "mean": 16.700000000000728,
+        "sd": 0,
+        "p50": 16.700000000000728,
+        "p95": 16.700000000000728,
+        "min": 16.700000000000728,
+        "max": 16.700000000000728,
+        "ci95": null
+      },
+      "timeout_p95_ms": {
+        "n": 1,
+        "mean": 14.900000000372529,
+        "sd": 0,
+        "p50": 14.900000000372529,
+        "p95": 14.900000000372529,
+        "min": 14.900000000372529,
+        "max": 14.900000000372529,
+        "ci95": null
+      },
+      "input_p95_ms": {
+        "n": 1,
+        "mean": 0.10000000149011612,
+        "sd": 0,
+        "p50": 0.10000000149011612,
+        "p95": 0.10000000149011612,
+        "min": 0.10000000149011612,
+        "max": 0.10000000149011612,
+        "ci95": null
+      },
+      "precision_variability_ms": {
+        "mean_precision": 1.7413789117232472,
+        "frame_var_sd": 0.6410078480882141,
+        "timeout_var_sd": 4.533774075295799,
+        "input_var_sd": 0.04935481178572831
+      },
+      "lag_bias_ms": {
+        "startup_bias_mean": 4729,
+        "frame_bias_mean": -0.04833333332505774,
+        "timeout_bias_mean": 8.047777778179281,
+        "input_bias_mean": 0.025000000093132257
+      }
+    },
+    {
+      "target": "basic",
+      "profile": "slow4g_sim",
+      "repeats": 1,
+      "navigation_ms": {
+        "n": 1,
+        "mean": 9228,
+        "sd": 0,
+        "p50": 9228,
+        "p95": 9228,
+        "min": 9228,
+        "max": 9228,
+        "ci95": null
+      },
+      "study_ready_ms": {
+        "n": 1,
+        "mean": 9247,
+        "sd": 0,
+        "p50": 9247,
+        "p95": 9247,
+        "min": 9247,
+        "max": 9247,
+        "ci95": null
+      },
+      "frame_p95_ms": {
+        "n": 1,
+        "mean": 16.799999999999272,
+        "sd": 0,
+        "p50": 16.799999999999272,
+        "p95": 16.799999999999272,
+        "min": 16.799999999999272,
+        "max": 16.799999999999272,
+        "ci95": null
+      },
+      "timeout_p95_ms": {
+        "n": 1,
+        "mean": 16.09999999962747,
+        "sd": 0,
+        "p50": 16.09999999962747,
+        "p95": 16.09999999962747,
+        "min": 16.09999999962747,
+        "max": 16.09999999962747,
+        "ci95": null
+      },
+      "input_p95_ms": {
+        "n": 1,
+        "mean": 0.09999999962747097,
+        "sd": 0,
+        "p50": 0.09999999962747097,
+        "p95": 0.09999999962747097,
+        "min": 0.09999999962747097,
+        "max": 0.09999999962747097,
+        "ci95": null
+      },
+      "precision_variability_ms": {
+        "mean_precision": 1.7785126427969822,
+        "frame_var_sd": 0.4930463078114397,
+        "timeout_var_sd": 4.796082072477931,
+        "input_var_sd": 0.04640954810157494
+      },
+      "lag_bias_ms": {
+        "startup_bias_mean": 9247,
+        "frame_bias_mean": -0.0372222222180838,
+        "timeout_bias_mean": 8.838888888868192,
+        "input_bias_mean": 0.019999999972060322
+      }
+    },
+    {
+      "target": "stress",
+      "profile": "lan_baseline",
+      "repeats": 1,
+      "navigation_ms": {
+        "n": 1,
+        "mean": 4640,
+        "sd": 0,
+        "p50": 4640,
+        "p95": 4640,
+        "min": 4640,
+        "max": 4640,
+        "ci95": null
+      },
+      "study_ready_ms": {
+        "n": 1,
+        "mean": 4665,
+        "sd": 0,
+        "p50": 4665,
+        "p95": 4665,
+        "min": 4665,
+        "max": 4665,
+        "ci95": null
+      },
+      "frame_p95_ms": {
+        "n": 1,
+        "mean": 16.700000000000728,
+        "sd": 0,
+        "p50": 16.700000000000728,
+        "p95": 16.700000000000728,
+        "min": 16.700000000000728,
+        "max": 16.700000000000728,
+        "ci95": null
+      },
+      "timeout_p95_ms": {
+        "n": 1,
+        "mean": 32.90000000037253,
+        "sd": 0,
+        "p50": 32.90000000037253,
+        "p95": 32.90000000037253,
+        "min": 32.90000000037253,
+        "max": 32.90000000037253,
+        "ci95": null
+      },
+      "input_p95_ms": {
+        "n": 1,
+        "mean": 0.10000000149011612,
+        "sd": 0,
+        "p50": 0.10000000149011612,
+        "p95": 0.10000000149011612,
+        "min": 0.10000000149011612,
+        "max": 0.10000000149011612,
+        "ci95": null
+      },
+      "precision_variability_ms": {
+        "mean_precision": 4.185926752662609,
+        "frame_var_sd": 0.4335334733070523,
+        "timeout_var_sd": 12.077837236414544,
+        "input_var_sd": 0.04640954826623116
+      },
+      "lag_bias_ms": {
+        "startup_bias_mean": 4665,
+        "frame_bias_mean": -0.03277777777570989,
+        "timeout_bias_mean": 16.3422222222512,
+        "input_bias_mean": 0.02000000006519258
+      }
+    },
+    {
+      "target": "stress",
+      "profile": "slow4g_sim",
+      "repeats": 1,
+      "navigation_ms": {
+        "n": 1,
+        "mean": 9241,
+        "sd": 0,
+        "p50": 9241,
+        "p95": 9241,
+        "min": 9241,
+        "max": 9241,
+        "ci95": null
+      },
+      "study_ready_ms": {
+        "n": 1,
+        "mean": 9265,
+        "sd": 0,
+        "p50": 9265,
+        "p95": 9265,
+        "min": 9265,
+        "max": 9265,
+        "ci95": null
+      },
+      "frame_p95_ms": {
+        "n": 1,
+        "mean": 16.700000000000728,
+        "sd": 0,
+        "p50": 16.700000000000728,
+        "p95": 16.700000000000728,
+        "min": 16.700000000000728,
+        "max": 16.700000000000728,
+        "ci95": null
+      },
+      "timeout_p95_ms": {
+        "n": 1,
+        "mean": 33.29999999888241,
+        "sd": 0,
+        "p50": 33.29999999888241,
+        "p95": 33.29999999888241,
+        "min": 33.29999999888241,
+        "max": 33.29999999888241,
+        "ci95": null
+      },
+      "input_p95_ms": {
+        "n": 1,
+        "mean": 0.10000000149011612,
+        "sd": 0,
+        "p50": 0.10000000149011612,
+        "p95": 0.10000000149011612,
+        "min": 0.10000000149011612,
+        "max": 0.10000000149011612,
+        "ci95": null
+      },
+      "precision_variability_ms": {
+        "mean_precision": 4.48939903702807,
+        "frame_var_sd": 1.273164749407811,
+        "timeout_var_sd": 12.145677549963247,
+        "input_var_sd": 0.04935481171315157
+      },
+      "lag_bias_ms": {
+        "startup_bias_mean": 9265,
+        "frame_bias_mean": -0.0955555555534886,
+        "timeout_bias_mean": 16.406666665876077,
+        "input_bias_mean": 0.025000000046566127
+      }
+    }
+  ]
+}
