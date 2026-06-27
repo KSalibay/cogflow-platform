@@ -2179,6 +2179,7 @@
                 window._instructionsEditorState = window._instructionsEditorState || {};
                 window._instructionsEditorState.mode = 'wysiwyg';
                 window._instructionsEditorState.quill = null;
+                window._instructionsEditorState.useQuillForSave = false;
 
                 const toolbar = document.getElementById('instructionsEditorToolbar');
                 const editor = document.getElementById('instructionsEditor');
@@ -2225,6 +2226,9 @@
 
                     // Populate from existing stimulus (plain text -> HTML)
                     const initialHtml = coerceToHtml(currentStimulus);
+                    if (htmlArea) {
+                        htmlArea.value = initialHtml;
+                    }
                     quill.clipboard.dangerouslyPasteHTML(initialHtml);
 
                     window._instructionsEditorState.quill = quill;
@@ -2243,7 +2247,9 @@
                             const mode = window._instructionsEditorState.mode || 'wysiwyg';
                             if (mode === 'wysiwyg') {
                                 // Switch to HTML
-                                syncHtmlAreaFromQuill();
+                                if (window._instructionsEditorState?.useQuillForSave) {
+                                    syncHtmlAreaFromQuill();
+                                }
                                 window._instructionsEditorState.mode = 'html';
                                 wysWrap.classList.add('d-none');
                                 htmlArea.classList.remove('d-none');
@@ -2253,6 +2259,7 @@
                                 const html = htmlArea.value || '';
                                 try { quill.clipboard.dangerouslyPasteHTML(html); } catch { /* ignore */ }
                                 window._instructionsEditorState.mode = 'wysiwyg';
+                                window._instructionsEditorState.useQuillForSave = true;
                                 htmlArea.classList.add('d-none');
                                 wysWrap.classList.remove('d-none');
                                 htmlBtn.textContent = 'Edit HTML';
@@ -2263,12 +2270,10 @@
                     // Keep the HTML textarea updated when hidden, so save() is simple.
                     quill.on('text-change', () => {
                         if ((window._instructionsEditorState.mode || 'wysiwyg') === 'wysiwyg') {
+                            window._instructionsEditorState.useQuillForSave = true;
                             syncHtmlAreaFromQuill();
                         }
                     });
-
-                    // Initialize textarea value for good measure.
-                    syncHtmlAreaFromQuill();
                 } else {
                     // No Quill: show raw textarea and treat current content as HTML.
                     if (wysWrap) wysWrap.classList.add('d-none');
@@ -2345,7 +2350,7 @@
             // If Quill is active and we're in WYSIWYG mode, read from it.
             try {
                 const st = window._instructionsEditorState;
-                if (st && st.quill && (st.mode || 'wysiwyg') === 'wysiwyg') {
+                if (st && st.quill && (st.mode || 'wysiwyg') === 'wysiwyg' && st.useQuillForSave) {
                     instructionsHtml = st.quill.root.innerHTML;
                 }
             } catch {

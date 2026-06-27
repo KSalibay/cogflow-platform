@@ -1567,7 +1567,7 @@ class TimelineBuilder {
 
         // Survey instructions rich text editor (same Quill pattern as Instructions component editor).
         try {
-            this._surveyInstructionsEditorState = { mode: 'wysiwyg', quill: null };
+            this._surveyInstructionsEditorState = { mode: 'wysiwyg', quill: null, useQuillForSave: false };
 
             const toolbar = modalBody.querySelector('#surveyInstructionsEditorToolbar');
             const editor = modalBody.querySelector('#surveyInstructionsEditor');
@@ -1576,6 +1576,9 @@ class TimelineBuilder {
             const wysWrap = modalBody.querySelector('#surveyInstructionsEditorWrap');
 
             if (window.Quill && toolbar && editor && htmlArea) {
+                const initialInstructionsHtml = coerceToHtml(instructions);
+                htmlArea.value = initialInstructionsHtml;
+
                 toolbar.innerHTML = `
                     <span class="ql-formats">
                         <select class="ql-header">
@@ -1610,7 +1613,7 @@ class TimelineBuilder {
                     modules: { toolbar }
                 });
 
-                quill.clipboard.dangerouslyPasteHTML(coerceToHtml(instructions));
+                quill.clipboard.dangerouslyPasteHTML(initialInstructionsHtml);
                 this._surveyInstructionsEditorState.quill = quill;
 
                 const syncHtmlAreaFromQuill = () => {
@@ -1622,7 +1625,9 @@ class TimelineBuilder {
                     htmlBtn.addEventListener('click', () => {
                         const mode = this._surveyInstructionsEditorState?.mode || 'wysiwyg';
                         if (mode === 'wysiwyg') {
-                            syncHtmlAreaFromQuill();
+                            if (this._surveyInstructionsEditorState?.useQuillForSave) {
+                                syncHtmlAreaFromQuill();
+                            }
                             this._surveyInstructionsEditorState.mode = 'html';
                             wysWrap.classList.add('d-none');
                             htmlArea.classList.remove('d-none');
@@ -1631,6 +1636,7 @@ class TimelineBuilder {
                             const html = htmlArea.value || '';
                             try { quill.clipboard.dangerouslyPasteHTML(html); } catch { /* ignore */ }
                             this._surveyInstructionsEditorState.mode = 'wysiwyg';
+                            this._surveyInstructionsEditorState.useQuillForSave = true;
                             htmlArea.classList.add('d-none');
                             wysWrap.classList.remove('d-none');
                             htmlBtn.textContent = 'Edit HTML';
@@ -1640,11 +1646,10 @@ class TimelineBuilder {
 
                 quill.on('text-change', () => {
                     if ((this._surveyInstructionsEditorState?.mode || 'wysiwyg') === 'wysiwyg') {
+                        this._surveyInstructionsEditorState.useQuillForSave = true;
                         syncHtmlAreaFromQuill();
                     }
                 });
-
-                syncHtmlAreaFromQuill();
             } else {
                 if (wysWrap) wysWrap.classList.add('d-none');
                 if (htmlBtn) htmlBtn.classList.add('d-none');

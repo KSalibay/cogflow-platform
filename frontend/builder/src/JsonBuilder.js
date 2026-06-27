@@ -11695,11 +11695,48 @@ class JsonBuilder {
         if (component.type === 'html-keyboard-response') {
             // Instructions components store parameters directly on the component object
                 let _stimulus = (component.stimulus || '');
-                // Strip Quill's ql-align-* classes and replace with inline styles.
-                // Quill outputs <p class="ql-align-center"> but Interpreter doesn't have Quill CSS.
-                _stimulus = _stimulus.replace(/class="[^"]*ql-align-(center|right)[^"]*"/g, (_match, align) => {
-                    return `style='text-align: ${align};'`;
-                });
+                // Convert Quill alignment classes into inline text-align without dropping other classes.
+                // Quill outputs class tokens like ql-align-center, but Interpreter doesn't include Quill CSS.
+                try {
+                    const parsed = new DOMParser().parseFromString(`<div data-cf-root="1">${_stimulus}</div>`, 'text/html');
+                    const root = parsed.body && parsed.body.querySelector('[data-cf-root="1"]');
+                    if (root) {
+                        root.querySelectorAll('[class*="ql-align-"]').forEach((el) => {
+                            const classAttr = (el.getAttribute('class') || '').trim();
+                            if (!classAttr) return;
+
+                            const tokens = classAttr.split(/\s+/).filter(Boolean);
+                            let align = null;
+                            const kept = [];
+                            tokens.forEach((tok) => {
+                                const m = tok.match(/^ql-align-(center|right)$/i);
+                                if (m) {
+                                    align = m[1].toLowerCase();
+                                } else {
+                                    kept.push(tok);
+                                }
+                            });
+
+                            if (!align) return;
+
+                            if (kept.length > 0) {
+                                el.setAttribute('class', kept.join(' '));
+                            } else {
+                                el.removeAttribute('class');
+                            }
+
+                            const styleAttr = (el.getAttribute('style') || '').trim();
+                            if (!/text-align\s*:/i.test(styleAttr)) {
+                                const sep = styleAttr && !styleAttr.endsWith(';') ? '; ' : (styleAttr ? ' ' : '');
+                                el.setAttribute('style', `${styleAttr}${sep}text-align: ${align};`.trim());
+                            }
+                        });
+
+                        _stimulus = root.innerHTML;
+                    }
+                } catch {
+                    // If parsing fails, keep source HTML unchanged.
+                }
                 // Also apply text_align field if explicitly set (takes precedence over Quill markup)
                 const _alignVal = (component.text_align || 'left').toString().trim().toLowerCase();
                 const _stimulus_final = (_alignVal === 'center' || _alignVal === 'right')
