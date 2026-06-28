@@ -1245,7 +1245,7 @@
           showMask: false,
           ringMode: isRewardMainTask ? 'neutral' : (useNeutralTrainingRings ? 'neutral' : 'none'),
           cueMode: showCenterDiamondFlow ? 'fixation' : 'none',
-          fixationColor: showCenterDiamondFlow ? cueFixationColor : initialFixationColor
+          fixationColor: cueFixationColor
         });
       }
 
@@ -1283,7 +1283,8 @@
             showStimulus: false,
             showMask: false,
             ringMode: isRewardMainTask ? 'value' : (useNeutralTrainingRings ? 'neutral' : 'none'),
-            cueMode: showCenterDiamondFlow ? 'fixation' : 'none'
+            cueMode: showCenterDiamondFlow ? 'fixation' : 'none',
+            fixationColor: initialFixationColor
           });
         } catch (err) {
           renderErrorMessage = (err && err.message) ? String(err.message) : 'phase_placeholders_failed';
@@ -1300,7 +1301,8 @@
             showStimulus: false,
             showMask: false,
             ringMode: isRewardMainTask ? 'value' : (useNeutralTrainingRings ? 'neutral' : 'none'),
-            cueMode: showCenterDiamondFlow ? 'cue' : 'none'
+            cueMode: showCenterDiamondFlow ? 'cue' : 'none',
+            fixationColor: initialFixationColor
           });
         } catch (err) {
           renderErrorMessage = (err && err.message) ? String(err.message) : 'phase_cue_failed';
@@ -1317,7 +1319,8 @@
             showStimulus: false,
             showMask: false,
             ringMode: isRewardMainTask ? 'value' : (useNeutralTrainingRings ? 'neutral' : 'none'),
-            cueMode: showCenterDiamondFlow ? 'fixation' : 'none'
+            cueMode: showCenterDiamondFlow ? 'fixation' : 'none',
+            fixationColor: initialFixationColor
           });
         } catch (err) {
           renderErrorMessage = (err && err.message) ? String(err.message) : 'phase_cue_delay_failed';
@@ -1335,7 +1338,8 @@
             showStimulus: true,
             showMask: false,
             ringMode: isRewardMainTask ? 'value' : (useNeutralTrainingRings ? 'neutral' : 'none'),
-            cueMode: showCenterDiamondFlow ? 'fixation' : 'none'
+            cueMode: showCenterDiamondFlow ? 'fixation' : 'none',
+            fixationColor: initialFixationColor
           });
           startResponseListener();
         } catch (err) {
@@ -1354,7 +1358,8 @@
               showStimulus: false,
               showMask: true,
               ringMode: isRewardMainTask ? 'value' : (useNeutralTrainingRings ? 'neutral' : 'none'),
-              cueMode: showCenterDiamondFlow ? 'fixation' : 'none'
+              cueMode: showCenterDiamondFlow ? 'fixation' : 'none',
+              fixationColor: initialFixationColor
             });
           } catch (err) {
             renderErrorMessage = (err && err.message) ? String(err.message) : 'phase_mask_failed';
@@ -1372,7 +1377,8 @@
             showStimulus: false,
             showMask: false,
             ringMode: isRewardMainTask ? 'value' : (useNeutralTrainingRings ? 'neutral' : 'none'),
-            cueMode: 'none'
+            cueMode: showCenterDiamondFlow ? 'fixation' : 'none',
+            fixationColor: initialFixationColor
           });
         } catch (err) {
           renderErrorMessage = (err && err.message) ? String(err.message) : 'phase_response_failed';

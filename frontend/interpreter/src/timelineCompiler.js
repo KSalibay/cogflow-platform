@@ -3288,6 +3288,22 @@
       };
     }
 
+    function buildHtmlStimulusTrialFields(stimulus, prompt) {
+      const wrappedStimulus = wrapMaybeFunctionStimulus(stimulus, prompt);
+      if (typeof wrappedStimulus !== 'function') {
+        return { stimulus: wrappedStimulus, prompt: null };
+      }
+
+      return {
+        stimulus: wrapPsyScreenHtml('', null),
+        prompt: null,
+        on_start: (trial) => {
+          trial.stimulus = wrappedStimulus();
+          trial.prompt = null;
+        }
+      };
+    }
+
     function normalizeKeyChoices(raw) {
       if (raw === undefined || raw === null) return 'ALL_KEYS';
       if (Array.isArray(raw)) return raw;
@@ -4317,10 +4333,10 @@
           // Keep instructions as their own trial.
           pushRdmContinuousSegment();
           const stimulus = (item.stimulus !== undefined && item.stimulus !== null) ? item.stimulus : item.stimulus_html;
+          const htmlStimulusFields = buildHtmlStimulusTrialFields(stimulus, item.prompt);
           timeline.push({
             type: HtmlKeyboard,
-            stimulus: wrapMaybeFunctionStimulus(stimulus, item.prompt),
-            prompt: null,
+            ...htmlStimulusFields,
             choices: normalizeKeyChoices(item.choices),
             stimulus_duration: (item.stimulus_duration === undefined ? null : item.stimulus_duration),
             trial_duration: (item.trial_duration === undefined ? null : item.trial_duration),
@@ -4812,10 +4828,10 @@
 
         if (type === 'html-keyboard-response' || type === 'instructions') {
         const stimulus = (item.stimulus !== undefined && item.stimulus !== null) ? item.stimulus : item.stimulus_html;
+        const htmlStimulusFields = buildHtmlStimulusTrialFields(stimulus, item.prompt);
         timeline.push({
           type: HtmlKeyboard,
-          stimulus: wrapMaybeFunctionStimulus(stimulus, item.prompt),
-          prompt: null,
+          ...htmlStimulusFields,
           choices: normalizeKeyChoices(item.choices),
           stimulus_duration: (item.stimulus_duration === undefined ? null : item.stimulus_duration),
           trial_duration: (item.trial_duration === undefined ? null : item.trial_duration),
