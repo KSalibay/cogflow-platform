@@ -6491,6 +6491,45 @@
       });
     }
 
+    const ensureHtmlKeyboardStimulusResolved = (trial) => {
+      if (!isObject(trial)) return;
+      if (trial.type !== HtmlKeyboard) return;
+
+      const stimulusRaw = trial.stimulus;
+      const promptRaw = trial.prompt;
+      const stimulusIsFn = typeof stimulusRaw === 'function';
+      const promptIsFn = typeof promptRaw === 'function';
+      if (!stimulusIsFn && !promptIsFn) return;
+
+      const wrapped = wrapMaybeFunctionStimulus(stimulusRaw, promptRaw);
+      const existingOnStart = (typeof trial.on_start === 'function') ? trial.on_start : null;
+
+      trial.stimulus = wrapPsyScreenHtml('', null);
+      trial.prompt = null;
+      trial.on_start = (jsPsychTrial) => {
+        if (existingOnStart) {
+          try { existingOnStart(jsPsychTrial); } catch { /* ignore */ }
+        }
+        try {
+          jsPsychTrial.stimulus = (typeof wrapped === 'function') ? wrapped() : wrapped;
+        } catch {
+          jsPsychTrial.stimulus = wrapPsyScreenHtml('', null);
+        }
+        jsPsychTrial.prompt = null;
+      };
+    };
+
+    const normalizeHtmlKeyboardStimuliInTimeline = (nodes) => {
+      const src = Array.isArray(nodes) ? nodes : [];
+      for (const node of src) {
+        if (!isObject(node)) continue;
+        ensureHtmlKeyboardStimulusResolved(node);
+        if (Array.isArray(node.timeline)) {
+          normalizeHtmlKeyboardStimuliInTimeline(node.timeline);
+        }
+      }
+    };
+
     // Optional end-of-experiment reward summary screen.
     if (rewardsPolicy && rewardsPolicy.show_summary_at_end === true) {
       const storeKey = rewardsStoreKey;
@@ -6572,6 +6611,8 @@
         data: { plugin_type: 'reward-summary' }
       });
     }
+
+    normalizeHtmlKeyboardStimuliInTimeline(timeline);
 
     return { experimentType, timeline };
   }
