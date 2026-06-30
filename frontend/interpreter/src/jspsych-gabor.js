@@ -59,6 +59,10 @@
       cue_indicator_color: { type: PT.STRING, default: 'rgb(114,114,114)' },
       cue_fixation_color: { type: PT.STRING, default: 'rgb(114,114,114)' },
       initial_fixation_color: { type: PT.STRING, default: '#ffffff' },
+      fixation_size_deg: { type: PT.FLOAT, default: 2 },
+      fixation_line_width_deg: { type: PT.FLOAT, default: 1 },
+      fixation_size_px: { type: PT.FLOAT, default: null },
+      fixation_line_width_px: { type: PT.FLOAT, default: null },
 
       // Patch border (circle around stimulus/mask + placeholders)
       patch_border_enabled: { type: PT.BOOL, default: true },
@@ -232,15 +236,22 @@
     ctx.restore();
   }
 
-  function drawFixation(ctx, x, y, color = 'rgba(255,255,255,0.75)') {
+  function drawFixation(ctx, x, y, {
+    color = 'rgba(255,255,255,0.75)',
+    halfSizePx = 10,
+    lineWidthPx = 2
+  } = {}) {
+    const safeHalfSize = Math.max(1, Number(halfSizePx) || 10);
+    const safeLineWidth = Math.max(0.5, Number(lineWidthPx) || 2);
+
     ctx.save();
     ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = safeLineWidth;
     ctx.beginPath();
-    ctx.moveTo(x - 10, y);
-    ctx.lineTo(x + 10, y);
-    ctx.moveTo(x, y - 10);
-    ctx.lineTo(x, y + 10);
+    ctx.moveTo(x - safeHalfSize, y);
+    ctx.lineTo(x + safeHalfSize, y);
+    ctx.moveTo(x, y - safeHalfSize);
+    ctx.lineTo(x, y + safeHalfSize);
     ctx.stroke();
     ctx.restore();
   }
@@ -573,6 +584,8 @@
     cueIndicatorColor,
     cueFixationColor,
     initialFixationColor,
+    fixationHalfSizePx,
+    fixationLineWidthPx,
     fixationColor,
     debug
   }) {
@@ -637,7 +650,11 @@
         showFixation: true
       });
     } else if (showFixation) {
-      drawFixation(ctx, Math.floor(w / 2), cy, fixationColor ?? initialFixationColor);
+      drawFixation(ctx, Math.floor(w / 2), cy, {
+        color: fixationColor ?? initialFixationColor,
+        halfSizePx: fixationHalfSizePx,
+        lineWidthPx: fixationLineWidthPx
+      });
     }
 
     // Stimulus / mask
@@ -745,6 +762,18 @@
       const cueIndicatorColor = (trial.cue_indicator_color ?? 'rgb(114,114,114)').toString();
       const cueFixationColor = (trial.cue_fixation_color ?? 'rgb(114,114,114)').toString();
       const initialFixationColor = (trial.initial_fixation_color ?? '#ffffff').toString();
+      const fixationSizeDeg = Number(trial.fixation_size_deg);
+      const fixationLineWidthDeg = Number(trial.fixation_line_width_deg);
+      const fixationSizePxDirect = Number(trial.fixation_size_px);
+      const fixationLineWidthPxDirect = Number(trial.fixation_line_width_px);
+      const fixationSizePx = Number.isFinite(fixationSizePxDirect)
+        ? fixationSizePxDirect
+        : (Number.isFinite(fixationSizeDeg) ? degToPx(fixationSizeDeg) : null);
+      const fixationLineWidthPx = Number.isFinite(fixationLineWidthPxDirect)
+        ? fixationLineWidthPxDirect
+        : (Number.isFinite(fixationLineWidthDeg) ? degToPx(fixationLineWidthDeg) : null);
+      const fixationHalfSizePx = clamp(Math.round((Number.isFinite(fixationSizePx) ? fixationSizePx : 20) / 2), 1, 180);
+      const fixationStrokeWidthPx = clamp(Number.isFinite(fixationLineWidthPx) ? fixationLineWidthPx : 2, 0.5, 80);
       const isQuestAdaptive = (
         (trial && trial.data && trial.data.adaptive_mode === 'quest')
         || trial.adaptive_mode === 'quest'
@@ -1149,6 +1178,8 @@
             cueIndicatorColor,
             cueFixationColor,
             initialFixationColor,
+            fixationHalfSizePx,
+            fixationLineWidthPx: fixationStrokeWidthPx,
             fixationColor: opts?.fixationColor,
             debug: debugGabor
           });
