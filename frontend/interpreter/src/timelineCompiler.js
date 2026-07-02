@@ -341,202 +341,6 @@
     return length;
   }
 
-  function applyMiniblockStructureToTrials(trials, block) {
-    const srcTrials = Array.isArray(trials) ? trials.slice() : [];
-    if (!srcTrials.length || !isObject(block)) return srcTrials;
-
-    const mb = isObject(block.miniblock_structure)
-      ? block.miniblock_structure
-      : (isObject(block.parameter_values) && isObject(block.parameter_values.miniblock_structure)
-        ? block.parameter_values.miniblock_structure
-        : null);
-
-    if (!isObject(mb) || mb.enabled !== true) return srcTrials;
-
-    const breakEveryN = Number.parseInt(mb.break_every_n_trials ?? '', 10);
-    const numBlocks = Number.parseInt(mb.num_blocks ?? '', 10);
-    const trialsPerBlockExplicit = Number.parseInt(mb.trials_per_block ?? '', 10);
-
-    // Precedence (most explicit to least):
-    // 1) break_every_n_trials
-    // 2) trials_per_block
-    // 3) num_blocks (derive trials-per-block from current block length)
-    //
-    // `num_blocks` is often provided alongside an explicit trials-per-block target.
-    // Prefer the explicit cadence to avoid accidental break-every-trial behavior when
-    // srcTrials.length is smaller than num_blocks.
-    let trialsPerBlock = null;
-    if (Number.isFinite(breakEveryN) && breakEveryN > 0) {
-      trialsPerBlock = breakEveryN;
-    } else if (Number.isFinite(trialsPerBlockExplicit) && trialsPerBlockExplicit > 0) {
-      trialsPerBlock = trialsPerBlockExplicit;
-    } else if (Number.isFinite(numBlocks) && numBlocks > 1) {
-      trialsPerBlock = Math.ceil(srcTrials.length / numBlocks);
-    }
-
-    if (!Number.isFinite(trialsPerBlock) || trialsPerBlock <= 0) {
-      return srcTrials;
-    }
-
-    const message = (mb.break_message ?? 'Take a short break.\n\nPress the key below when you are ready to continue.').toString();
-    const forceWait = mb.force_wait_for_break === true;
-    const durationSec = Number(mb.break_duration_sec);
-    const waitMs = (forceWait && Number.isFinite(durationSec) && durationSec > 0) ? Math.round(durationSec * 1000) : null;
-    const showTotalPointsAtBreak = mb.show_total_points_at_break === true;
-    const showCurrentBlockPointsAtBreak = mb.show_current_block_points_at_break === true;
-    const escapeKeysRaw = (mb.break_escape_keys ?? 'space').toString();
-    const normalizeBreakKey = (raw) => {
-      const k = (raw ?? '').toString().trim().toLowerCase();
-      if (!k) return null;
-      if (k === 'space' || k === 'spacebar') return ' ';
-      if (k === 'enter' || k === 'return') return 'Enter';
-      if (k === 'escape' || k === 'esc') return 'Escape';
-      return raw;
-    };
-    const escapeKeys = escapeKeysRaw
-      .split(/[\s,]+/g)
-      .map((s) => normalizeBreakKey(s))
-      .filter(Boolean);
-
-    const formatBreakPointsLabel = (points) => {
-      const n = Number(points);
-      if (!Number.isFinite(n)) return '0';
-      return Number.isInteger(n)
-        ? String(n)
-        : n.toFixed(2).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
-    };
-
-    const getBreakPointsSnapshot = () => {
-      if (typeof jsPsych === 'undefined' || !jsPsych || !jsPsych.data || typeof jsPsych.data.get !== 'function') {
-        return { totalPoints: 0, currentBlockPoints: 0 };
-      }
-
-      const allValues = jsPsych.data.get().values();
-      let totalPoints = 0;
-      let currentBlockPoints = 0;
-      let sinceBreakStart = allValues.length - 1;
-
-      for (let i = allValues.length - 1; i >= 0; i--) {
-        const row = allValues[i];
-        if (row && row._auto_inserted_miniblock_break === true) {
-          sinceBreakStart = i + 1;
-          break;
-        }
-      }
-
-      for (let i = allValues.length - 1; i >= 0; i--) {
-        const row = allValues[i];
-        const after = Number(row && row.reward_total_points_after_trial);
-        const before = Number(row && row.reward_total_points_before_trial);
-        if (Number.isFinite(after)) {
-          totalPoints = after;
-          break;
-        }
-        if (Number.isFinite(before)) {
-          totalPoints = before;
-          break;
-        }
-      }
-
-      for (let i = sinceBreakStart; i < allValues.length; i++) {
-        const row = allValues[i];
-        const awarded = Number(row && row.reward_points_awarded);
-        if (Number.isFinite(awarded)) currentBlockPoints += awarded;
-      }
-
-      return { totalPoints, currentBlockPoints };
-    };
-
-    const buildBreakStimulus = (meta, withContinuePrompt) => {
-      const lines = [String(meta.message || '')];
-      const pointsSnapshot = getBreakPointsSnapshot();
-
-      if (meta.showTotalPointsAtBreak) {
-        lines.push('');
-        lines.push(`Total points: ${formatBreakPointsLabel(pointsSnapshot.totalPoints)}`);
-      }
-      if (meta.showCurrentBlockPointsAtBreak) {
-        lines.push(`Current block points: ${formatBreakPointsLabel(pointsSnapshot.currentBlockPoints)}`);
-      }
-      if (withContinuePrompt) {
-        lines.push('');
-        lines.push(`Press ${meta.keys.map((k) => k === ' ' ? 'Space' : String(k)).join(' / ')} to continue.`);
-      }
-
-      return `<div style="max-width:720px;margin:0 auto;text-align:center;white-space:pre-wrap;">${escapeHtml(lines.join('\n'))}</div>`;
-    };
-
-    const buildMiniblockMeta = (resolvedKeys) => ({
-      trials_per_block: trialsPerBlock,
-      force_wait_for_break: forceWait,
-      break_duration_ms: Number.isFinite(waitMs) && waitMs > 0 ? waitMs : null,
-      break_message: message,
-      break_escape_keys: Array.isArray(resolvedKeys) ? resolvedKeys.slice() : [' '],
-      show_total_points_at_break: showTotalPointsAtBreak,
-      show_current_block_points_at_break: showCurrentBlockPointsAtBreak
-    });
-
-    const out = [];
-    for (let i = 0; i < srcTrials.length; i++) {
-      out.push(srcTrials[i]);
-
-      const atBoundary = ((i + 1) % trialsPerBlock === 0);
-      const hasMoreTrials = (i + 1) < srcTrials.length;
-      if (!atBoundary || !hasMoreTrials) continue;
-
-      const resolvedKeys = escapeKeys.length ? escapeKeys : [' '];
-      const miniblockMeta = buildMiniblockMeta(resolvedKeys);
-      if (forceWait && Number.isFinite(waitMs) && waitMs > 0) {
-        out.push({
-          type: 'html-keyboard-response',
-          stimulus: () => buildBreakStimulus({
-            message,
-            keys: resolvedKeys,
-            showTotalPointsAtBreak,
-            showCurrentBlockPointsAtBreak
-          }, false),
-          choices: 'NO_KEYS',
-          response_ends_trial: false,
-          trial_duration: waitMs,
-          _auto_inserted_miniblock_break: true,
-          _auto_inserted_miniblock_wait: true,
-          _auto_miniblock_meta: miniblockMeta
-        });
-
-        out.push({
-          type: 'html-keyboard-response',
-          stimulus: () => buildBreakStimulus({
-            message,
-            keys: resolvedKeys,
-            showTotalPointsAtBreak,
-            showCurrentBlockPointsAtBreak
-          }, true),
-          choices: resolvedKeys,
-          response_ends_trial: true,
-          _auto_inserted_miniblock_break: true,
-          _auto_inserted_miniblock_continue: true,
-          _auto_miniblock_meta: miniblockMeta
-        });
-      } else {
-        out.push({
-          type: 'html-keyboard-response',
-          stimulus: () => buildBreakStimulus({
-            message,
-            keys: resolvedKeys,
-            showTotalPointsAtBreak,
-            showCurrentBlockPointsAtBreak
-          }, false),
-          choices: resolvedKeys,
-          response_ends_trial: true,
-          _auto_inserted_miniblock_break: true,
-          _auto_miniblock_meta: miniblockMeta
-        });
-      }
-    }
-
-    return out;
-  }
-
   function expandBlock(block, opts) {
     const length = resolveBlockLength(block, opts, 1);
     const baseType = (typeof block.block_component_type === 'string' && block.block_component_type.trim())
@@ -545,24 +349,6 @@
         ? block.component_type.trim()
         : 'rdm-trial';
     const canonicalBaseType = (baseType === 'gabor-quest') ? 'gabor-trial' : baseType;
-    const sourceTimelinePath = Array.isArray(block?._source_timeline_path)
-      ? block._source_timeline_path.filter((seg) => Number.isFinite(Number(seg))).map((seg) => Number(seg))
-      : [];
-    const sourceTimelinePathText = sourceTimelinePath.length ? sourceTimelinePath.join('.') : '';
-    const sourceComponentLabel = (block?.label ?? block?.name ?? '').toString().trim();
-    const sourceComponentIdentity = sourceComponentLabel || (sourceTimelinePathText
-      ? `${canonicalBaseType}@${sourceTimelinePathText}`
-      : canonicalBaseType);
-    const applyGeneratedBlockSourceMeta = (trial, trialIndex) => ({
-      ...trial,
-      _generated_from_block: true,
-      _block_index: trialIndex,
-      _source_component_type: canonicalBaseType,
-      _source_component_label: sourceComponentLabel || null,
-      _source_component_identity: sourceComponentIdentity,
-      _source_timeline_path: sourceTimelinePath.slice(),
-      _source_timeline_path_text: sourceTimelinePathText || null
-    });
 
     // N-back: treat Block as the generator (Builder UX).
     // Support legacy `nback-block`, the public alias `nback`, and the older name `nback-trial-sequence`.
@@ -826,12 +612,128 @@
         return 200;
       })();
 
+      const normalizeKeyName = (raw) => {
+        const str = (raw ?? '').toString();
+        if (str === ' ') return ' ';
+        const t = str.trim();
+        const lower = t.toLowerCase();
+        if (lower === 'space') return ' ';
+        if (lower === 'enter') return 'Enter';
+        if (lower === 'escape' || lower === 'esc') return 'Escape';
+        if (t.length === 1) return t.toLowerCase();
+        return t;
+      };
+
+      const normalizeCipResponseParadigm = (raw) => {
+        const s = (raw ?? 'categorization').toString().trim().toLowerCase();
+        return (s === 'nback') ? 'nback' : 'categorization';
+      };
+
+      const cipResponseParadigm = normalizeCipResponseParadigm(src.cip_response_paradigm);
+
       const choiceKeysRaw = (src.cip_choice_keys ?? src.choices ?? 'f,j').toString();
       const choices = choiceKeysRaw
         .split(/[\n,]/g)
         .map(s => s.trim())
         .filter(Boolean)
         .map(s => (s.length === 1 ? s.toLowerCase() : s));
+
+      const getCategorizationConfig = () => {
+        const defaults = [
+          { label: 'Category 1', key: 'f' },
+          { label: 'Category 2', key: 'j' },
+          { label: 'Category 3', key: '1' },
+          { label: 'Category 4', key: '2' },
+          { label: 'Category 5', key: '3' },
+          { label: 'Category 6', key: '4' },
+          { label: 'Category 7', key: '5' }
+        ];
+
+        const countRaw = Number.parseInt(src.cip_category_count, 10);
+        const count = Number.isFinite(countRaw) ? Math.max(2, Math.min(7, countRaw)) : 2;
+
+        const categories = [];
+        for (let i = 1; i <= count; i++) {
+          const fallback = defaults[i - 1];
+          const label = (src[`cip_category_${i}_label`] ?? fallback.label).toString().trim() || fallback.label;
+          const key = normalizeKeyName((src[`cip_category_${i}_key`] ?? fallback.key).toString());
+          categories.push({ index: i, label, key: key || fallback.key });
+        }
+
+        const deduped = [];
+        const used = new Set();
+        for (const c of categories) {
+          const k = (c.key || '').toString();
+          if (!k || used.has(k)) continue;
+          used.add(k);
+          deduped.push(c);
+        }
+
+        return {
+          categories: deduped.length >= 2 ? deduped : categories.slice(0, 2),
+          showButtons: src.cip_show_category_buttons === true
+        };
+      };
+
+      const inferCategoryIndexFromFilename = (filename, maxCount) => {
+        const name = (filename ?? '').toString().toLowerCase();
+        if (!name) return null;
+
+        // Accept tokens like: cat1, cat_1, cat-1, category1, category_1, category-1
+        const m = name.match(/(?:^|[^a-z0-9])cat(?:egory)?[_\-\s]*([1-9])(?:[^0-9]|$)/i);
+        if (!m) return null;
+        const idx = Number.parseInt(m[1], 10);
+        if (!Number.isFinite(idx)) return null;
+        const capped = Number.isFinite(Number(maxCount)) ? Math.max(1, Math.min(Number(maxCount), idx)) : idx;
+        return capped;
+      };
+
+      const getCipNbackConfig = () => {
+        const nbackDefaults = (opts && isObject(opts.nbackDefaults)) ? opts.nbackDefaults : {};
+        const pickFromDefaults = (raw, defKey, fallback) => {
+          if (raw !== undefined && raw !== null) return raw;
+          if (nbackDefaults && nbackDefaults[defKey] !== undefined && nbackDefaults[defKey] !== null) return nbackDefaults[defKey];
+          return fallback;
+        };
+        const resolveDevice = (raw) => {
+          const d = (raw ?? 'inherit').toString().trim().toLowerCase();
+          if (!d || d === 'inherit') {
+            const def = (nbackDefaults.response_device ?? 'keyboard').toString().trim().toLowerCase();
+            return (def === 'mouse' || def === 'keyboard') ? def : 'keyboard';
+          }
+          return (d === 'mouse' || d === 'keyboard') ? d : 'keyboard';
+        };
+
+        const responseParadigmRaw = pickFromDefaults(src.nback_response_paradigm, 'response_paradigm', 'go_nogo');
+        const responseParadigm = ((responseParadigmRaw ?? 'go_nogo').toString().trim().toLowerCase() === '2afc') ? '2afc' : 'go_nogo';
+
+        const n = Number.isFinite(Number(pickFromDefaults(src.nback_n, 'n', 2)))
+          ? Math.max(1, Math.floor(Number(pickFromDefaults(src.nback_n, 'n', 2))))
+          : 2;
+
+        const goKey = normalizeKeyName(pickFromDefaults(src.nback_go_key, 'go_key', 'space'));
+        const matchKey = normalizeKeyName(pickFromDefaults(src.nback_match_key, 'match_key', 'j'));
+        const nonmatchKey = normalizeKeyName(pickFromDefaults(src.nback_nonmatch_key, 'nonmatch_key', 'f'));
+
+        return {
+          n,
+          response_paradigm: responseParadigm,
+          response_device: resolveDevice(pickFromDefaults(src.nback_response_device, 'response_device', 'inherit')),
+          go_key: goKey || ' ',
+          match_key: matchKey || 'j',
+          nonmatch_key: nonmatchKey || 'f',
+          show_buttons: (src.nback_show_buttons !== undefined && src.nback_show_buttons !== null)
+            ? (src.nback_show_buttons === true)
+            : (nbackDefaults.show_buttons === true),
+          show_feedback: (src.nback_show_feedback !== undefined && src.nback_show_feedback !== null)
+            ? (src.nback_show_feedback === true)
+            : (nbackDefaults.show_feedback === true),
+          feedback_duration_ms: pickFromDefaults(src.nback_feedback_duration_ms, 'feedback_duration_ms', 250)
+        };
+      };
+
+      const categorizationCfg = cipResponseParadigm === 'categorization' ? getCategorizationConfig() : null;
+      const nbackCfg = cipResponseParadigm === 'nback' ? getCipNbackConfig() : null;
 
       const out = [];
       for (let i = 0; i < chosenIndices.length; i++) {
@@ -850,7 +752,7 @@
           return null;
         };
 
-        out.push(applyGeneratedBlockSourceMeta({
+        out.push({
           type: 'continuous-image-presentation',
           image_url: imageUrls[idx] || '',
           asset_filename: filenames[idx] || '',
@@ -859,12 +761,57 @@
           transition_frames: transitionFrames,
           image_duration_ms: imageDurationMs,
           transition_duration_ms: transitionDurationMs,
-          choices,
+          choices: (cipResponseParadigm === 'categorization' && categorizationCfg)
+            ? categorizationCfg.categories.map((c) => c.key)
+            : choices,
+          cip_response_paradigm: cipResponseParadigm,
+          ...(cipResponseParadigm === 'categorization' && categorizationCfg
+            ? (() => {
+                const targetIdx = inferCategoryIndexFromFilename(filenames[idx] || imageUrls[idx] || '', categorizationCfg.categories.length);
+                const targetCat = Number.isFinite(Number(targetIdx))
+                  ? (categorizationCfg.categories.find((c) => Number(c.index) === Number(targetIdx)) || null)
+                  : null;
+
+                return {
+                  cip_categories: categorizationCfg.categories,
+                  cip_show_category_buttons: categorizationCfg.showButtons,
+                  cip_target_category_index: targetCat ? targetCat.index : null,
+                  cip_target_category_label: targetCat ? targetCat.label : null,
+                  correct_response: targetCat ? targetCat.key : null
+                };
+              })()
+            : {}),
+          ...(cipResponseParadigm === 'nback' && nbackCfg
+            ? (() => {
+                const token = (filenames[idx] || imageUrls[idx] || `image_${idx}`).toString();
+                const isMatch = i >= nbackCfg.n && token === (filenames[chosenIndices[i - nbackCfg.n]] || imageUrls[chosenIndices[i - nbackCfg.n]] || `image_${chosenIndices[i - nbackCfg.n]}`);
+                const correctResponse = (nbackCfg.response_paradigm === '2afc')
+                  ? (isMatch ? nbackCfg.match_key : nbackCfg.nonmatch_key)
+                  : (isMatch ? nbackCfg.go_key : null);
+
+                return {
+                  nback_n: nbackCfg.n,
+                  nback_token: token,
+                  nback_is_match: isMatch,
+                  correct_response: correctResponse,
+                  response_paradigm: nbackCfg.response_paradigm,
+                  response_device: nbackCfg.response_device,
+                  go_key: nbackCfg.go_key,
+                  match_key: nbackCfg.match_key,
+                  nonmatch_key: nbackCfg.nonmatch_key,
+                  show_buttons: nbackCfg.show_buttons,
+                  show_feedback: nbackCfg.show_feedback,
+                  feedback_duration_ms: nbackCfg.feedback_duration_ms
+                };
+              })()
+            : {}),
+          _generated_from_block: true,
+          _block_index: i,
           _block_source_index: idx
-        }, i));
+        });
       }
 
-      return applyMiniblockStructureToTrials(out, block);
+      return out;
     }
 
     const seedParsed = Number.parseInt((block.seed ?? '').toString(), 10);
@@ -1256,7 +1203,6 @@
         ...(Number.isFinite(inferredMin) && a.min_value === undefined ? { min_value: inferredMin } : {}),
         ...(Number.isFinite(inferredMax) && a.max_value === undefined ? { max_value: inferredMax } : {})
       };
-      adaptiveMeta.questOpts = { ...questOpts };
 
       // Coarse/fine phase support
       const trialsCoarse = Number.isFinite(Number(a.quest_trials_coarse ?? values.quest_trials_coarse))
@@ -1497,29 +1443,18 @@
     const applyGaborBlockCounterbalance = (generatedTrials) => {
       if (!Array.isArray(generatedTrials) || generatedTrials.length === 0) return;
 
-      const counterbalanceScope = (values.counterbalance_scope ?? 'per_block').toString().trim().toLowerCase();
-      const counterbalanceGroupId = (values.counterbalance_group_id ?? '').toString().trim();
-      const useSharedCounterbalanceGroup = (counterbalanceScope === 'group') && counterbalanceGroupId !== '';
-
-      const cbSig = useSharedCounterbalanceGroup
-        ? JSON.stringify({
-            counterbalance_group_id: counterbalanceGroupId,
-            value_target_value: values.value_target_value,
-            value_non_target_value: values.value_non_target_value,
-            adaptive_mode: (isObject(values.adaptive) ? values.adaptive.mode : null)
-          })
-        : JSON.stringify({
-            baseType,
-            target_location: values.target_location,
-            target_left_probability: values.target_left_probability,
-            spatial_cue_target_mode: values.spatial_cue_target_mode,
-            spatial_cue_validity_probability: values.spatial_cue_validity_probability,
-            value_target_value: values.value_target_value,
-            value_non_target_value: values.value_non_target_value,
-            target_tilt_deg: values.target_tilt_deg,
-            distractor_orientation_deg: values.distractor_orientation_deg,
-            adaptive_mode: (isObject(values.adaptive) ? values.adaptive.mode : null)
-          });
+      const cbSig = JSON.stringify({
+        baseType,
+        target_location: values.target_location,
+        target_left_probability: values.target_left_probability,
+        spatial_cue_target_mode: values.spatial_cue_target_mode,
+        spatial_cue_validity_probability: values.spatial_cue_validity_probability,
+        value_target_value: values.value_target_value,
+        value_non_target_value: values.value_non_target_value,
+        target_tilt_deg: values.target_tilt_deg,
+        distractor_orientation_deg: values.distractor_orientation_deg,
+        adaptive_mode: (isObject(values.adaptive) ? values.adaptive.mode : null)
+      });
 
       const targetLocationOpts = normalizeOptions(values.target_location).map(v => (v ?? '').toString().trim().toLowerCase());
       const hasBothTargetSides = targetLocationOpts.includes('left') && targetLocationOpts.includes('right');
@@ -1616,7 +1551,7 @@
 
     const trials = [];
     for (let i = 0; i < length; i++) {
-      const t = applyGeneratedBlockSourceMeta({ type: canonicalBaseType }, i);
+      const t = { type: canonicalBaseType, _generated_from_block: true, _block_index: i };
 
       // Apply fixed values
       for (const [k, v] of Object.entries(values)) {
@@ -1846,8 +1781,6 @@
 
         delete t.spatial_cue_target_mode;
         delete t.target_left_probability;
-        delete t.counterbalance_scope;
-        delete t.counterbalance_group_id;
         delete t.use_stored_thresholds;
         delete t.value_non_target_value;
 
@@ -2067,10 +2000,9 @@
 
           const reinit = (sc) => {
             const currentMean = sc.meanThreshold();
-            const savedQuestOpts = isObject(adaptiveMeta.questOpts) ? adaptiveMeta.questOpts : {};
-            const origSd = Number.isFinite(Number(savedQuestOpts.start_sd)) ? Number(savedQuestOpts.start_sd) : 20;
+            const origSd = Number.isFinite(Number(questOpts.start_sd)) ? Number(questOpts.start_sd) : 20;
             return new QuestStaircase({
-              ...savedQuestOpts,
+              ...questOpts,
               start_value: currentMean,
               start_sd: Math.max(0.5, origSd * 0.4)
             });
@@ -2190,13 +2122,12 @@
       applyGaborBlockCounterbalance(trials);
     }
 
-    return applyMiniblockStructureToTrials(trials, block);
+    return trials;
   }
 
   function expandTimeline(rawTimeline, opts, level = 0) {
     const inTl = Array.isArray(rawTimeline) ? rawTimeline : [];
     const out = [];
-    const taskType = ((opts && opts.taskType) ?? '').toString().trim().toLowerCase();
 
     const shuffleInPlace = (arr) => {
       for (let i = arr.length - 1; i > 0; i--) {
@@ -2275,9 +2206,6 @@
           const randomNode = {
             type: 'randomize-group',
             randomizable_across_markers: item.randomizable_across_markers !== false,
-            ...(item.pool_across_randomize_groups === true || item.pool_across_randomize_groups === false
-              ? { pool_across_randomize_groups: item.pool_across_randomize_groups === true }
-              : {}),
             ...(randomId ? { random_group_id: randomId } : {}),
             items: []
           };
@@ -2305,9 +2233,8 @@
     })();
 
     const sampleMwProbeIntervalMs = (probeItem) => {
-      // Respect global interval bounds when present; fall back to per-probe bounds.
-      const minRaw = Number(probeItem && (probeItem.global_interval_min_ms ?? probeItem.min_interval_ms));
-      const maxRaw = Number(probeItem && (probeItem.global_interval_max_ms ?? probeItem.max_interval_ms));
+      const minRaw = Number(probeItem && probeItem.min_interval_ms);
+      const maxRaw = Number(probeItem && probeItem.max_interval_ms);
       const minMs = Number.isFinite(minRaw) ? Math.max(0, minRaw) : 0;
       const maxMs = Number.isFinite(maxRaw) ? Math.max(0, maxRaw) : minMs;
       const lo = Math.min(minMs, maxMs);
@@ -2328,31 +2255,6 @@
     const estimateTrialDurationMs = (trial) => {
       if (!isObject(trial)) return 0;
 
-      const estimatePostGapMs = (t) => {
-        if (!isObject(t)) return 0;
-        const candidates = [
-          t.post_trial_gap,
-          t.post_trial_gap_ms,
-          t.iti_ms,
-          t.iti,
-          t.inter_trial_interval_ms,
-          t.inter_trial_interval
-        ];
-        for (const raw of candidates) {
-          const n = Number(raw);
-          if (Number.isFinite(n) && n > 0) return n;
-        }
-
-        // Generated block trials often inherit ITI globally at compile-time
-        // (e.g., via config timing/default_iti) rather than carrying explicit
-        // per-item gap fields during expandTimeline scheduling.
-        if (t._generated_from_block === true) {
-          const defaultGap = Number(opts && opts.defaultGeneratedTrialPostGapMs);
-          if (Number.isFinite(defaultGap) && defaultGap > 0) return defaultGap;
-        }
-        return 0;
-      };
-
       if ((trial.type ?? '').toString() === 'mot-trial') {
         const cueMs = Number(trial.cue_duration_ms);
         const trackingMs = Number(trial.tracking_duration_ms);
@@ -2370,7 +2272,6 @@
         return cue + tracking + probe + feedback + iti;
       }
 
-      let coreMs = 0;
       const candidates = [
         trial.trial_duration_ms,
         trial.trial_duration,
@@ -2381,32 +2282,23 @@
 
       for (const raw of candidates) {
         const n = Number(raw);
-        if (Number.isFinite(n) && n > 0) {
-          coreMs = n;
-          break;
-        }
+        if (Number.isFinite(n) && n > 0) return n;
       }
 
-      if (!(coreMs > 0)) {
-        const stimMs = Number(trial.stimulus_duration_ms);
-        const isiMs = Number(trial.isi_duration_ms);
-        if (Number.isFinite(stimMs) && stimMs > 0 && Number.isFinite(isiMs) && isiMs >= 0) {
-          coreMs = stimMs + isiMs;
-        }
+      const stimMs = Number(trial.stimulus_duration_ms);
+      const isiMs = Number(trial.isi_duration_ms);
+      if (Number.isFinite(stimMs) && stimMs > 0 && Number.isFinite(isiMs) && isiMs >= 0) {
+        return stimMs + isiMs;
       }
 
-      if (!(coreMs > 0)) {
-        const fallback = Number(opts && opts.defaultGeneratedTrialDurationMs);
-        if (Number.isFinite(fallback) && fallback > 0) coreMs = fallback;
-      }
+      const fallback = Number(opts && opts.defaultGeneratedTrialDurationMs);
+      if (Number.isFinite(fallback) && fallback > 0) return fallback;
 
-      if (!(coreMs > 0)) return 0;
-      return coreMs + estimatePostGapMs(trial);
+      return 0;
     };
 
-    const chunkItemsForShuffle = (items, options = {}) => {
+    const chunkItemsForShuffle = (items) => {
       const src = Array.isArray(items) ? items : [];
-      const bundleInstructionRuns = options && options.bundleInstructionRuns === true;
       const chunks = [];
 
       for (let i = 0; i < src.length;) {
@@ -2426,21 +2318,6 @@
               j += 1;
               break;
             }
-          }
-          chunks.push(chunk);
-          i = j;
-          continue;
-        }
-
-        // Treat authored instruction-led runs as atomic shuffle units when
-        // randomizing inside explicit randomize groups.
-        if (bundleInstructionRuns && isInstructionLikeItem(current)) {
-          const chunk = [current];
-          let j = i + 1;
-          for (; j < src.length; j++) {
-            const candidate = src[j];
-            if (isInstructionLikeItem(candidate)) break;
-            chunk.push(candidate);
           }
           chunks.push(chunk);
           i = j;
@@ -2498,274 +2375,8 @@
       return outChunks;
     };
 
-    const flattenChunksToItems = (chunks) => {
-      const src = Array.isArray(chunks) ? chunks : [];
-      return src.flatMap((chunk) => Array.isArray(chunk) ? chunk : [chunk]);
-    };
-
-    const normalizeMiniblockMeta = (node) => {
-      const meta = isObject(node) && isObject(node._auto_miniblock_meta)
-        ? node._auto_miniblock_meta
-        : null;
-      if (!meta) return null;
-
-      const interval = Number.parseInt(meta.trials_per_block ?? '', 10);
-      if (!Number.isFinite(interval) || interval <= 0) return null;
-
-      const forceWait = meta.force_wait_for_break === true;
-      const waitMsRaw = Number(meta.break_duration_ms);
-      const waitMs = (forceWait && Number.isFinite(waitMsRaw) && waitMsRaw > 0) ? Math.round(waitMsRaw) : null;
-      const message = (meta.break_message ?? 'Take a short break.\n\nPress the key below when you are ready to continue.').toString();
-      const keys = Array.isArray(meta.break_escape_keys) && meta.break_escape_keys.length
-        ? meta.break_escape_keys.map((k) => String(k))
-        : [' '];
-      const showTotalPointsAtBreak = meta.show_total_points_at_break === true;
-      const showCurrentBlockPointsAtBreak = meta.show_current_block_points_at_break === true;
-
-      return {
-        trialsPerBlock: interval,
-        forceWait,
-        waitMs,
-        message,
-        keys,
-        showTotalPointsAtBreak,
-        showCurrentBlockPointsAtBreak
-      };
-    };
-
-    const buildAutoBreakTrialsFromMeta = (meta) => {
-      if (!meta) return [];
-      const resolvedKeys = Array.isArray(meta.keys) && meta.keys.length ? meta.keys : [' '];
-      const legacyMeta = {
-        trials_per_block: meta.trialsPerBlock,
-        force_wait_for_break: meta.forceWait,
-        break_duration_ms: meta.waitMs,
-        break_message: meta.message,
-        break_escape_keys: resolvedKeys.slice(),
-        show_total_points_at_break: meta.showTotalPointsAtBreak === true,
-        show_current_block_points_at_break: meta.showCurrentBlockPointsAtBreak === true
-      };
-
-      if (meta.forceWait && Number.isFinite(meta.waitMs) && meta.waitMs > 0) {
-        return [
-          {
-            type: 'html-keyboard-response',
-            stimulus: () => {
-              const lines = [String(meta.message || '')];
-              const pointsRows = (typeof jsPsych !== 'undefined' && jsPsych?.data?.get)
-                ? jsPsych.data.get().values()
-                : [];
-
-              let totalPoints = 0;
-              let blockPoints = 0;
-              let sinceBreakStart = pointsRows.length - 1;
-              for (let i = pointsRows.length - 1; i >= 0; i--) {
-                if (pointsRows[i] && pointsRows[i]._auto_inserted_miniblock_break === true) {
-                  sinceBreakStart = i + 1;
-                  break;
-                }
-              }
-              for (let i = pointsRows.length - 1; i >= 0; i--) {
-                const after = Number(pointsRows[i] && pointsRows[i].reward_total_points_after_trial);
-                const before = Number(pointsRows[i] && pointsRows[i].reward_total_points_before_trial);
-                if (Number.isFinite(after)) { totalPoints = after; break; }
-                if (Number.isFinite(before)) { totalPoints = before; break; }
-              }
-              for (let i = sinceBreakStart; i < pointsRows.length; i++) {
-                const awarded = Number(pointsRows[i] && pointsRows[i].reward_points_awarded);
-                if (Number.isFinite(awarded)) blockPoints += awarded;
-              }
-
-              const fmt = (n) => {
-                if (!Number.isFinite(Number(n))) return '0';
-                return Number.isInteger(Number(n)) ? String(Number(n)) : Number(n).toFixed(2).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
-              };
-
-              if (meta.showTotalPointsAtBreak) {
-                lines.push('');
-                lines.push(`Total points: ${fmt(totalPoints)}`);
-              }
-              if (meta.showCurrentBlockPointsAtBreak) {
-                lines.push(`Current block points: ${fmt(blockPoints)}`);
-              }
-
-              return `<div style="max-width:720px;margin:0 auto;text-align:center;white-space:pre-wrap;">${escapeHtml(lines.join('\n'))}</div>`;
-            },
-            choices: 'NO_KEYS',
-            response_ends_trial: false,
-            trial_duration: meta.waitMs,
-            _auto_inserted_miniblock_break: true,
-            _auto_inserted_miniblock_wait: true,
-            _auto_inserted_miniblock_global_counter: true,
-            _auto_miniblock_meta: legacyMeta
-          },
-          {
-            type: 'html-keyboard-response',
-            stimulus: () => {
-              const lines = [String(meta.message || '')];
-              const pointsRows = (typeof jsPsych !== 'undefined' && jsPsych?.data?.get)
-                ? jsPsych.data.get().values()
-                : [];
-
-              let totalPoints = 0;
-              let blockPoints = 0;
-              let sinceBreakStart = pointsRows.length - 1;
-              for (let i = pointsRows.length - 1; i >= 0; i--) {
-                if (pointsRows[i] && pointsRows[i]._auto_inserted_miniblock_break === true) {
-                  sinceBreakStart = i + 1;
-                  break;
-                }
-              }
-              for (let i = pointsRows.length - 1; i >= 0; i--) {
-                const after = Number(pointsRows[i] && pointsRows[i].reward_total_points_after_trial);
-                const before = Number(pointsRows[i] && pointsRows[i].reward_total_points_before_trial);
-                if (Number.isFinite(after)) { totalPoints = after; break; }
-                if (Number.isFinite(before)) { totalPoints = before; break; }
-              }
-              for (let i = sinceBreakStart; i < pointsRows.length; i++) {
-                const awarded = Number(pointsRows[i] && pointsRows[i].reward_points_awarded);
-                if (Number.isFinite(awarded)) blockPoints += awarded;
-              }
-
-              const fmt = (n) => {
-                if (!Number.isFinite(Number(n))) return '0';
-                return Number.isInteger(Number(n)) ? String(Number(n)) : Number(n).toFixed(2).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
-              };
-
-              if (meta.showTotalPointsAtBreak) {
-                lines.push('');
-                lines.push(`Total points: ${fmt(totalPoints)}`);
-              }
-              if (meta.showCurrentBlockPointsAtBreak) {
-                lines.push(`Current block points: ${fmt(blockPoints)}`);
-              }
-              lines.push('');
-              lines.push(`Press ${resolvedKeys.map((k) => k === ' ' ? 'Space' : String(k)).join(' / ')} to continue.`);
-
-              return `<div style="max-width:720px;margin:0 auto;text-align:center;white-space:pre-wrap;">${escapeHtml(lines.join('\n'))}</div>`;
-            },
-            choices: resolvedKeys,
-            response_ends_trial: true,
-            _auto_inserted_miniblock_break: true,
-            _auto_inserted_miniblock_continue: true,
-            _auto_inserted_miniblock_global_counter: true,
-            _auto_miniblock_meta: legacyMeta
-          }
-        ];
-      }
-
-      return [
-        {
-          type: 'html-keyboard-response',
-          stimulus: () => {
-            const lines = [String(meta.message || '')];
-            const pointsRows = (typeof jsPsych !== 'undefined' && jsPsych?.data?.get)
-              ? jsPsych.data.get().values()
-              : [];
-
-            let totalPoints = 0;
-            let blockPoints = 0;
-            let sinceBreakStart = pointsRows.length - 1;
-            for (let i = pointsRows.length - 1; i >= 0; i--) {
-              if (pointsRows[i] && pointsRows[i]._auto_inserted_miniblock_break === true) {
-                sinceBreakStart = i + 1;
-                break;
-              }
-            }
-            for (let i = pointsRows.length - 1; i >= 0; i--) {
-              const after = Number(pointsRows[i] && pointsRows[i].reward_total_points_after_trial);
-              const before = Number(pointsRows[i] && pointsRows[i].reward_total_points_before_trial);
-              if (Number.isFinite(after)) { totalPoints = after; break; }
-              if (Number.isFinite(before)) { totalPoints = before; break; }
-            }
-            for (let i = sinceBreakStart; i < pointsRows.length; i++) {
-              const awarded = Number(pointsRows[i] && pointsRows[i].reward_points_awarded);
-              if (Number.isFinite(awarded)) blockPoints += awarded;
-            }
-
-            const fmt = (n) => {
-              if (!Number.isFinite(Number(n))) return '0';
-              return Number.isInteger(Number(n)) ? String(Number(n)) : Number(n).toFixed(2).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
-            };
-
-            if (meta.showTotalPointsAtBreak) {
-              lines.push('');
-              lines.push(`Total points: ${fmt(totalPoints)}`);
-            }
-            if (meta.showCurrentBlockPointsAtBreak) {
-              lines.push(`Current block points: ${fmt(blockPoints)}`);
-            }
-
-            return `<div style="max-width:720px;margin:0 auto;text-align:center;white-space:pre-wrap;">${escapeHtml(lines.join('\n'))}</div>`;
-          },
-          choices: resolvedKeys,
-          response_ends_trial: true,
-          _auto_inserted_miniblock_break: true,
-          _auto_inserted_miniblock_global_counter: true,
-          _auto_miniblock_meta: legacyMeta
-        }
-      ];
-    };
-
-    const rebuildGlobalMiniblockBreaksForPooledItems = (items) => {
-      const srcItems = Array.isArray(items) ? items : [];
-      if (!srcItems.length) return srcItems;
-
-      const breakNodes = srcItems.filter((node) => isObject(node) && node._auto_inserted_miniblock_break === true);
-      if (!breakNodes.length) return srcItems;
-
-      const first = breakNodes.map(normalizeMiniblockMeta).find(Boolean);
-      if (!first) return srcItems;
-
-      const trialsPerBlock = first.trialsPerBlock;
-      if (!Number.isFinite(trialsPerBlock) || trialsPerBlock <= 0) return srcItems;
-
-      const nonBreakItems = srcItems.filter((node) => !(isObject(node) && node._auto_inserted_miniblock_break === true));
-
-      const countableTotalGenerated = nonBreakItems.filter((node) => isObject(node) && node._generated_from_block === true).length;
-      const useGeneratedCounter = countableTotalGenerated > 0;
-      const countableTotal = useGeneratedCounter ? countableTotalGenerated : nonBreakItems.length;
-      if (countableTotal <= trialsPerBlock) return nonBreakItems;
-
-      const out = [];
-      let sinceBreak = 0;
-      let remaining = countableTotal;
-
-      for (const node of nonBreakItems) {
-        out.push(node);
-
-        const isCountable = useGeneratedCounter
-          ? (isObject(node) && node._generated_from_block === true)
-          : true;
-        if (!isCountable) continue;
-
-        sinceBreak += 1;
-        remaining -= 1;
-
-        const atBoundary = (sinceBreak % trialsPerBlock) === 0;
-        if (!atBoundary || remaining <= 0) continue;
-
-        out.push(...buildAutoBreakTrialsFromMeta(first));
-      }
-
-      return out;
-    };
-
-    const annotateChildTimelineSourcePath = (items, parentPath) => {
-      const src = Array.isArray(items) ? items : [];
-      const pathPrefix = Array.isArray(parentPath) ? parentPath : [];
-      return src.map((child, idx) => {
-        if (!isObject(child) || Array.isArray(child._source_timeline_path)) return child;
-        return {
-          ...child,
-          _source_timeline_path: [...pathPrefix, idx]
-        };
-      });
-    };
-
     const globalRandomizeOrder = (opts && opts.globalRandomizeOrder === true && level === 0);
-    const tlWithSourcePath = annotateChildTimelineSourcePath(inTlNormalized, []);
-    const topLevelChunks = chunkItemsForShuffle(tlWithSourcePath);
+    const topLevelChunks = chunkItemsForShuffle(inTlNormalized);
     const orderedTopLevelChunks = globalRandomizeOrder
       ? shuffleChunksPreservingInstructionLike(topLevelChunks)
       : topLevelChunks;
@@ -2774,26 +2385,7 @@
       if (!isObject(node)) return false;
       const t = String(node.type || '');
       if (t !== 'randomize-group' && t !== 'randomize-across-markers') return false;
-      if (node.pool_across_randomize_groups === true) return true;
-      if (node.pool_across_randomize_groups === false) return false;
-      // Only pool across sibling groups when explicitly opted in.
-      return node.randomizable_across_markers === true;
-    };
-
-    const getBlockBaseType = (node) => {
-      if (!isObject(node) || node.type !== 'block') return '';
-      const baseType = (typeof node.component_type === 'string' && node.component_type.trim())
-        ? node.component_type.trim()
-        : (typeof node.block_component_type === 'string' && node.block_component_type.trim())
-          ? node.block_component_type.trim()
-          : 'rdm-trial';
-      return baseType;
-    };
-
-    const isExpandableBlockItem = (node) => {
-      const baseType = getBlockBaseType(node);
-      if (!baseType) return false;
-      return !preserveFor.has(baseType);
+      return node.randomizable_across_markers !== false;
     };
 
     const expandSingleItem = (item) => {
@@ -2806,10 +2398,9 @@
           : (Array.isArray(item.timeline)
             ? item.timeline
             : (Array.isArray(item.components) ? item.components : []));
-        const childItemsWithSourcePath = annotateChildTimelineSourcePath(childItems, item._source_timeline_path);
 
         for (let i = 0; i < iterations; i++) {
-          out.push(...expandTimeline(childItemsWithSourcePath, opts, level + 1));
+          out.push(...expandTimeline(childItems, opts, level + 1));
         }
         return;
       }
@@ -2820,68 +2411,15 @@
           : (Array.isArray(item.timeline)
             ? item.timeline
             : (Array.isArray(item.components) ? item.components : []));
-        const childItemsWithSourcePath = annotateChildTimelineSourcePath(childItems, item._source_timeline_path);
 
-        const childChunks = chunkItemsForShuffle(childItemsWithSourcePath, { bundleInstructionRuns: true }).map((chunk) => expandTimeline(chunk, opts, level + 1));
+        const childChunks = chunkItemsForShuffle(childItems).map((chunk) => expandTimeline(chunk, opts, level + 1));
         const shouldShuffle = item.randomizable_across_markers !== false;
-        const shouldFlattenPool = item.pool_across_randomize_groups === true;
-
-        let orderedChildChunks = childChunks;
-        if (shouldShuffle) {
-          if (shouldFlattenPool) {
-            const pooledItems = flattenChunksToItems(childChunks);
-            const hasAutoMiniblockBreaks = pooledItems.some((node) => (
-              isObject(node) && node._auto_inserted_miniblock_break === true
-            ));
-
-            if (hasAutoMiniblockBreaks) {
-              // Keep each expanded child chunk intact so auto-inserted miniblock
-              // breaks stay at deterministic intervals within that chunk.
-              orderedChildChunks = shuffleChunksPreservingInstructionLike(childChunks);
-            } else {
-              orderedChildChunks = shuffleChunksPreservingInstructionLike(
-                chunkItemsForShuffle(pooledItems, { bundleInstructionRuns: true })
-              );
-            }
-
-          } else {
-          // For two-way counterbalance groups reused by a parent loop, preserve
-          // strict alternation (ABAB or BABA) across repeated expansions.
-          const groupKey = String(item.random_group_id || '').trim();
-          const canAlternate = groupKey && childChunks.length === 2;
-          if (canAlternate) {
-            if (!isObject(opts.__randomizeGroupState)) opts.__randomizeGroupState = {};
-            const state = opts.__randomizeGroupState;
-            if (!isObject(state[groupKey])) {
-              const startsFlipped = Math.random() < 0.5;
-              state[groupKey] = {
-                baseOrder: startsFlipped ? [1, 0] : [0, 1],
-                flipNext: false
-              };
-            }
-
-            const groupState = state[groupKey];
-            const orderNow = groupState.flipNext
-              ? [groupState.baseOrder[1], groupState.baseOrder[0]]
-              : groupState.baseOrder;
-
-            orderedChildChunks = orderNow
-              .map((idx) => childChunks[idx])
-              .filter((chunk) => Array.isArray(chunk));
-
-            groupState.flipNext = !groupState.flipNext;
-          } else {
-            orderedChildChunks = shuffleChunksPreservingInstructionLike(childChunks);
-          }
-          }
+        const orderedChildChunks = shouldShuffle
+          ? shuffleChunksPreservingInstructionLike(childChunks)
+          : childChunks;
+        for (const expandedChunk of orderedChildChunks) {
+          out.push(...expandedChunk);
         }
-
-        let mergedGroupTimeline = flattenChunksToItems(orderedChildChunks);
-        if (shouldFlattenPool) {
-          mergedGroupTimeline = rebuildGlobalMiniblockBreaksForPooledItems(mergedGroupTimeline);
-        }
-
-        out.push(...mergedGroupTimeline);
         return;
       }
 
@@ -2921,30 +2459,6 @@
     for (let i = 0; i < orderedSiblingItems.length; i++) {
       const item = orderedSiblingItems[i];
       if (!isPoolableSiblingRandomizeGroup(item)) {
-        if (isObject(item) && item.type === 'mw-probe') {
-          const prevSibling = (i > 0) ? orderedSiblingItems[i - 1] : null;
-          const nextSibling = (i + 1 < orderedSiblingItems.length) ? orderedSiblingItems[i + 1] : null;
-
-          const prevExpandable = isExpandableBlockItem(prevSibling);
-          const nextExpandable = isExpandableBlockItem(nextSibling);
-
-          // Preserve authored chronology for block/probe loop patterns:
-          // - block -> probe anchors to previous generated block run
-          // - probe -> block anchors to following generated block run
-          // - otherwise keep auto behavior
-          let anchorHint = 'auto';
-          if (prevExpandable && !nextExpandable) anchorHint = 'prev';
-          else if (!prevExpandable && nextExpandable) anchorHint = 'next';
-          else if (prevExpandable && nextExpandable) anchorHint = 'prev';
-
-          const probeWithHint = (anchorHint === 'auto')
-            ? item
-            : { ...item, _mw_anchor_hint: anchorHint };
-
-          expandSingleItem(probeWithHint);
-          continue;
-        }
-
         expandSingleItem(item);
         continue;
       }
@@ -2958,20 +2472,16 @@
           : (Array.isArray(groupNode.timeline)
             ? groupNode.timeline
             : (Array.isArray(groupNode.components) ? groupNode.components : []));
-        const groupChildItemsWithSourcePath = annotateChildTimelineSourcePath(groupChildItems, groupNode._source_timeline_path);
-        const groupChunks = chunkItemsForShuffle(groupChildItemsWithSourcePath, { bundleInstructionRuns: true }).map((chunk) => expandTimeline(chunk, opts, level + 1));
+        const groupChunks = chunkItemsForShuffle(groupChildItems).map((chunk) => expandTimeline(chunk, opts, level + 1));
         for (const expandedChunk of groupChunks) {
           pooledExpandedChunks.push(expandedChunk);
         }
       }
 
-      const pooledExpandedItems = pooledExpandedChunks.flatMap((chunk) => Array.isArray(chunk) ? chunk : []);
-      const shuffledPool = shuffleChunksPreservingInstructionLike(
-        chunkItemsForShuffle(pooledExpandedItems, { bundleInstructionRuns: true })
-      );
-      let pooledTimeline = shuffledPool.flatMap((chunk) => Array.isArray(chunk) ? chunk : [chunk]);
-      pooledTimeline = rebuildGlobalMiniblockBreaksForPooledItems(pooledTimeline);
-      out.push(...pooledTimeline);
+      const shuffledPool = shuffleChunksPreservingInstructionLike(pooledExpandedChunks);
+      for (const expandedChunk of shuffledPool) {
+        out.push(...expandedChunk);
+      }
 
       i = j - 1;
     }
@@ -2983,72 +2493,31 @@
       const probe = out[i];
       if (!isObject(probe) || probe.type !== 'mw-probe') continue;
 
-      const minRaw = Number(probe.global_interval_min_ms ?? probe.min_interval_ms);
-      const maxRaw = Number(probe.global_interval_max_ms ?? probe.max_interval_ms);
-      const minMs = Number.isFinite(minRaw) ? Math.max(0, minRaw) : 0;
+      const maxRaw = Number(probe.max_interval_ms);
+      const minRaw = Number(probe.min_interval_ms);
       const maxMs = Number.isFinite(maxRaw) ? Math.max(0, maxRaw) : (Number.isFinite(minRaw) ? Math.max(0, minRaw) : 0);
-      const gapMinMs = Math.min(minMs, maxMs);
-      const gapMaxMs = Math.max(minMs, maxMs);
 
       // Anchor each probe to ONE neighboring generated run so probes are not
       // pooled across two blocks when the marker sits at a boundary.
-      const isProbeAnchorTrial = (candidate) => {
-        if (!isObject(candidate)) return false;
-        const t = String(candidate.type || '').trim().toLowerCase();
-        if (t === 'mw-probe') return false;
-        if (t === 'detection-response-task-start' || t === 'detection-response-task-stop') return false;
-        return estimateTrialDurationMs(candidate) > 0;
-      };
-
-      const restrictToSingleSourceRun = String(taskType || '').trim().toLowerCase() === 'sart';
-
       const prevIdx = [];
-      let prevSourceToken;
       for (let k = i - 1; k >= 0; k--) {
         const candidate = out[k];
-        if (!isProbeAnchorTrial(candidate)) break;
-        if (restrictToSingleSourceRun) {
-          const sourceToken = (candidate && candidate._generated_from_block === true)
-            ? String(candidate._source_component_identity ?? candidate._source_timeline_path_text ?? '')
-            : null;
-          if (prevSourceToken === undefined) {
-            prevSourceToken = sourceToken;
-          } else if (sourceToken !== prevSourceToken) {
-            break;
-          }
-        }
+        if (!isObject(candidate) || candidate._generated_from_block !== true) break;
         prevIdx.push(k);
       }
       prevIdx.reverse();
 
       const nextIdx = [];
-      let nextSourceToken;
       for (let k = i + 1; k < out.length; k++) {
         const candidate = out[k];
-        if (!isProbeAnchorTrial(candidate)) break;
-        if (restrictToSingleSourceRun) {
-          const sourceToken = (candidate && candidate._generated_from_block === true)
-            ? String(candidate._source_component_identity ?? candidate._source_timeline_path_text ?? '')
-            : null;
-          if (nextSourceToken === undefined) {
-            nextSourceToken = sourceToken;
-          } else if (sourceToken !== nextSourceToken) {
-            break;
-          }
-        }
+        if (!isObject(candidate) || candidate._generated_from_block !== true) break;
         nextIdx.push(k);
       }
 
-      const anchorHint = String(probe._mw_anchor_hint || '').trim().toLowerCase();
-      let generatedIdx;
-      if (anchorHint === 'prev' && prevIdx.length > 0) {
-        generatedIdx = prevIdx;
-      } else if (anchorHint === 'next' && nextIdx.length > 0) {
-        generatedIdx = nextIdx;
-      } else {
-        // Legacy fallback when no authored hint is available.
-        generatedIdx = nextIdx.length > 0 ? nextIdx : prevIdx;
-      }
+      // When a probe marker sits between two generated runs (common with looped
+      // "probe -> block" patterns), prefer anchoring to the following run so
+      // each iteration keeps its own probe instead of drifting into the previous loop.
+      const generatedIdx = nextIdx.length > 0 ? nextIdx : prevIdx;
       let totalDurationMs = 0;
       for (const k of generatedIdx) {
         const trial = out[k];
@@ -3057,10 +2526,12 @@
       }
 
       if (!generatedIdx.length) {
-        // If no adjacent trial-duration anchors exist, keep authored position.
+        // Jittered MW insertion currently works only when the marker touches
+        // block-expanded trials (_generated_from_block=true). For standalone
+        // plugin trials/sequences, the probe remains at its authored position.
         if ((Number.isFinite(minRaw) && minRaw > 0) || (Number.isFinite(maxRaw) && maxRaw > 0)) {
           try {
-            console.warn('[timelineCompiler] mw-probe jitter skipped: no adjacent duration-bearing trials; probe will run only at authored position.', {
+            console.warn('[timelineCompiler] mw-probe jitter skipped: no adjacent block-generated trials; probe will run only at authored position.', {
               min_interval_ms: minRaw,
               max_interval_ms: maxRaw,
               probe_name: probe.name || probe.title || 'mw-probe'
@@ -3081,20 +2552,8 @@
         ? Math.max(1, Math.min(100, Math.round(requestedProbeCountRaw)))
         : 1;
 
-      // Note: the compiler only positions probes in the output array for SOC composition.
-      // The SOC dashboard runtime (jspsych-soc-dashboard.js) handles actual probe timing.
-      // Never remove the probe here — even if capacity estimates say 0 fit, the runtime
-      // will emit at least 1 probe when requestedProbeCount > 0.
-      const maxByDuration = (totalDurationMs > 0 && gapMinMs > 0)
-        ? Math.max(0, Math.floor(totalDurationMs / gapMinMs))
-        : requestedProbeCount;
-      const maxByEntries = generatedIdx.length > 0
-        ? generatedIdx.length
-        : requestedProbeCount;
-      const effectiveProbeCount = Math.max(1, Math.min(requestedProbeCount, maxByDuration, maxByEntries));
-
-      let targetOffsetsMs = [];
-      if (effectiveProbeCount <= 1) {
+      const targetOffsetsMs = [];
+      if (requestedProbeCount <= 1) {
         let targetMs;
         if (maxMs > 0) {
           targetMs = sampleMwProbeIntervalMs(probe);
@@ -3111,30 +2570,14 @@
       } else {
         // Multi-probe scheduling: repeatedly sample interval gaps within this generated run.
         let nextMs = sampleMwProbeGapMs(probe);
-        for (let p = 0; p < effectiveProbeCount; p++) {
+        for (let p = 0; p < requestedProbeCount; p++) {
           if (!(totalDurationMs > 0) || nextMs > totalDurationMs) break;
           targetOffsetsMs.push(nextMs);
           nextMs += sampleMwProbeGapMs(probe);
         }
 
-        if (targetOffsetsMs.length < effectiveProbeCount && totalDurationMs > 0) {
-          const fallbackOffsets = [];
-          for (let p = 0; p < effectiveProbeCount; p++) {
-            const frac = (p + 1) / (effectiveProbeCount + 1);
-            fallbackOffsets.push(Math.round(totalDurationMs * frac));
-          }
-          const merged = [...targetOffsetsMs, ...fallbackOffsets]
-            .map((v) => Number(v))
-            .filter((v) => Number.isFinite(v) && v > 0)
-            .sort((a, b) => a - b);
-
-          const deduped = [];
-          for (const v of merged) {
-            if (deduped.length === 0 || deduped[deduped.length - 1] !== v) deduped.push(v);
-            if (deduped.length >= effectiveProbeCount) break;
-          }
-
-          targetOffsetsMs = deduped.slice(0, effectiveProbeCount);
+        if (targetOffsetsMs.length === 0 && totalDurationMs > 0) {
+          targetOffsetsMs.push(Math.round(totalDurationMs * 0.5));
         }
       }
 
@@ -3153,14 +2596,6 @@
               break;
             }
           }
-          // When the threshold fires on the very first anchor trial AND that trial
-          // is positioned AFTER the probe's authored position, the normalization step
-          // maps insertAt back to the authored index — placing the probe before the
-          // entire anchor block (premature). Advance to the second anchor trial so
-          // the probe fires after at least one task trial instead.
-          if (insertAt === generatedIdx[0] && generatedIdx.length > 1) {
-            insertAt = generatedIdx[1];
-          }
           targetIndices.push(insertAt);
         }
       }
@@ -3171,32 +2606,21 @@
         .map((idx) => (idx > i ? idx - 1 : idx))
         .filter((idx) => Number.isFinite(idx))
         .sort((a, b) => a - b);
-      const dedupedInsertIndices = Array.from(new Set(normalizedInsertIndices));
 
-      if (taskType === 'soc-dashboard') {
-        // Keep exactly one authored mw-probe anchor in compiled SOC helper timelines.
-        // Runtime expansion in jspsych-soc-dashboard.js owns final probe count/spacing.
-        const insertAtSingle = dedupedInsertIndices.length > 0
-          ? dedupedInsertIndices[0]
-          : Math.max(0, Math.min(i, out.length));
-        out.splice(insertAtSingle, 0, probe);
-        i = insertAtSingle;
-      } else {
-        // Non-SOC tasks (e.g., RDM): preserve legacy multi-insert behavior.
-        const probesToInsert = dedupedInsertIndices.length;
-        for (let p = 0; p < probesToInsert; p++) {
-          const insertAt = dedupedInsertIndices[p] + p;
-          const probeClone = (p === 0)
-            ? probe
-            : {
-                ...probe,
-                _mw_probe_instance_index: p + 1,
-                _mw_probe_instances_total: probesToInsert
-              };
-          out.splice(insertAt, 0, probeClone);
-        }
-        i = dedupedInsertIndices[dedupedInsertIndices.length - 1] + Math.max(0, probesToInsert - 1);
+      const probesToInsert = normalizedInsertIndices.length;
+      for (let p = 0; p < probesToInsert; p++) {
+        const insertAt = normalizedInsertIndices[p] + p;
+        const probeClone = (p === 0)
+          ? probe
+          : {
+              ...probe,
+              _mw_probe_instance_index: p + 1,
+              _mw_probe_instances_total: probesToInsert
+            };
+        out.splice(insertAt, 0, probeClone);
       }
+
+      i = normalizedInsertIndices[normalizedInsertIndices.length - 1] + Math.max(0, probesToInsert - 1);
     }
 
     // If an MW probe lands inside an active DRT segment, auto-bracket it with
@@ -3285,22 +2709,6 @@
         const ss = (s === null || s === undefined) ? '' : s;
         const pp = (p === undefined ? null : p);
         return wrapPsyScreenHtml(ss, pp);
-      };
-    }
-
-    function buildHtmlStimulusTrialFields(stimulus, prompt) {
-      const wrappedStimulus = wrapMaybeFunctionStimulus(stimulus, prompt);
-      if (typeof wrappedStimulus !== 'function') {
-        return { stimulus: wrappedStimulus, prompt: null };
-      }
-
-      return {
-        stimulus: wrapPsyScreenHtml('', null),
-        prompt: null,
-        on_start: (trial) => {
-          trial.stimulus = wrappedStimulus();
-          trial.prompt = null;
-        }
       };
     }
 
@@ -3416,7 +2824,6 @@
 
     const responseDefaults = isObject(config.response_parameters) ? config.response_parameters : {};
     const dataCollection = normalizeDataCollection(config.data_collection);
-    const learningCounterbalanceState = {};
 
     const defaultTransition = isObject(config.transition_settings) ? config.transition_settings : { duration_ms: 0, type: 'both' };
 
@@ -3477,11 +2884,9 @@
       preserveBlocksForComponentTypes: preserveBlocksFor,
       expandNbackSequences: experimentType === 'trial-based',
       defaultGeneratedTrialDurationMs,
-      defaultGeneratedTrialPostGapMs: baseIti,
       globalRandomizeOrder: config.randomize_order === true,
       nbackDefaults,
       taskSwitchingDefaults,
-      taskType,
       ...blockLengthOpts
     });
 
@@ -3508,8 +2913,6 @@
           || t === 'mw-probe';
       };
 
-      const isSocInlineHtmlType = (t) => t === 'html-keyboard-response';
-
       const mapSocSubtaskKind = (t) => {
         switch (t) {
           case 'soc-subtask-sart-like': return 'sart-like';
@@ -3534,33 +2937,7 @@
 
       const subtasks = [];
       const icons = [];
-      const absorbedItems = [];
-      const absorbedInlineHtmlIndices = new Set();
       let insertAt = -1;
-
-      const hasSocNeighboringSubtask = (index) => {
-        let hasPrevSocSubtask = false;
-        for (let j = index - 1; j >= 0; j--) {
-          const it = tl[j];
-          if (!it || typeof it !== 'object') continue;
-          if (isSocSubtaskType(it.type)) {
-            hasPrevSocSubtask = true;
-            break;
-          }
-        }
-
-        if (!hasPrevSocSubtask) return false;
-
-        for (let j = index + 1; j < tl.length; j++) {
-          const it = tl[j];
-          if (!it || typeof it !== 'object') continue;
-          if (isSocSubtaskType(it.type)) {
-            return true;
-          }
-        }
-
-        return false;
-      };
 
       for (let i = 0; i < tl.length; i++) {
         const item = tl[i];
@@ -3580,220 +2957,15 @@
         }
         if (isSocSubtaskType(t)) {
           if (insertAt < 0) insertAt = i;
-          const subtask = {
+          subtasks.push({
             type: mapSocSubtaskKind(t),
             title: (item.title || item.name || mapSocSubtaskKind(t) || 'Subtask').toString(),
             ...extractSubtaskParams(item)
-          };
-          subtasks.push(subtask);
-          absorbedItems.push({ kind: 'subtask', index: i, subtask });
-          continue;
-        }
-        if (isSocInlineHtmlType(t)) {
-          // Only absorb html-keyboard trials that are placed between SOC helper subtasks.
-          // This avoids pulling global intro/outro instruction screens into SOC window chrome.
-          if (!hasSocNeighboringSubtask(i)) {
-            continue;
-          }
-
-          if (insertAt < 0) insertAt = i;
-          const baseParams = extractSubtaskParams(item);
-          const subtask = {
-            type: 'soc-inline-html-keyboard',
-            title: (item.title || item.name || 'Interruption').toString(),
-            ...baseParams,
-            stimulus: (item.stimulus ?? baseParams.stimulus ?? '').toString(),
-            prompt: (item.prompt ?? baseParams.prompt ?? '').toString(),
-            choices: (item.choices ?? baseParams.choices ?? 'ALL_KEYS'),
-            response_ends_trial: (item.response_ends_trial ?? baseParams.response_ends_trial),
-            trial_duration: (item.trial_duration ?? baseParams.trial_duration),
-            stimulus_duration: (item.stimulus_duration ?? baseParams.stimulus_duration)
-          };
-          subtasks.push(subtask);
-          absorbedItems.push({ kind: 'subtask', index: i, subtask });
-          absorbedInlineHtmlIndices.add(i);
-        }
-      }
-
-      // If helper-composed subtasks don't have explicit non-zero timing anchors,
-      // assign sequential schedule windows by helper order to avoid accidental overlap.
-      // This is especially important when SOC helper defaults set start_at_ms=0.
-      const hasInlineSocHtml = absorbedItems.some((rec) => (rec?.subtask?.type ?? '').toString().toLowerCase() === 'soc-inline-html-keyboard');
-      const hasExplicitTimingAnchor = absorbedItems.some((rec) => {
-        const s = rec?.subtask;
-        if (!s || typeof s !== 'object') return false;
-        return (
-          (Number.isFinite(Number(s.start_at_ms)) && Number(s.start_at_ms) > 0)
-          || (Number.isFinite(Number(s.start_delay_ms)) && Number(s.start_delay_ms) > 0)
-          || (Number.isFinite(Number(s.end_at_ms)) && Number(s.end_at_ms) > 0)
-        );
-      });
-
-      const normalizeDurationMode = (raw) => {
-        const v = (raw ?? '').toString().trim().toLowerCase();
-        if (v === 'entries' || v === 'trial_count' || v === 'frame_count') return 'entries';
-        return 'time_ms';
-      };
-
-      const estimateEntryDurationMs = (s) => {
-        const type = (s?.type ?? '').toString().toLowerCase();
-        if (type === 'sart-like') {
-          const n = Number(s?.scroll_interval_ms);
-          return (Number.isFinite(n) && n > 0) ? Math.max(100, Math.floor(n)) : 900;
-        }
-        if (type === 'flanker-like') {
-          const n = Number(s?.trial_interval_ms);
-          return (Number.isFinite(n) && n > 0) ? Math.max(300, Math.floor(n)) : 1400;
-        }
-        if (type === 'nback-like') {
-          const n = Number(s?.stimulus_interval_ms);
-          return (Number.isFinite(n) && n > 0) ? Math.max(200, Math.floor(n)) : 1200;
-        }
-        if (type === 'wcst-like') {
-          const rw = Number(s?.response_window_ms);
-          const iti = Number(s?.iti_ms ?? s?.trial_interval_ms);
-          const rwSafe = (Number.isFinite(rw) && rw > 0) ? Math.floor(rw) : 3500;
-          const itiSafe = (Number.isFinite(iti) && iti >= 0) ? Math.floor(iti) : 200;
-          return Math.max(250, rwSafe + itiSafe);
-        }
-        if (type === 'pvt-like') {
-          const n = Number(s?.log_scroll_interval_ms ?? s?.scroll_interval_ms);
-          return (Number.isFinite(n) && n > 0) ? Math.max(50, Math.floor(n)) : 400;
-        }
-        if (type === 'soc-inline-html-keyboard') {
-          const td = Number(s?.trial_duration_ms ?? s?.trial_duration ?? s?.duration_ms);
-          return (Number.isFinite(td) && td > 0) ? Math.max(250, Math.floor(td)) : 4000;
-        }
-        return 1000;
-      };
-
-      const estimateSequentialDurationMs = (s) => {
-        const type = (s?.type ?? '').toString().toLowerCase();
-
-        if (type === 'soc-inline-html-keyboard' || type === 'html-keyboard-response') {
-          const responseEnds = (s?.response_ends_trial === undefined) ? true : !!s.response_ends_trial;
-          if (responseEnds) return 1;
-          const td = Number(s?.trial_duration_ms ?? s?.trial_duration ?? s?.duration_ms);
-          if (Number.isFinite(td) && td > 0) {
-            return Math.max(1, Math.floor(td));
-          }
-          return 4000;
-        }
-
-        const durationMode = normalizeDurationMode(s?.subtask_duration_mode ?? socDefaultsGlobal?.subtask_duration_mode);
-
-        if (durationMode === 'entries') {
-          const entriesRaw = Number(s?.subtask_duration_entries);
-          const sessionEntriesRaw = Number(socDefaultsGlobal?.subtask_duration_entries);
-          const entries = (Number.isFinite(entriesRaw) && entriesRaw > 0)
-            ? Math.floor(entriesRaw)
-            : ((Number.isFinite(sessionEntriesRaw) && sessionEntriesRaw > 0) ? Math.floor(sessionEntriesRaw) : 0);
-          if (entries > 0) {
-            return Math.max(1, Math.floor(entries * estimateEntryDurationMs(s)));
-          }
-        }
-
-        const explicitDuration = Number(s?.duration_ms);
-        if (Number.isFinite(explicitDuration) && explicitDuration > 0) {
-          return Math.max(1, Math.floor(explicitDuration));
-        }
-
-        const trialDuration = Number(s?.trial_duration_ms ?? s?.trial_duration);
-        if (Number.isFinite(trialDuration) && trialDuration > 0) {
-          return Math.max(1, Math.floor(trialDuration));
-        }
-
-        const minRun = Number(s?.min_run_ms);
-        const maxRun = Number(s?.max_run_ms);
-        if (Number.isFinite(minRun) && minRun > 0) {
-          return Math.max(1, Math.floor(minRun));
-        }
-        if (Number.isFinite(maxRun) && maxRun > 0) {
-          return Math.max(1, Math.floor(maxRun));
-        }
-
-        return 10000;
-      };
-
-      if (hasInlineSocHtml && !hasExplicitTimingAnchor) {
-        let cursorMs = 0;
-        for (const rec of absorbedItems) {
-          const s = rec?.subtask;
-          if (!s || typeof s !== 'object') continue;
-          const durMs = estimateSequentialDurationMs(s);
-          s.start_at_ms = Math.max(0, Math.floor(cursorMs));
-          const responseEnds = (s?.response_ends_trial === undefined) ? true : !!s.response_ends_trial;
-          if (responseEnds) {
-            // Response-gated inline HTML must not auto-timeout in helper auto-sequencing.
-            s.end_at_ms = null;
-            // Keep cursor progression so later subtasks are still ordered after this step.
-            cursorMs = s.start_at_ms + Math.max(1, Math.floor(durMs));
-          } else {
-            s.end_at_ms = Math.max(s.start_at_ms + 1, s.start_at_ms + Math.max(1, Math.floor(durMs)));
-            cursorMs = s.end_at_ms;
-          }
+          });
         }
       }
 
       if (insertAt < 0 || (subtasks.length === 0 && icons.length === 0)) return tl;
-
-      // Timeline-order helper: if inline SOC HTML interruptions are unscheduled,
-      // place them in the temporal gap between neighboring scheduled subtasks.
-      const getScheduleBoundsMs = (s) => {
-        const start = Number.isFinite(Number(s?.start_at_ms))
-          ? Number(s.start_at_ms)
-          : (Number.isFinite(Number(s?.start_delay_ms)) ? Number(s.start_delay_ms) : null);
-
-        let end = null;
-        if (Number.isFinite(Number(s?.duration_ms)) && Number(s.duration_ms) > 0 && Number.isFinite(start)) {
-          end = start + Number(s.duration_ms);
-        } else if (Number.isFinite(Number(s?.end_at_ms)) && Number(s.end_at_ms) > 0) {
-          end = Number(s.end_at_ms);
-        }
-
-        return {
-          start: Number.isFinite(start) ? start : null,
-          end: Number.isFinite(end) ? end : null
-        };
-      };
-
-      for (let k = 0; k < absorbedItems.length; k++) {
-        const record = absorbedItems[k];
-        if (record.kind !== 'subtask') continue;
-        const s = record.subtask;
-        if ((s?.type ?? '').toString().toLowerCase() !== 'soc-inline-html-keyboard') continue;
-
-        const hasExplicitSchedule = (
-          (Number.isFinite(Number(s.start_at_ms)) && Number(s.start_at_ms) > 0)
-          || (Number.isFinite(Number(s.start_delay_ms)) && Number(s.start_delay_ms) > 0)
-          || (Number.isFinite(Number(s.duration_ms)) && Number(s.duration_ms) > 0)
-          || (Number.isFinite(Number(s.end_at_ms)) && Number(s.end_at_ms) > 0)
-        );
-        if (hasExplicitSchedule) continue;
-
-        let prevEnd = null;
-        for (let j = k - 1; j >= 0; j--) {
-          const b = getScheduleBoundsMs(absorbedItems[j]?.subtask);
-          if (Number.isFinite(b.end)) {
-            prevEnd = b.end;
-            break;
-          }
-        }
-
-        let nextStart = null;
-        for (let j = k + 1; j < absorbedItems.length; j++) {
-          const b = getScheduleBoundsMs(absorbedItems[j]?.subtask);
-          if (Number.isFinite(b.start)) {
-            nextStart = b.start;
-            break;
-          }
-        }
-
-        if (Number.isFinite(prevEnd) && Number.isFinite(nextStart) && nextStart > prevEnd) {
-          s.start_at_ms = Math.max(0, Math.floor(prevEnd));
-          s.end_at_ms = Math.max(s.start_at_ms + 1, Math.floor(nextStart));
-        }
-      }
 
       // If the SOC defaults don't specify duration, infer it from the scheduled subtasks.
       const inferSessionDurationMs = () => {
@@ -3802,12 +2974,10 @@
           const start = Number.isFinite(Number(s.start_at_ms)) ? Number(s.start_at_ms)
             : (Number.isFinite(Number(s.start_delay_ms)) ? Number(s.start_delay_ms) : 0);
           let end = null;
-          // Prefer explicit schedule endpoints (including helper auto-sequenced end_at_ms)
-          // over raw duration fields that may be legacy/default placeholders.
-          if (Number.isFinite(Number(s.end_at_ms)) && Number(s.end_at_ms) > 0) {
-            end = Number(s.end_at_ms);
-          } else if (Number.isFinite(Number(s.duration_ms)) && Number(s.duration_ms) > 0) {
+          if (Number.isFinite(Number(s.duration_ms)) && Number(s.duration_ms) > 0) {
             end = start + Number(s.duration_ms);
+          } else if (Number.isFinite(Number(s.end_at_ms)) && Number(s.end_at_ms) > 0) {
+            end = Number(s.end_at_ms);
           }
           if (Number.isFinite(end) && end > maxEnd) maxEnd = end;
         }
@@ -3835,7 +3005,7 @@
         }
 
         const t = item.type;
-        if (t === 'soc-dashboard-icon' || isSocSubtaskType(t) || (isSocInlineHtmlType(t) && absorbedInlineHtmlIndices.has(i))) {
+        if (t === 'soc-dashboard-icon' || isSocSubtaskType(t)) {
           continue; // absorbed into session
         }
 
@@ -3907,36 +3077,6 @@
       if (Object.prototype.hasOwnProperty.call(data, 'correct')) return normBoolFromData(data.correct);
       if (Object.prototype.hasOwnProperty.call(data, 'accuracy')) return normBoolFromData(data.accuracy);
       return null;
-    };
-
-    const getGeneratedBlockSourceData = (item) => {
-      if (!item || typeof item !== 'object' || item._generated_from_block !== true) {
-        return {
-          _generated_from_block: false,
-          _block_index: null
-        };
-      }
-
-      return {
-        _generated_from_block: true,
-        _block_index: Number.isFinite(item._block_index) ? item._block_index : null,
-        source_component_type: (typeof item._source_component_type === 'string' && item._source_component_type.trim())
-          ? item._source_component_type.trim()
-          : null,
-        source_component_label: (typeof item._source_component_label === 'string' && item._source_component_label.trim())
-          ? item._source_component_label.trim()
-          : null,
-        source_component_identity: (typeof item._source_component_identity === 'string' && item._source_component_identity.trim())
-          ? item._source_component_identity.trim()
-          : null,
-        source_timeline_path: Array.isArray(item._source_timeline_path)
-          ? item._source_timeline_path.filter((seg) => Number.isFinite(Number(seg))).map((seg) => Number(seg))
-          : [],
-        source_timeline_path_text: (typeof item._source_timeline_path_text === 'string' && item._source_timeline_path_text.trim())
-          ? item._source_timeline_path_text.trim()
-          : null,
-        _block_source_index: Number.isFinite(item._block_source_index) ? item._block_source_index : null
-      };
     };
 
     const scoringBasisLabel = (basis) => {
@@ -4333,10 +3473,10 @@
           // Keep instructions as their own trial.
           pushRdmContinuousSegment();
           const stimulus = (item.stimulus !== undefined && item.stimulus !== null) ? item.stimulus : item.stimulus_html;
-          const htmlStimulusFields = buildHtmlStimulusTrialFields(stimulus, item.prompt);
           timeline.push({
             type: HtmlKeyboard,
-            ...htmlStimulusFields,
+            stimulus: wrapMaybeFunctionStimulus(stimulus, item.prompt),
+            prompt: null,
             choices: normalizeKeyChoices(item.choices),
             stimulus_duration: (item.stimulus_duration === undefined ? null : item.stimulus_duration),
             trial_duration: (item.trial_duration === undefined ? null : item.trial_duration),
@@ -4466,30 +3606,6 @@
             response,
             timing: isObject(config.timing_parameters) ? config.timing_parameters : {},
             transition
-          });
-          continue;
-        }
-
-        // Checkpoint marker in continuous mode — flush pending frames then save.
-        if (type === 'checkpoint') {
-          pushRdmContinuousSegment();
-          const label = (typeof item.label === 'string' && item.label.trim()) ? item.label.trim() : '';
-          const checkpointIndex = (typeof item.checkpoint_index === 'number') ? item.checkpoint_index : 0;
-          timeline.push({
-            type: HtmlKeyboard,
-            stimulus: '',
-            choices: 'NO_KEYS',
-            trial_duration: 0,
-            on_finish: function () {
-              try {
-                if (window.CogFlowCheckpoint && typeof window.CogFlowCheckpoint.save === 'function') {
-                  window.CogFlowCheckpoint.save({ label: label, checkpointIndex: checkpointIndex });
-                }
-              } catch {
-                // ignore — checkpoint is non-fatal
-              }
-            },
-            data: { plugin_type: 'checkpoint', checkpoint_label: label, checkpoint_index: checkpointIndex }
           });
           continue;
         }
@@ -4793,15 +3909,8 @@
               trial.data = {
                 plugin_type: 'pvt-trial',
                 task_type: 'pvt',
-                ...getGeneratedBlockSourceData({
-                  _generated_from_block: true,
-                  _block_index: state.total_done,
-                  _source_component_type: item._source_component_type,
-                  _source_component_label: item._source_component_label,
-                  _source_component_identity: item._source_component_identity,
-                  _source_timeline_path: item._source_timeline_path,
-                  _source_timeline_path_text: item._source_timeline_path_text
-                }),
+                _generated_from_block: true,
+                _block_index: state.total_done,
                 pvt_target_valid_trials: state.target_valid_trials,
                 pvt_valid_trials_completed_before: state.valid_done,
                 pvt_total_trials_completed_before: state.total_done
@@ -4827,12 +3936,11 @@
         : null;
 
         if (type === 'html-keyboard-response' || type === 'instructions') {
-        const stimulus = (item.stimulus !== undefined && item.stimulus !== null) ? item.stimulus : item.stimulus_html;
-        const htmlStimulusFields = buildHtmlStimulusTrialFields(stimulus, item.prompt);
         timeline.push({
           type: HtmlKeyboard,
-          ...htmlStimulusFields,
-          choices: normalizeKeyChoices(item.choices),
+          stimulus: wrapMaybeFunctionStimulus(item.stimulus, item.prompt),
+          prompt: null,
+          choices: item.choices === 'ALL_KEYS' ? 'ALL_KEYS' : (Array.isArray(item.choices) ? item.choices : 'ALL_KEYS'),
           stimulus_duration: (item.stimulus_duration === undefined ? null : item.stimulus_duration),
           trial_duration: (item.trial_duration === undefined ? null : item.trial_duration),
           response_ends_trial: (item.response_ends_trial === undefined ? true : item.response_ends_trial),
@@ -4864,7 +3972,7 @@
           type: HtmlKeyboard,
           stimulus: wrapMaybeFunctionStimulus(stimulusHtml, item.prompt),
           prompt: null,
-          choices: normalizeKeyChoices(item.choices),
+          choices: item.choices === 'ALL_KEYS' ? 'ALL_KEYS' : (Array.isArray(item.choices) ? item.choices : 'ALL_KEYS'),
           stimulus_duration: (item.stimulus_duration === undefined ? null : item.stimulus_duration),
           trial_duration: (item.trial_duration === undefined ? null : item.trial_duration),
           response_ends_trial: (item.response_ends_trial === undefined ? true : item.response_ends_trial),
@@ -5209,7 +4317,8 @@
           ...(onFinish ? { on_finish: onFinish } : {}),
           data: {
             plugin_type: type,
-            ...getGeneratedBlockSourceData(item)
+            _generated_from_block: !!item._generated_from_block,
+            _block_index: Number.isFinite(item._block_index) ? item._block_index : null
           }
         };
         timeline.push(maybeWrapTrialWithRewardPopups(trial, type));
@@ -5225,7 +4334,7 @@
           type: Flanker,
           post_trial_gap: Number.isFinite(Number(item.iti_ms)) ? Number(item.iti_ms) : 0,
           ...(onFinish ? { on_finish: onFinish } : {}),
-          data: { plugin_type: type, task_type: 'flanker', ...getGeneratedBlockSourceData(item) }
+          data: { plugin_type: type, task_type: 'flanker' }
         };
         timeline.push(maybeWrapTrialWithRewardPopups(trial, type));
         continue;
@@ -5240,7 +4349,7 @@
           type: Sart,
           post_trial_gap: Number.isFinite(Number(item.iti_ms)) ? Number(item.iti_ms) : 0,
           ...(onFinish ? { on_finish: onFinish } : {}),
-          data: { plugin_type: type, task_type: 'sart', ...getGeneratedBlockSourceData(item) }
+          data: { plugin_type: type, task_type: 'sart' }
         };
         timeline.push(maybeWrapTrialWithRewardPopups(trial, type));
         continue;
@@ -5254,7 +4363,7 @@
           ...item,
           type: Mot,
           ...(onFinish ? { on_finish: onFinish } : {}),
-          data: { plugin_type: type, task_type: 'mot', ...getGeneratedBlockSourceData(item) }
+          data: { plugin_type: type, task_type: 'mot' }
         };
         timeline.push(maybeWrapTrialWithRewardPopups(trial, type));
         continue;
@@ -5277,7 +4386,9 @@
             task_type: 'continuous-image',
             stimulus_image_url: item.image_url ?? null,
             stimulus_filename: item.asset_filename ?? null,
-            ...getGeneratedBlockSourceData(item)
+            _generated_from_block: !!item._generated_from_block,
+            _block_index: Number.isFinite(item._block_index) ? item._block_index : null,
+            _block_source_index: Number.isFinite(item._block_source_index) ? item._block_source_index : null
           }
         };
 
@@ -5445,54 +4556,6 @@
           return out;
         };
 
-        const learningCounterbalanceScope = (src.counterbalance_scope ?? 'per_block').toString().trim().toLowerCase();
-        const learningCounterbalanceGroupId = (src.counterbalance_group_id ?? '').toString().trim();
-        const useSharedLearningCounterbalance = learningCounterbalanceScope === 'group' && learningCounterbalanceGroupId !== '';
-
-        const learningCounterbalanceKey = JSON.stringify({
-          group: learningCounterbalanceGroupId,
-          value_target_value: src.value_target_value,
-          value_non_target_value: src.value_non_target_value
-        });
-
-        const takeLearningBoolPlan = (bucketName, total, pTrue) => {
-          const n = Math.max(0, Number.parseInt(total, 10) || 0);
-          if (n <= 0) return [];
-          if (!useSharedLearningCounterbalance) {
-            return buildLearningBoolPlan(n, pTrue);
-          }
-
-          const stateKey = `${bucketName}:${learningCounterbalanceKey}`;
-          const bucket = isObject(learningCounterbalanceState[stateKey]) ? learningCounterbalanceState[stateKey] : {};
-          learningCounterbalanceState[stateKey] = bucket;
-          bucket.queue = Array.isArray(bucket.queue) ? bucket.queue : [];
-
-          while (bucket.queue.length < n) {
-            const chunk = Math.max(n, 24);
-            bucket.queue.push(...buildLearningBoolPlan(chunk, pTrue));
-          }
-          return bucket.queue.splice(0, n);
-        };
-
-        const takeLearningPairPlan = (bucketName, total, aVals, bVals) => {
-          const n = Math.max(0, Number.parseInt(total, 10) || 0);
-          if (n <= 0) return [];
-          if (!useSharedLearningCounterbalance) {
-            return buildLearningPairPlan(n, aVals, bVals);
-          }
-
-          const stateKey = `${bucketName}:${learningCounterbalanceKey}`;
-          const bucket = isObject(learningCounterbalanceState[stateKey]) ? learningCounterbalanceState[stateKey] : {};
-          learningCounterbalanceState[stateKey] = bucket;
-          bucket.queue = Array.isArray(bucket.queue) ? bucket.queue : [];
-
-          while (bucket.queue.length < n) {
-            const chunk = Math.max(n, 24);
-            bucket.queue.push(...buildLearningPairPlan(chunk, aVals, bVals));
-          }
-          return bucket.queue.splice(0, n);
-        };
-
         const buildLearningPairPlan = (total, aVals, bVals) => {
           const n = Math.max(0, Number.parseInt(total, 10) || 0);
           const a = Array.isArray(aVals) ? aVals : [];
@@ -5519,26 +4582,25 @@
         const learningTargetLocationOpts = normalizeLearningOptions(src.target_location).map(v => (v ?? '').toString().trim().toLowerCase());
         const learningHasBothTargetSides = learningTargetLocationOpts.includes('left') && learningTargetLocationOpts.includes('right');
         const learningPTargetLeft = Number(src.target_left_probability);
-        const learningPlanCount = Math.max(1, Number.parseInt(src.learning_max_trials ?? 200, 10) || 200);
-        const learningTargetPlan = learningHasBothTargetSides
-          ? takeLearningBoolPlan('learning-target-left', learningPlanCount, Number.isFinite(learningPTargetLeft) ? clamp(learningPTargetLeft, 0, 1) : 0.5)
+        const learningTargetPlan = (Number.isFinite(learningPTargetLeft) && learningHasBothTargetSides)
+          ? buildLearningBoolPlan(Math.max(1, Number.parseInt(src.learning_max_trials ?? 200, 10) || 200), clamp(learningPTargetLeft, 0, 1))
           : [];
 
         const learningPCueValid = Number(src.spatial_cue_validity_probability);
         const learningCueValidityPlan = {
           left: Number.isFinite(learningPCueValid)
-            ? takeLearningBoolPlan('learning-cue-valid-left', learningPlanCount, clamp(learningPCueValid, 0, 1))
+            ? buildLearningBoolPlan(Math.max(1, Number.parseInt(src.learning_max_trials ?? 200, 10) || 200), clamp(learningPCueValid, 0, 1))
             : [],
           right: Number.isFinite(learningPCueValid)
-            ? takeLearningBoolPlan('learning-cue-valid-right', learningPlanCount, clamp(learningPCueValid, 0, 1))
+            ? buildLearningBoolPlan(Math.max(1, Number.parseInt(src.learning_max_trials ?? 200, 10) || 200), clamp(learningPCueValid, 0, 1))
             : []
         };
 
         const learningTargetTiltOptions = learningNumberOptions(src.target_tilt_deg);
         const learningDistractorOptions = learningNumberOptions(src.distractor_orientation_deg);
         const learningTiltDistrPlan = {
-          left: takeLearningPairPlan('learning-tilt-distr-left', learningPlanCount, learningTargetTiltOptions, learningDistractorOptions),
-          right: takeLearningPairPlan('learning-tilt-distr-right', learningPlanCount, learningTargetTiltOptions, learningDistractorOptions)
+          left: buildLearningPairPlan(Math.max(1, Number.parseInt(src.learning_max_trials ?? 200, 10) || 200), learningTargetTiltOptions, learningDistractorOptions),
+          right: buildLearningPairPlan(Math.max(1, Number.parseInt(src.learning_max_trials ?? 200, 10) || 200), learningTargetTiltOptions, learningDistractorOptions)
         };
 
         const applyCueLearningPolicies = (trial, learningIndex, gState) => {
@@ -5753,7 +4815,6 @@
                 k === 'spatial_cue_validity_probability' || k === 'spatial_cue_target_mode' ||
                 k === 'target_left_probability' || k === 'value_target_value' ||
                 k === 'value_non_target_value' ||
-                k === 'counterbalance_scope' || k === 'counterbalance_group_id' ||
                 k === 'reward_availability_high' || k === 'reward_availability_low' ||
                 k === 'reward_availability_neutral'
               ) continue;
@@ -5836,7 +4897,8 @@
           data: {
             plugin_type: type,
             task_type: 'gabor',
-            ...getGeneratedBlockSourceData(item)
+            _generated_from_block: !!item._generated_from_block,
+            _block_index: Number.isFinite(item._block_index) ? item._block_index : null
           }
         };
         timeline.push(maybeWrapTrialWithRewardPopups(trial, type));
@@ -5957,7 +5019,8 @@
           data: {
             plugin_type: type,
             task_type: 'stroop',
-            ...getGeneratedBlockSourceData(item)
+            _generated_from_block: !!item._generated_from_block,
+            _block_index: Number.isFinite(item._block_index) ? item._block_index : null
           }
         };
         timeline.push(maybeWrapTrialWithRewardPopups(trial, type));
@@ -6084,7 +5147,8 @@
             original_type: type,
             word_list_label: wordListLabel || null,
             word_list_index: wordListIndex,
-            ...getGeneratedBlockSourceData(item)
+            _generated_from_block: !!item._generated_from_block,
+            _block_index: Number.isFinite(item._block_index) ? item._block_index : null
           }
         };
         timeline.push(maybeWrapTrialWithRewardPopups(trial, type));
@@ -6208,7 +5272,8 @@
           data: {
             plugin_type: type,
             task_type: 'simon',
-            ...getGeneratedBlockSourceData(item)
+            _generated_from_block: !!item._generated_from_block,
+            _block_index: Number.isFinite(item._block_index) ? item._block_index : null
           }
         };
         timeline.push(maybeWrapTrialWithRewardPopups(trial, type));
@@ -6352,7 +5417,8 @@
           data: {
             plugin_type: type,
             task_type: 'task-switching',
-            ...getGeneratedBlockSourceData(item)
+            _generated_from_block: !!item._generated_from_block,
+            _block_index: Number.isFinite(item._block_index) ? item._block_index : null
           }
         };
 
@@ -6446,34 +5512,11 @@
           data: {
             plugin_type: type,
             task_type: 'pvt',
-            ...getGeneratedBlockSourceData(item)
+            _generated_from_block: !!item._generated_from_block,
+            _block_index: Number.isFinite(item._block_index) ? item._block_index : null
           }
         };
         timeline.push(maybeWrapTrialWithRewardPopups(trial, type));
-        continue;
-      }
-
-      // Checkpoint marker — triggers a partial platform save without displaying anything to the participant.
-      // Researchers place this in the Builder Timeline between task sections.
-      if (type === 'checkpoint') {
-        const label = (typeof item.label === 'string' && item.label.trim()) ? item.label.trim() : '';
-        const checkpointIndex = (typeof item.checkpoint_index === 'number') ? item.checkpoint_index : 0;
-        timeline.push({
-          type: HtmlKeyboard,
-          stimulus: '',
-          choices: 'NO_KEYS',
-          trial_duration: 0,
-          on_finish: function () {
-            try {
-              if (window.CogFlowCheckpoint && typeof window.CogFlowCheckpoint.save === 'function') {
-                window.CogFlowCheckpoint.save({ label: label, checkpointIndex: checkpointIndex });
-              }
-            } catch {
-              // ignore — checkpoint is non-fatal
-            }
-          },
-          data: { plugin_type: 'checkpoint', checkpoint_label: label, checkpoint_index: checkpointIndex }
-        });
         continue;
       }
 
@@ -6490,45 +5533,6 @@
         data: { plugin_type: 'unsupported', original_type: type }
       });
     }
-
-    const ensureHtmlKeyboardStimulusResolved = (trial) => {
-      if (!isObject(trial)) return;
-      if (trial.type !== HtmlKeyboard) return;
-
-      const stimulusRaw = trial.stimulus;
-      const promptRaw = trial.prompt;
-      const stimulusIsFn = typeof stimulusRaw === 'function';
-      const promptIsFn = typeof promptRaw === 'function';
-      if (!stimulusIsFn && !promptIsFn) return;
-
-      const wrapped = wrapMaybeFunctionStimulus(stimulusRaw, promptRaw);
-      const existingOnStart = (typeof trial.on_start === 'function') ? trial.on_start : null;
-
-      trial.stimulus = wrapPsyScreenHtml('', null);
-      trial.prompt = null;
-      trial.on_start = (jsPsychTrial) => {
-        if (existingOnStart) {
-          try { existingOnStart(jsPsychTrial); } catch { /* ignore */ }
-        }
-        try {
-          jsPsychTrial.stimulus = (typeof wrapped === 'function') ? wrapped() : wrapped;
-        } catch {
-          jsPsychTrial.stimulus = wrapPsyScreenHtml('', null);
-        }
-        jsPsychTrial.prompt = null;
-      };
-    };
-
-    const normalizeHtmlKeyboardStimuliInTimeline = (nodes) => {
-      const src = Array.isArray(nodes) ? nodes : [];
-      for (const node of src) {
-        if (!isObject(node)) continue;
-        ensureHtmlKeyboardStimulusResolved(node);
-        if (Array.isArray(node.timeline)) {
-          normalizeHtmlKeyboardStimuliInTimeline(node.timeline);
-        }
-      }
-    };
 
     // Optional end-of-experiment reward summary screen.
     if (rewardsPolicy && rewardsPolicy.show_summary_at_end === true) {
@@ -6611,8 +5615,6 @@
         data: { plugin_type: 'reward-summary' }
       });
     }
-
-    normalizeHtmlKeyboardStimuliInTimeline(timeline);
 
     return { experimentType, timeline };
   }

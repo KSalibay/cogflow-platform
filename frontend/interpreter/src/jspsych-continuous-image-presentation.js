@@ -31,12 +31,44 @@
       image_duration_ms: { type: PT.INT, default: 750 },
       transition_duration_ms: { type: PT.INT, default: 200 },
 
-      choices: { type: PT.KEYS, default: ['f', 'j'] }
+      choices: { type: PT.KEYS, default: ['f', 'j'] },
+
+      cip_response_paradigm: { type: PT.STRING, default: 'categorization' },
+      cip_categories: { type: PT.OBJECT, default: [] },
+      cip_show_category_buttons: { type: PT.BOOL, default: false },
+      cip_target_category_index: { type: PT.INT, default: null },
+      cip_target_category_label: { type: PT.STRING, default: null },
+
+      // N-back-in-CIP fields (used when cip_response_paradigm="nback")
+      nback_n: { type: PT.INT, default: 2 },
+      nback_is_match: { type: PT.BOOL, default: false },
+      nback_token: { type: PT.STRING, default: '' },
+      correct_response: { type: PT.STRING, default: null },
+      response_paradigm: { type: PT.STRING, default: 'go_nogo' },
+      response_device: { type: PT.STRING, default: 'keyboard' },
+      go_key: { type: PT.STRING, default: 'space' },
+      match_key: { type: PT.STRING, default: 'j' },
+      nonmatch_key: { type: PT.STRING, default: 'f' },
+      show_buttons: { type: PT.BOOL, default: false },
+      show_feedback: { type: PT.BOOL, default: false },
+      feedback_duration_ms: { type: PT.INT, default: 250 }
     },
     data: {
+      cip_response_paradigm: { type: PT.STRING },
       response_key: { type: PT.STRING },
       rt_ms: { type: PT.INT },
       responded: { type: PT.BOOL },
+      cip_category_index: { type: PT.INT },
+      cip_category_label: { type: PT.STRING },
+      cip_target_category_index: { type: PT.INT },
+      cip_target_category_label: { type: PT.STRING },
+      nback_n: { type: PT.INT },
+      nback_is_match: { type: PT.BOOL },
+      nback_token: { type: PT.STRING },
+      nback_response_paradigm: { type: PT.STRING },
+      nback_response_device: { type: PT.STRING },
+      correctness: { type: PT.BOOL },
+      correct_response: { type: PT.STRING },
       ended_reason: { type: PT.STRING },
       plugin_version: { type: PT.STRING }
     }
@@ -78,6 +110,11 @@
     return parts.length > 0 ? parts : ['f', 'j'];
   }
 
+  function normalizeCipParadigm(raw) {
+    const s = (raw ?? 'categorization').toString().trim().toLowerCase();
+    return (s === 'nback') ? 'nback' : 'categorization';
+  }
+
   function preloadImage(url) {
     return new Promise((resolve) => {
       if (!url) return resolve(null);
@@ -108,13 +145,90 @@
       const imgMs = Number.isFinite(Number(trial.image_duration_ms)) ? Math.max(0, Math.floor(Number(trial.image_duration_ms))) : 750;
       const transMs = Number.isFinite(Number(trial.transition_duration_ms)) ? Math.max(0, Math.floor(Number(trial.transition_duration_ms))) : 200;
 
-      const choices = normalizeChoices(trial.choices);
-      const validKeys = Array.from(new Set(choices.flatMap(expandKeyVariants).map(normalizeKeyName).filter(Boolean)));
+      const cipParadigm = normalizeCipParadigm(trial.cip_response_paradigm);
+
+      const categorizationCategories = (() => {
+        const raw = Array.isArray(trial.cip_categories) ? trial.cip_categories : [];
+        const out = [];
+        for (let i = 0; i < raw.length; i++) {
+          const item = raw[i] || {};
+          const index = Number.isFinite(Number(item.index)) ? Math.max(1, Math.floor(Number(item.index))) : (i + 1);
+          const label = (item.label ?? `Category ${index}`).toString().trim() || `Category ${index}`;
+          const key = normalizeKeyName(item.key ?? '');
+          if (!key) continue;
+          out.push({ index, label, key });
+        }
+
+        if (out.length >= 2) return out;
+
+        const fallbackChoices = normalizeChoices(trial.choices);
+        const fallback = [];
+        for (let i = 0; i < Math.min(2, fallbackChoices.length); i++) {
+          fallback.push({ index: i + 1, label: `Category ${i + 1}`, key: normalizeKeyName(fallbackChoices[i]) });
+        }
+        if (fallback.length < 2) {
+          fallback.push({ index: 1, label: 'Category 1', key: 'f' });
+          fallback.push({ index: 2, label: 'Category 2', key: 'j' });
+        }
+        return fallback;
+      })();
+      const showCategoryButtons = trial.cip_show_category_buttons === true;
+
+      const nbackResponseParadigm = ((trial.response_paradigm || 'go_nogo').toString().trim().toLowerCase() === '2afc') ? '2afc' : 'go_nogo';
+      const nbackResponseDevice = (trial.response_device || 'keyboard').toString().trim().toLowerCase() === 'mouse' ? 'mouse' : 'keyboard';
+      const nbackGoKey = normalizeKeyName(trial.go_key || 'space');
+      const nbackMatchKey = normalizeKeyName((trial.match_key ?? '').toString().trim() || 'j');
+      const nbackNonmatchKey = normalizeKeyName((trial.nonmatch_key ?? '').toString().trim() || 'f');
+      const nbackShowButtons = trial.show_buttons === true;
+      const nbackShowFeedback = trial.show_feedback === true;
+      const nbackFeedbackMs = Number.isFinite(Number(trial.feedback_duration_ms)) ? Math.max(0, Math.floor(Number(trial.feedback_duration_ms))) : 250;
+      const nbackN = Number.isFinite(Number(trial.nback_n)) ? Math.max(1, Math.floor(Number(trial.nback_n))) : 2;
+      const nbackIsMatch = trial.nback_is_match === true;
+      const nbackToken = (trial.nback_token ?? '').toString();
+      const nbackCorrectResponse = (() => {
+        if (typeof trial.correct_response === 'string' && trial.correct_response.trim()) {
+          return normalizeKeyName(trial.correct_response);
+        }
+        if (nbackResponseParadigm === '2afc') {
+          return nbackIsMatch ? nbackMatchKey : nbackNonmatchKey;
+        }
+        return nbackIsMatch ? nbackGoKey : null;
+      })();
+
+      const validKeys = (() => {
+        if (cipParadigm === 'categorization') {
+          return Array.from(new Set(categorizationCategories.flatMap((c) => expandKeyVariants(c.key)).map(normalizeKeyName).filter(Boolean)));
+        }
+        if (nbackResponseParadigm === '2afc') {
+          return Array.from(new Set([
+            ...expandKeyVariants(nbackMatchKey),
+            ...expandKeyVariants(nbackNonmatchKey)
+          ].map(normalizeKeyName).filter(Boolean)));
+        }
+        return Array.from(new Set(expandKeyVariants(nbackGoKey).map(normalizeKeyName).filter(Boolean)));
+      })();
 
       let responded = false;
       let responseKey = null;
       let rt = null;
       let endedReason = null;
+      let respondedCategory = null;
+      let correctness = null;
+
+      const targetCategory = (() => {
+        const idxRaw = Number.parseInt((trial.cip_target_category_index ?? '').toString(), 10);
+        const idx = Number.isFinite(idxRaw) ? idxRaw : null;
+        const byIndex = Number.isFinite(idx)
+          ? (categorizationCategories.find((c) => Number(c.index) === Number(idx)) || null)
+          : null;
+
+        const labelRaw = (trial.cip_target_category_label ?? '').toString().trim();
+        const byLabel = (!byIndex && labelRaw)
+          ? (categorizationCategories.find((c) => (c.label || '').toString().trim().toLowerCase() === labelRaw.toLowerCase()) || null)
+          : null;
+
+        return byIndex || byLabel || null;
+      })();
 
       let keyboardListener = null;
       let imageTimeoutId = null;
@@ -145,9 +259,23 @@
         }
 
         this.jsPsych.finishTrial({
+          cip_response_paradigm: cipParadigm,
           response_key: responseKey,
           rt_ms: Number.isFinite(rt) ? Math.round(rt) : null,
           responded: responded === true,
+          cip_category_index: respondedCategory ? respondedCategory.index : null,
+          cip_category_label: respondedCategory ? respondedCategory.label : null,
+          cip_target_category_index: targetCategory ? targetCategory.index : null,
+          cip_target_category_label: targetCategory ? targetCategory.label : null,
+          nback_n: cipParadigm === 'nback' ? nbackN : null,
+          nback_is_match: cipParadigm === 'nback' ? nbackIsMatch : null,
+          nback_token: cipParadigm === 'nback' ? nbackToken : null,
+          nback_response_paradigm: cipParadigm === 'nback' ? nbackResponseParadigm : null,
+          nback_response_device: cipParadigm === 'nback' ? nbackResponseDevice : null,
+          correctness: correctness,
+          correct_response: (cipParadigm === 'nback')
+            ? nbackCorrectResponse
+            : (targetCategory ? normalizeKeyName(targetCategory.key) : null),
           ended_reason: endedReason || (responded ? 'response' : 'timeout'),
           plugin_version: info.version
         });
@@ -158,6 +286,7 @@
       const spriteId = `cip-sprite-${uid}`;
       const imgId = `cip-img-${uid}`;
       const promptId = `cip-prompt-${uid}`;
+      const controlsId = `cip-controls-${uid}`;
 
       display_element.innerHTML = `
         <div id="${wrapId}" style="width:100%; min-height:100vh; min-height:100svh; min-height:100dvh; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; box-sizing:border-box; padding:24px 12px;">
@@ -166,6 +295,7 @@
             <img id="${imgId}" alt="" style="display:none; max-width:90vw; max-height:70vh; object-fit:contain;" />
           </div>
           <div id="${promptId}" style="opacity:0.7; font-size:12px; text-align:center;"></div>
+          <div id="${controlsId}" style="display:flex; flex-wrap:wrap; gap:8px; justify-content:center;"></div>
         </div>
       `;
 
@@ -174,8 +304,9 @@
       const spriteEl = display_element.querySelector(`#${spriteId}`);
       const imgEl = display_element.querySelector(`#${imgId}`);
       const promptEl = display_element.querySelector(`#${promptId}`);
+      const controlsEl = display_element.querySelector(`#${controlsId}`);
 
-      if (!wrapEl || !stageEl || !spriteEl || !imgEl || !promptEl) {
+      if (!wrapEl || !stageEl || !spriteEl || !imgEl || !promptEl || !controlsEl) {
         endedReason = 'render_error';
         endTrial();
         return;
@@ -238,8 +369,31 @@
         }
       };
 
-      const promptText = `Press ${choices.map(k => (k === ' ' ? 'space' : k)).join(' / ')}`;
+      const promptText = (() => {
+        if (cipParadigm === 'categorization') {
+          const parts = categorizationCategories.map((c) => `${c.key === ' ' ? 'space' : c.key}=${c.label}`);
+          return `Categorize: ${parts.join(' | ')}`;
+        }
+        if (nbackResponseDevice === 'mouse' && nbackShowButtons) {
+          if (nbackResponseParadigm === '2afc') return 'N-back: click Match / No match';
+          return 'N-back: click Go for matches';
+        }
+        if (nbackResponseParadigm === '2afc') {
+          return `N-back: ${nbackMatchKey === ' ' ? 'space' : nbackMatchKey}=match, ${nbackNonmatchKey === ' ' ? 'space' : nbackNonmatchKey}=no match`;
+        }
+        return `N-back: ${nbackGoKey === ' ' ? 'space' : nbackGoKey}=go (matches)`;
+      })();
       promptEl.textContent = promptText;
+
+      if (cipParadigm === 'categorization' && showCategoryButtons) {
+        controlsEl.innerHTML = categorizationCategories
+          .map((c) => `<button type="button" class="psy-btn" data-cip-category-key="${String(c.key).replace(/"/g, '&quot;')}" data-cip-category-index="${c.index}">${c.label}</button>`)
+          .join('');
+      } else if (cipParadigm === 'nback' && nbackResponseDevice === 'mouse' && nbackShowButtons) {
+        controlsEl.innerHTML = (nbackResponseParadigm === '2afc')
+          ? '<button type="button" class="psy-btn" data-cip-nback-action="match">Match</button><button type="button" class="psy-btn" data-cip-nback-action="nonmatch">No match</button>'
+          : '<button type="button" class="psy-btn" data-cip-nback-action="go">Go</button>';
+      }
 
       const cleanupStyle = () => { };
 
@@ -384,12 +538,45 @@
 
           const onset = nowMs();
 
-          const afterResponse = (info) => {
+          const selectCategoryByKey = (rawKey) => {
+            const k = normalizeKeyName(rawKey);
+            const found = categorizationCategories.find((c) => normalizeKeyName(c.key) === k);
+            if (!found) return null;
+            return found;
+          };
+
+          const computeNbackCorrectness = (key) => {
+            if (nbackResponseParadigm === '2afc') {
+              if (!key) return false;
+              return normalizeKeyName(key) === nbackCorrectResponse;
+            }
+            if (nbackIsMatch) {
+              return normalizeKeyName(key) === nbackGoKey;
+            }
+            return false;
+          };
+
+          const afterResponseByKey = (rawKey, rawRt) => {
             if (responded) return;
+
+            const key = normalizeKeyName(rawKey);
+            if (!validKeys.includes(key)) return;
+
             responded = true;
-            responseKey = info && info.key ? normalizeKeyName(info.key) : null;
-            rt = info && Number.isFinite(info.rt) ? info.rt : (nowMs() - onset);
+            responseKey = key;
+            rt = Number.isFinite(rawRt) ? rawRt : (nowMs() - onset);
             endedReason = 'response';
+
+            if (cipParadigm === 'categorization') {
+              respondedCategory = selectCategoryByKey(key);
+              if (targetCategory) {
+                correctness = !!(respondedCategory && Number(respondedCategory.index) === Number(targetCategory.index));
+              } else {
+                correctness = null;
+              }
+            } else {
+              correctness = computeNbackCorrectness(key);
+            }
 
             try {
               if (keyboardListener) this.jsPsych.pluginAPI.cancelKeyboardResponse(keyboardListener);
@@ -404,8 +591,46 @@
               // ignore
             }
 
-            resolve();
+            const finishNow = () => resolve();
+            if (cipParadigm === 'nback' && nbackShowFeedback && nbackFeedbackMs > 0) {
+              try {
+                if (promptEl) {
+                  promptEl.textContent = correctness ? 'Correct' : 'Incorrect';
+                  promptEl.style.opacity = '0.95';
+                }
+              } catch {
+                // ignore
+              }
+              this.jsPsych.pluginAPI.setTimeout(() => finishNow(), nbackFeedbackMs);
+              return;
+            }
+
+            finishNow();
           };
+
+          const afterResponse = (info) => {
+            afterResponseByKey(info && info.key, info && Number.isFinite(info.rt) ? info.rt : null);
+          };
+
+          if (cipParadigm === 'categorization' && showCategoryButtons) {
+            controlsEl.querySelectorAll('[data-cip-category-key]').forEach((btn) => {
+              btn.addEventListener('click', () => {
+                const key = btn.getAttribute('data-cip-category-key') || '';
+                afterResponseByKey(key, nowMs() - onset);
+              });
+            });
+          }
+
+          if (cipParadigm === 'nback' && nbackResponseDevice === 'mouse' && nbackShowButtons) {
+            controlsEl.querySelectorAll('[data-cip-nback-action]').forEach((btn) => {
+              btn.addEventListener('click', () => {
+                const action = (btn.getAttribute('data-cip-nback-action') || '').toString();
+                if (action === 'match') afterResponseByKey(nbackMatchKey, nowMs() - onset);
+                else if (action === 'nonmatch') afterResponseByKey(nbackNonmatchKey, nowMs() - onset);
+                else if (action === 'go') afterResponseByKey(nbackGoKey, nowMs() - onset);
+              });
+            });
+          }
 
           keyboardListener = this.jsPsych.pluginAPI.getKeyboardResponse({
             callback_function: afterResponse,
@@ -417,6 +642,11 @@
 
           imageTimeoutId = this.jsPsych.pluginAPI.setTimeout(() => {
             endedReason = responded ? 'response' : 'timeout';
+            if (cipParadigm === 'nback' && !responded) {
+              if (nbackResponseParadigm === 'go_nogo' && nbackIsMatch) correctness = false;
+              if (nbackResponseParadigm === '2afc') correctness = false;
+              if (nbackResponseParadigm === 'go_nogo' && !nbackIsMatch) correctness = true;
+            }
             try {
               if (keyboardListener) this.jsPsych.pluginAPI.cancelKeyboardResponse(keyboardListener);
               keyboardListener = null;

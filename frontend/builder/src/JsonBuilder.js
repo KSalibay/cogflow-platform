@@ -41,7 +41,6 @@ class JsonBuilder {
      */
     updateConditionalUI() {
         const defaultDevice = document.getElementById('defaultResponseDevice')?.value || 'keyboard';
-        const mouseInactivityEnabled = document.getElementById('mouseInactivityPromptEnabled')?.checked === true;
 
         const feedbackType = document.getElementById('defaultFeedbackType')?.value || 'off';
         const feedbackArrowColorMode = document.getElementById('defaultFeedbackArrowColorMode')?.value || 'auto';
@@ -118,15 +117,6 @@ class JsonBuilder {
             mouseAccuracySettings.style.display = showMouseAccuracy ? '' : 'none';
             mouseAccuracySettings.querySelectorAll('input, select, textarea').forEach((el) => {
                 el.disabled = !showMouseAccuracy;
-            });
-        }
-
-        const mouseInactivitySettings = document.getElementById('mouseInactivityPromptSettings');
-        if (mouseInactivitySettings) {
-            const showMouseInactivity = (defaultDevice === 'mouse') && mouseInactivityEnabled;
-            mouseInactivitySettings.style.display = showMouseInactivity ? '' : 'none';
-            mouseInactivitySettings.querySelectorAll('input, select, textarea').forEach((el) => {
-                el.disabled = !showMouseInactivity;
             });
         }
 
@@ -1005,14 +995,6 @@ class JsonBuilder {
             });
         }
 
-        const checkAssetsBtn = document.getElementById('checkAssetsBtn');
-        if (checkAssetsBtn && checkAssetsBtn.dataset.bound !== '1') {
-            checkAssetsBtn.dataset.bound = '1';
-            checkAssetsBtn.addEventListener('click', () => {
-                this.showAssetInspectorModal();
-            });
-        }
-
         // Local JSON import -> Token Store upload (batch)
         const importBtn = document.getElementById('importLocalJsonBtn');
         const importInput = document.getElementById('importLocalJsonInput');
@@ -1333,230 +1315,6 @@ class JsonBuilder {
         this.setTokenStoreAssetIndex(all);
     }
 
-    getAssetInspectorContext() {
-        const isImage = (name) => /\.(png|jpg|jpeg|gif|webp|bmp|svg)$/i.test((name || '').toString());
-
-        if (this.isPlatformMode()) {
-            const studySlug = (window.COGFLOW_STUDY_SLUG || '').toString().trim();
-            const scopeKey = studySlug || 'unscoped';
-            const merged = new Map();
-
-            const ingest = (map, sourceScope) => {
-                if (!map || typeof map !== 'object') return;
-                Object.entries(map).forEach(([filename, meta]) => {
-                    const f = String(filename || '').trim();
-                    const url = String(meta && meta.url ? meta.url : '').trim();
-                    if (!f || !url) return;
-                    if (!merged.has(f)) {
-                        merged.set(f, {
-                            filename: f,
-                            url,
-                            isImage: isImage(f),
-                            sourceLabel: sourceScope,
-                        });
-                    }
-                });
-            };
-
-            ingest(this.getPlatformAssetMap(scopeKey), scopeKey);
-            if (scopeKey !== 'unscoped') {
-                ingest(this.getPlatformAssetMap('unscoped'), 'unscoped');
-            }
-
-            const items = Array.from(merged.values()).sort((a, b) => a.filename.localeCompare(b.filename));
-            const contextLabel = scopeKey === 'unscoped'
-                ? 'Platform scope: unscoped'
-                : `Platform scope: ${scopeKey} (plus unscoped fallback)`;
-            return { items, contextLabel };
-        }
-
-        const code = (localStorage.getItem('cogflow_last_export_code') || localStorage.getItem('psychjson_last_export_code') || '').toString().trim();
-        const taskTypeRaw = (document.getElementById('taskType')?.value || 'task').toString();
-        const taskType = this.normalizeTokenStoreTaskType(taskTypeRaw);
-
-        if (!code) {
-            return {
-                items: [],
-                contextLabel: 'Token Store scope: no export code selected yet. Export or upload assets first.',
-            };
-        }
-
-        const allAssetIndex = this.getTokenStoreAssetIndex() || {};
-        const byCode = (allAssetIndex && typeof allAssetIndex === 'object') ? allAssetIndex[code] : null;
-        const byTask = (byCode && typeof byCode === 'object' && byCode.by_task && typeof byCode.by_task === 'object')
-            ? byCode.by_task
-            : {};
-
-        const merged = new Map();
-        const ingest = (map, sourceTask) => {
-            if (!map || typeof map !== 'object') return;
-            Object.entries(map).forEach(([filename, meta]) => {
-                const f = String(filename || '').trim();
-                const url = String(meta && meta.url ? meta.url : '').trim();
-                if (!f || !url) return;
-                if (!merged.has(f)) {
-                    merged.set(f, {
-                        filename: f,
-                        url,
-                        isImage: isImage(f),
-                        sourceLabel: sourceTask,
-                    });
-                }
-            });
-        };
-
-        const currentTaskMap = this.getTokenStoreAssetMapForCodeAndTask(code, taskType);
-        ingest(currentTaskMap, taskType);
-        Object.entries(byTask).forEach(([t, rec]) => {
-            if (t === taskType) return;
-            const files = rec && typeof rec === 'object' && rec.files && typeof rec.files === 'object' ? rec.files : null;
-            ingest(files, t);
-        });
-
-        const items = Array.from(merged.values()).sort((a, b) => a.filename.localeCompare(b.filename));
-        return {
-            items,
-            contextLabel: `Token Store scope: code ${code}, task ${String(taskType).toUpperCase()} (with cross-task fallback)`,
-        };
-    }
-
-    async copyTextToClipboard(text, successMessage) {
-        const value = (text || '').toString();
-        if (!value) return false;
-
-        try {
-            await navigator.clipboard.writeText(value);
-            if (successMessage) this.showValidationResult('success', successMessage);
-            return true;
-        } catch {
-            // Fallback for environments where async clipboard is blocked.
-        }
-
-        try {
-            const ta = document.createElement('textarea');
-            ta.value = value;
-            ta.setAttribute('readonly', 'readonly');
-            ta.style.position = 'fixed';
-            ta.style.left = '-9999px';
-            document.body.appendChild(ta);
-            ta.select();
-            ta.setSelectionRange(0, ta.value.length);
-            const ok = document.execCommand('copy');
-            ta.remove();
-            if (ok) {
-                if (successMessage) this.showValidationResult('success', successMessage);
-                return true;
-            }
-        } catch {
-            // ignore
-        }
-
-        this.showValidationResult('error', 'Clipboard copy blocked. Select and copy manually.');
-        return false;
-    }
-
-    showAssetInspectorModal() {
-        const modalEl = document.getElementById('checkAssetsModal');
-        const summaryEl = document.getElementById('checkAssetsSummary');
-        const emptyEl = document.getElementById('checkAssetsEmpty');
-        const tableBody = document.getElementById('checkAssetsTableBody');
-
-        if (!modalEl || !summaryEl || !emptyEl || !tableBody || !window.bootstrap?.Modal) {
-            this.showValidationResult('error', 'Check Assets UI is unavailable.');
-            return;
-        }
-
-        const ctx = this.getAssetInspectorContext();
-        const items = Array.isArray(ctx.items) ? ctx.items : [];
-
-        summaryEl.textContent = `${ctx.contextLabel}. Found ${items.length} asset(s).`;
-        tableBody.innerHTML = '';
-        emptyEl.classList.toggle('d-none', items.length > 0);
-
-        items.forEach((item) => {
-            const tr = document.createElement('tr');
-
-            const previewCell = document.createElement('td');
-            if (item.isImage) {
-                const img = document.createElement('img');
-                img.src = item.url;
-                img.alt = item.filename;
-                img.loading = 'lazy';
-                img.style.maxWidth = '90px';
-                img.style.maxHeight = '60px';
-                img.style.objectFit = 'contain';
-                img.style.borderRadius = '4px';
-                img.style.border = '1px solid rgba(0,0,0,0.1)';
-                previewCell.appendChild(img);
-            } else {
-                const span = document.createElement('span');
-                span.className = 'text-muted';
-                span.textContent = 'No preview';
-                previewCell.appendChild(span);
-            }
-
-            const filenameCell = document.createElement('td');
-            const filenameCode = document.createElement('code');
-            filenameCode.textContent = item.filename;
-            filenameCell.appendChild(filenameCode);
-            const sourceDiv = document.createElement('div');
-            sourceDiv.className = 'small text-muted';
-            sourceDiv.textContent = `Source: ${item.sourceLabel}`;
-            filenameCell.appendChild(sourceDiv);
-
-            const urlCell = document.createElement('td');
-            const urlLink = document.createElement('a');
-            urlLink.href = item.url;
-            urlLink.target = '_blank';
-            urlLink.rel = 'noopener noreferrer';
-            urlLink.textContent = item.url;
-            urlCell.appendChild(urlLink);
-
-            const actionCell = document.createElement('td');
-            const group = document.createElement('div');
-            group.className = 'd-flex gap-2 flex-wrap';
-
-            const copyFilenameBtn = document.createElement('button');
-            copyFilenameBtn.type = 'button';
-            copyFilenameBtn.className = 'btn btn-outline-secondary btn-sm';
-            copyFilenameBtn.textContent = 'Copy name';
-            copyFilenameBtn.addEventListener('click', () => {
-                this.copyTextToClipboard(item.filename, 'Copied filename.');
-            });
-
-            const copyUrlBtn = document.createElement('button');
-            copyUrlBtn.type = 'button';
-            copyUrlBtn.className = 'btn btn-outline-primary btn-sm';
-            copyUrlBtn.textContent = 'Copy URL';
-            copyUrlBtn.addEventListener('click', () => {
-                this.copyTextToClipboard(item.url, 'Copied URL.');
-            });
-
-            const copyHtmlBtn = document.createElement('button');
-            copyHtmlBtn.type = 'button';
-            copyHtmlBtn.className = 'btn btn-primary btn-sm';
-            copyHtmlBtn.textContent = 'Copy <img>';
-            copyHtmlBtn.addEventListener('click', () => {
-                const snippet = `<img src="${item.url}" alt="${item.filename}" />`;
-                this.copyTextToClipboard(snippet, 'Copied HTML image snippet.');
-            });
-
-            group.appendChild(copyFilenameBtn);
-            group.appendChild(copyUrlBtn);
-            group.appendChild(copyHtmlBtn);
-            actionCell.appendChild(group);
-
-            tr.appendChild(previewCell);
-            tr.appendChild(filenameCell);
-            tr.appendChild(urlCell);
-            tr.appendChild(actionCell);
-            tableBody.appendChild(tr);
-        });
-
-        const modal = window.bootstrap.Modal.getOrCreateInstance(modalEl);
-        modal.show();
-    }
-
     escapeRegex(s) {
         return String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
@@ -1721,12 +1479,8 @@ class JsonBuilder {
 
         const getCsrfToken = () => {
             try {
-                // If duplicate csrftoken cookies exist, use the last one to align
-                // with browser cookie header ordering.
-                const matches = Array.from(document.cookie.matchAll(/(?:^|;\s*)csrftoken=([^;]+)/g));
-                if (matches.length > 0) {
-                    return decodeURIComponent(matches[matches.length - 1][1]);
-                }
+                const fromCookie = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+                if (fromCookie && fromCookie[1]) return decodeURIComponent(fromCookie[1]);
                 return '';
             } catch {
                 return '';
@@ -2305,17 +2059,12 @@ class JsonBuilder {
             taskSelect.disabled = true;
         };
 
-        let taskOptionsRequestToken = 0;
-
         const populateTaskOptions = async (studySlug) => {
             resetTaskOptions();
             const slug = (studySlug || '').toString().trim();
             if (!slug) return;
 
-            const requestToken = ++taskOptionsRequestToken;
-
             const payload = await this.fetchLatestStudyConfig(slug);
-            if (requestToken !== taskOptionsRequestToken) return;
             const configs = Array.isArray(payload?.configs) ? payload.configs : [];
             if (!configs.length) return;
 
@@ -2387,7 +2136,6 @@ class JsonBuilder {
                 listEl.querySelectorAll('.list-group-item').forEach((el) => el.classList.remove('active'));
                 btn.classList.add('active');
                 populateTaskOptions(slug).catch(() => {
-                    if (slug !== (modalEl.dataset.selectedStudySlug || '').toString().trim()) return;
                     resetTaskOptions();
                 });
                 updateConfirmState();
@@ -2433,10 +2181,8 @@ class JsonBuilder {
             confirmBtn.disabled = true;
             setError('');
             try {
-                const loaded = await this.loadStudyIntoBuilder(selectedSlug, { configVersionId: selectedConfigVersionId });
-                if (loaded !== false) {
-                    modal.hide();
-                }
+                await this.loadStudyIntoBuilder(selectedSlug, { configVersionId: selectedConfigVersionId });
+                modal.hide();
             } catch (e) {
                 setError(e?.message || 'Failed to load selected study.');
             } finally {
@@ -2464,30 +2210,11 @@ class JsonBuilder {
         const builderComponents = this.convertImportedTimelineToBuilderComponents(importedTimeline, taskType);
         const rebuiltCount = this.rebuildTimelineDOMFromImportedComponents(builderComponents);
 
-        // Re-sync task-scoped affordances against the rebuilt timeline and loaded task.
-        this.loadComponentLibrary();
-        this.updateConditionalUI();
-
         this.updateJSON();
         this.showValidationResult('success', `Loaded ${sourceLabel}. Rebuilt ${rebuiltCount} timeline component(s).`);
     }
 
     async loadStudyIntoBuilder(studySlug, options = {}) {
-        const slug = (studySlug || '').toString().trim();
-        if (!slug) {
-            throw new Error('Missing study slug');
-        }
-
-        const skipReplaceConfirm = options?.skipReplaceConfirm === true;
-        if (!skipReplaceConfirm) {
-            const proceed = window.confirm(
-                'Load selected study now?\n\nThis replaces the current Builder workspace.\nIf you want a backup, use Save JSON or Publish first.\n\nContinue without saving current study?'
-            );
-            if (!proceed) {
-                return false;
-            }
-        }
-
         const payload = await this.fetchLatestStudyConfig(studySlug);
         const studyName = (payload?.study_name || payload?.study_slug || studySlug || 'study').toString();
         const requestedVersionId = (options?.configVersionId || '').toString().trim();
@@ -2510,7 +2237,6 @@ class JsonBuilder {
         const label = taskType ? `${studyName} (${taskType} · ${version})` : `${studyName} (${version})`;
 
         this.rehydrateBuilderFromConfig(config, label);
-        return true;
     }
 
     extractEnabledFlag(raw, fallback = false) {
@@ -2586,7 +2312,6 @@ class JsonBuilder {
                 mapWindow('stimulus_duration_ms', 'sart_stimulus_duration_min', 'sart_stimulus_duration_max');
                 mapWindow('mask_duration_ms', 'sart_mask_duration_min', 'sart_mask_duration_max');
                 mapWindow('trial_duration_ms', 'sart_trial_duration_min', 'sart_trial_duration_max');
-                mapWindow('feedback_duration_ms', 'sart_feedback_duration_min', 'sart_feedback_duration_max');
                 mapWindow('iti_ms', 'sart_iti_min', 'sart_iti_max');
             } else if (innerType === 'mot-trial') {
                 mapWindow('speed_px_per_s', 'mot_speed_px_per_s_min', 'mot_speed_px_per_s_max');
@@ -2627,43 +2352,6 @@ class JsonBuilder {
                 if (out[k] === undefined) out[k] = v;
             });
 
-            // Unpack response_parameters_override back into flat block editor fields for all RDM block types.
-            if (innerType && innerType.startsWith('rdm-') && src.response_parameters_override && typeof src.response_parameters_override === 'object') {
-                const rpo = src.response_parameters_override;
-                if (typeof rpo.response_device === 'string' && rpo.response_device !== '') out.response_device = rpo.response_device;
-                if (typeof rpo.require_response === 'boolean') out.require_response_mode = rpo.require_response ? 'true' : 'false';
-                if (typeof rpo.end_condition_on_response === 'boolean') out.end_condition_on_response_mode = rpo.end_condition_on_response ? 'true' : 'false';
-                if (rpo.feedback && typeof rpo.feedback === 'object') {
-                    if (typeof rpo.feedback.type === 'string') out.feedback_mode = rpo.feedback.type;
-                    if (rpo.feedback.duration_ms !== undefined) out.feedback_duration_ms = rpo.feedback.duration_ms;
-                    if (typeof rpo.feedback.arrow_color_mode === 'string') out.feedback_arrow_color_mode = rpo.feedback.arrow_color_mode;
-                    if (rpo.feedback.arrow_neutral_color) out.feedback_arrow_neutral_color = rpo.feedback.arrow_neutral_color;
-                    if (rpo.feedback.arrow_custom_color) out.feedback_arrow_custom_color = rpo.feedback.arrow_custom_color;
-                    if (rpo.feedback.arrow_correct_color) out.feedback_arrow_correct_color = rpo.feedback.arrow_correct_color;
-                    if (rpo.feedback.arrow_incorrect_color) out.feedback_arrow_incorrect_color = rpo.feedback.arrow_incorrect_color;
-                    if (rpo.feedback.arrow_size_px !== undefined) out.feedback_arrow_size_px = rpo.feedback.arrow_size_px;
-                    if (rpo.feedback.arrow_line_width_px !== undefined) out.feedback_arrow_line_width_px = rpo.feedback.arrow_line_width_px;
-                } else if (rpo.feedback === null || (rpo.feedback && rpo.feedback.enabled === false)) {
-                    out.feedback_mode = 'off';
-                }
-                if (Array.isArray(rpo.choices) && rpo.choices.length > 0) out.response_keys = rpo.choices.join(',');
-                if (rpo.mouse_response && typeof rpo.mouse_response === 'object') {
-                    const mr = rpo.mouse_response;
-                    if (mr.segments !== undefined) out.mouse_segments = mr.segments;
-                    if (mr.start_angle_deg !== undefined) out.mouse_start_angle_deg = mr.start_angle_deg;
-                    if (typeof mr.selection_mode === 'string') out.mouse_selection_mode = mr.selection_mode;
-                    if (typeof mr.accuracy_mode === 'string') out.mouse_accuracy_mode = mr.accuracy_mode;
-                    if (mr.accuracy_tolerance_deg !== undefined) out.mouse_accuracy_tolerance_deg = mr.accuracy_tolerance_deg;
-                    if (mr.accuracy_slack_deg !== undefined) out.mouse_accuracy_slack_deg = mr.accuracy_slack_deg;
-                }
-                if (typeof rpo.target_group === 'string' && rpo.target_group !== '') out.response_target_group = rpo.target_group;
-                if (rpo.cue_border && typeof rpo.cue_border === 'object') {
-                    if (typeof rpo.cue_border.mode === 'string') out.cue_border_mode = rpo.cue_border.mode;
-                    if (rpo.cue_border.color) out.cue_border_color = rpo.cue_border.color;
-                    if (rpo.cue_border.width !== undefined) out.cue_border_width = rpo.cue_border.width;
-                }
-            }
-
             if (innerType === 'rdm-trial') {
                 if (Array.isArray(values.direction)) out.direction_options = csv(values.direction);
                 if (values.dot_color !== undefined) out.dot_color = values.dot_color;
@@ -2700,11 +2388,6 @@ class JsonBuilder {
                 if (values.nogo_digit !== undefined) out.sart_nogo_digit = values.nogo_digit;
                 if (values.nogo_probability !== undefined) out.sart_nogo_probability = values.nogo_probability;
                 if (values.go_key !== undefined) out.sart_go_key = values.go_key;
-                if (values.show_feedback !== undefined) out.sart_show_feedback = !!values.show_feedback;
-                if (values.feedback_text_correct !== undefined) out.sart_feedback_text_correct = values.feedback_text_correct;
-                if (values.feedback_text_incorrect !== undefined) out.sart_feedback_text_incorrect = values.feedback_text_incorrect;
-                if (values.feedback_color_correct !== undefined) out.sart_feedback_color_correct = values.feedback_color_correct;
-                if (values.feedback_color_incorrect !== undefined) out.sart_feedback_color_incorrect = values.feedback_color_incorrect;
             } else if (innerType === 'mot-trial') {
                 if (Array.isArray(values.num_objects)) out.mot_num_objects_options = csv(values.num_objects);
                 if (Array.isArray(values.num_targets)) out.mot_num_targets_options = csv(values.num_targets);
@@ -3023,9 +2706,6 @@ class JsonBuilder {
                         name: 'Randomize Start',
                         random_group_id: markerId,
                         randomizable_across_markers: item.randomizable_across_markers !== false,
-                        ...(item.pool_across_randomize_groups === true || item.pool_across_randomize_groups === false
-                            ? { pool_across_randomize_groups: item.pool_across_randomize_groups === true }
-                            : {}),
                         label: item.label
                     });
                     walk(item.items);
@@ -3103,18 +2783,8 @@ class JsonBuilder {
         const rawTaskType = (config?.task_type || config?.taskType || '').toString().trim();
         const importedTaskType = rawTaskType || this.currentTaskType || 'rdm';
 
-        const hasExplicitExperimentType = (config?.experiment_type !== undefined || config?.experimentType !== undefined);
-        let nextExperimentTypeRaw = hasExplicitExperimentType
-            ? (config?.experiment_type || config?.experimentType || '').toString().trim().toLowerCase()
-            : '';
-
-        if (nextExperimentTypeRaw !== 'continuous' && nextExperimentTypeRaw !== 'trial-based') {
-            nextExperimentTypeRaw = (importedTaskType === 'soc-dashboard' || importedTaskType === 'continuous-image')
-                ? 'continuous'
-                : 'trial-based';
-        }
-
-        let nextExperimentType = (nextExperimentTypeRaw === 'continuous') ? 'continuous' : 'trial-based';
+        let nextExperimentType = (config?.experiment_type || config?.experimentType || this.experimentType || 'trial-based').toString();
+        nextExperimentType = (nextExperimentType === 'continuous') ? 'continuous' : 'trial-based';
 
         if ((importedTaskType === 'soc-dashboard' || importedTaskType === 'continuous-image') && nextExperimentType !== 'continuous') {
             nextExperimentType = 'continuous';
@@ -3157,7 +2827,7 @@ class JsonBuilder {
         } else if (nextExperimentType === 'continuous') {
             this.setElementValue('frameRate', config?.frame_rate);
             this.setElementValue('duration', config?.duration);
-            this.setElementValue('updateInterval', config?.update_interval_ms ?? config?.update_interval);
+            this.setElementValue('updateInterval', config?.update_interval);
             this.setElementValue('defaultTransitionDuration', config?.transition_settings?.duration_ms);
             this.setElementValue('defaultTransitionType', config?.transition_settings?.type);
         }
@@ -3182,96 +2852,13 @@ class JsonBuilder {
         };
 
         if (t === 'rdm') {
-            const ds = (config?.display_settings && typeof config.display_settings === 'object')
-                ? config.display_settings
-                : ((config?.display_parameters && typeof config.display_parameters === 'object') ? config.display_parameters : {});
-            const ap = (config?.aperture_parameters && typeof config.aperture_parameters === 'object') ? config.aperture_parameters : {};
-            const dot = (config?.dot_parameters && typeof config.dot_parameters === 'object') ? config.dot_parameters : {};
-            const motion = (config?.motion_parameters && typeof config.motion_parameters === 'object') ? config.motion_parameters : {};
-            const timing = (config?.timing_parameters && typeof config.timing_parameters === 'object') ? config.timing_parameters : {};
-            const response = (config?.response_parameters && typeof config.response_parameters === 'object') ? config.response_parameters : {};
-
-            const firstRdmTimelineItem = (() => {
-                const timeline = Array.isArray(config?.timeline) ? config.timeline : [];
-                for (const item of timeline) {
-                    if (!item || typeof item !== 'object') continue;
-                    const type = (item.type || '').toString().trim();
-                    if (type.startsWith('rdm-')) return item;
-                }
-                return null;
-            })();
-
-            setFrom('canvasWidth', ds.canvas_width ?? firstRdmTimelineItem?.canvas_width);
-            setFrom('canvasHeight', ds.canvas_height ?? firstRdmTimelineItem?.canvas_height);
-            setFrom('backgroundColor', ds.background_color ?? firstRdmTimelineItem?.background_color);
-
-            setFrom('apertureShape', ap.aperture_shape ?? ap.shape ?? firstRdmTimelineItem?.aperture_shape);
-            setFrom('apertureDiameter', ap.aperture_size ?? ap.diameter ?? firstRdmTimelineItem?.aperture_size);
-            if (ap.show_aperture_outline !== undefined) setFrom('apertureOutlineEnabled', ap.show_aperture_outline, 'checked');
-            setFrom('apertureOutlineWidth', ap.aperture_outline_width);
-            setFrom('apertureOutlineColor', ap.aperture_outline_color);
-
-            setFrom('dotSize', dot.dot_size ?? firstRdmTimelineItem?.dot_size);
-            setFrom('dotColor', dot.dot_color ?? firstRdmTimelineItem?.dot_color);
-            setFrom('totalDots', dot.total_dots ?? firstRdmTimelineItem?.total_dots);
-            setFrom('dotLifetime', dot.lifetime_frames ?? firstRdmTimelineItem?.lifetime_frames);
-
-            setFrom('motionCoherence', motion.coherence ?? firstRdmTimelineItem?.coherence);
-            setFrom('motionDirection', motion.coherent_direction ?? motion.direction ?? firstRdmTimelineItem?.coherent_direction ?? firstRdmTimelineItem?.direction);
-            setFrom('motionSpeed', motion.speed ?? firstRdmTimelineItem?.speed);
-            setFrom('noiseType', motion.noise_type ?? firstRdmTimelineItem?.noise_type);
-
-            setFrom('stimulusDuration', timing.stimulus_duration ?? firstRdmTimelineItem?.stimulus_duration);
-            setFrom('responseDeadline', timing.response_deadline ?? firstRdmTimelineItem?.response_deadline);
-            setFrom('interTrialInterval', timing.inter_trial_interval ?? firstRdmTimelineItem?.inter_trial_interval);
-            setFrom('fixationDuration', timing.fixation_duration ?? config?.fixation_duration ?? firstRdmTimelineItem?.fixation_duration);
-
-            const inferredResponseDevice = (() => {
-                if (typeof response.response_device === 'string' && response.response_device.trim() !== '') {
-                    return response.response_device;
-                }
-                if (response.mouse_response) return 'mouse';
-                if (response.touch_response) return 'touch';
-                if (response.voice_response) return 'voice';
-                if (typeof config?.data_collection?.default_response_device === 'string' && config.data_collection.default_response_device.trim() !== '') {
-                    return config.data_collection.default_response_device;
-                }
-                return 'keyboard';
-            })();
-
-            setFrom('defaultResponseDevice', inferredResponseDevice);
-            setFrom('responseKeys', csv(response.choices ?? config?.response_keys));
-
-            if (response.require_response !== undefined) setFrom('requireResponse', response.require_response, 'checked');
-            if (typeof response.end_condition_on_response === 'boolean') setFrom('endConditionOnResponse', response.end_condition_on_response, 'checked');
-
-            if (response.feedback && typeof response.feedback === 'object') {
-                setFrom('defaultFeedbackType', response.feedback.type);
-                setFrom('defaultFeedbackDuration', response.feedback.duration_ms);
-                setFrom('defaultFeedbackArrowColorMode', response.feedback.arrow_color_mode);
-                setFrom('defaultFeedbackArrowNeutralColor', response.feedback.arrow_neutral_color);
-                setFrom('defaultFeedbackArrowCustomColor', response.feedback.arrow_custom_color);
-                setFrom('defaultFeedbackArrowCorrectColor', response.feedback.arrow_correct_color);
-                setFrom('defaultFeedbackArrowIncorrectColor', response.feedback.arrow_incorrect_color);
-                setFrom('defaultFeedbackArrowSizePx', response.feedback.arrow_size_px);
-                setFrom('defaultFeedbackArrowLineWidthPx', response.feedback.arrow_line_width_px);
-            }
-
-            if (response.mouse_response && typeof response.mouse_response === 'object') {
-                const mouse = response.mouse_response;
-                setFrom('mouseApertureSegments', mouse.segments);
-                setFrom('mouseSegmentStartAngle', mouse.start_angle_deg);
-                setFrom('mouseSelectionMode', mouse.selection_mode);
-                setFrom('mouseAccuracyMode', mouse.accuracy_mode);
-                setFrom('mouseAccuracyToleranceDeg', mouse.accuracy_tolerance_deg);
-                setFrom('mouseAccuracySlackDeg', mouse.accuracy_slack_deg);
-                if (mouse.inactivity_prompt && typeof mouse.inactivity_prompt === 'object') {
-                    setFrom('mouseInactivityPromptEnabled', mouse.inactivity_prompt.enabled === true, 'checked');
-                    setFrom('mouseInactivityThresholdMs', mouse.inactivity_prompt.idle_threshold_ms);
-                    setFrom('mouseInactivityReminderCooldownMs', mouse.inactivity_prompt.reminder_cooldown_ms);
-                    setFrom('mouseInactivityPromptText', mouse.inactivity_prompt.message);
-                }
-            }
+            const ds = (config?.display_settings && typeof config.display_settings === 'object') ? config.display_settings : {};
+            setFrom('canvasWidth', ds.canvas_width);
+            setFrom('canvasHeight', ds.canvas_height);
+            setFrom('backgroundColor', ds.background_color);
+            setFrom('fixationDuration', config?.fixation_duration);
+            setFrom('defaultResponseDevice', config?.data_collection?.default_response_device);
+            setFrom('responseKeys', csv(config?.response_keys));
             return;
         }
 
@@ -3377,6 +2964,9 @@ class JsonBuilder {
             setFrom('cipDefaultChoiceKeys', csv(s.choice_keys));
             if (s.mask_noise_amp !== undefined) setFrom('cipDefaultMaskNoiseAmp', s.mask_noise_amp);
             if (s.mask_block_size !== undefined) setFrom('cipDefaultMaskBlockSize', s.mask_block_size);
+            if (s.cip_response_paradigm !== undefined) setFrom('cipDefaultResponseParadigm', s.cip_response_paradigm);
+            if (s.cip_category_count !== undefined) setFrom('cipDefaultCategoryCount', s.cip_category_count);
+            if (s.cip_show_category_buttons !== undefined) setFrom('cipDefaultShowCategoryButtons', s.cip_show_category_buttons, 'checked');
             return;
         }
 
@@ -3539,9 +3129,6 @@ class JsonBuilder {
             setFrom('socBackgroundColor', s.background_color);
             setFrom('socDefaultApp', s.default_app);
             setFrom('socNumTasks', s.num_tasks);
-            setFrom('socSubtaskControlMode', s.subtask_control_mode);
-            setFrom('socSubtaskDurationMode', s.subtask_duration_mode);
-            setFrom('socSubtaskDurationEntries', s.subtask_duration_entries);
             setFrom('socSessionDurationMs', s.trial_duration_ms);
             setFrom('socEndKey', s.end_key);
             if (s.icons_clickable !== undefined) setFrom('socIconsClickable', s.icons_clickable, 'checked');
@@ -4066,24 +3653,14 @@ class JsonBuilder {
         const nextTaskType = event?.target?.value || 'rdm';
         const prevTaskType = this.currentTaskType || 'rdm';
 
-        const isContinuousOnlyTask = (taskType) => (taskType === 'continuous-image' || taskType === 'soc-dashboard');
-
-        // Continuous-only tasks should automatically flip the experiment mode.
-        if (isContinuousOnlyTask(nextTaskType) && this.experimentType !== 'continuous') {
+        // Continuous Image Presentation is a continuous-mode task (by design).
+        // If the user selects it while in trial-based mode, auto-switch to continuous.
+        if (nextTaskType === 'continuous-image' && this.experimentType !== 'continuous') {
             const continuousRadio = document.getElementById('continuous');
             if (continuousRadio) continuousRadio.checked = true;
             this.experimentType = 'continuous';
 
             // Re-render task-scoped panels so availability + defaults match.
-            this.enforceTaskTypeAvailability();
-            this.updateExperimentTypeUI();
-            this.updateConditionalUI();
-        } else if (!isContinuousOnlyTask(nextTaskType) && this.experimentType === 'continuous') {
-            // Switching away from SOC/continuous-only tasks should snap back to trial-based
-            // for classic tasks like SART/Flanker.
-            const trialRadio = document.getElementById('trialBased');
-            if (trialRadio) trialRadio.checked = true;
-            this.experimentType = 'trial-based';
             this.enforceTaskTypeAvailability();
             this.updateExperimentTypeUI();
             this.updateConditionalUI();
@@ -5242,27 +4819,6 @@ class JsonBuilder {
                     <input type="number" class="form-control parameter-input" id="motTrackingDurationMsDefault" value="8000" min="0" max="60000">
                 </div>
                 <div class="parameter-row">
-                    <label class="parameter-label">Fixation Cross During Trial:</label>
-                    <div class="parameter-input">
-                        <div class="form-check form-switch">
-                            <input class="form-check-input" type="checkbox" id="motFixationCrossEnabledDefault">
-                            <label class="form-check-label" for="motFixationCrossEnabledDefault">Show fixation cross at a random time after trial start</label>
-                        </div>
-                    </div>
-                </div>
-                <div class="parameter-row">
-                    <label class="parameter-label">Fixation Onset Min (ms):</label>
-                    <input type="number" class="form-control parameter-input" id="motFixationCrossMinOnsetMsDefault" value="500" min="0" max="120000">
-                </div>
-                <div class="parameter-row">
-                    <label class="parameter-label">Fixation Onset Max (ms):</label>
-                    <input type="number" class="form-control parameter-input" id="motFixationCrossMaxOnsetMsDefault" value="3000" min="0" max="120000">
-                </div>
-                <div class="parameter-row">
-                    <label class="parameter-label">Fixation Duration (ms):</label>
-                    <input type="number" class="form-control parameter-input" id="motFixationCrossDurationMsDefault" value="300" min="1" max="10000">
-                </div>
-                <div class="parameter-row">
                     <label class="parameter-label">ITI (ms):</label>
                     <input type="number" class="form-control parameter-input" id="motItiMsDefault" value="1000" min="0" max="30000">
                 </div>
@@ -5756,30 +5312,6 @@ class JsonBuilder {
                 </div>
 
                 <div class="parameter-row">
-                    <label class="parameter-label">Subtask Control Mode:</label>
-                    <select class="form-control parameter-input" id="socSubtaskControlMode">
-                        <option value="duration_based" selected>Duration-based</option>
-                        <option value="timeline_order_based">Timeline order-based</option>
-                    </select>
-                    <div class="parameter-help">Duration-based uses each subtask's schedule fields; Timeline order-based runs SOC subtasks sequentially in authored timeline order.</div>
-                </div>
-
-                <div class="parameter-row">
-                    <label class="parameter-label">Default Subtask Duration Mode:</label>
-                    <select class="form-control parameter-input" id="socSubtaskDurationMode">
-                        <option value="time_ms" selected>Time (ms)</option>
-                        <option value="entries">Trial / Frame count</option>
-                    </select>
-                    <div class="parameter-help">Default fallback for SOC subtask duration interpretation when subtask-level override is not set.</div>
-                </div>
-
-                <div class="parameter-row">
-                    <label class="parameter-label">Default Duration Entries:</label>
-                    <input type="number" class="form-control parameter-input" id="socSubtaskDurationEntries" value="200" min="0" max="100000">
-                    <div class="parameter-help">Used when duration mode is Trial / Frame count (e.g., 200 log entries in SART-like).</div>
-                </div>
-
-                <div class="parameter-row">
                     <label class="parameter-label">Session Duration (ms):</label>
                     <input type="number" class="form-control parameter-input" id="socSessionDurationMs" value="60000" min="0" max="3600000">
                     <div class="parameter-help">Duration of each SOC Dashboard session component. This is separate from the experiment-wide continuous duration.</div>
@@ -6065,33 +5597,6 @@ class JsonBuilder {
                         </select>
                         <div class="parameter-help">How a segment selection is registered</div>
                     </div>
-                    <div class="parameter-row">
-                        <label class="parameter-label">Inactivity Prompt:</label>
-                        <div class="parameter-input">
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="mouseInactivityPromptEnabled">
-                                <label class="form-check-label" for="mouseInactivityPromptEnabled">Enable mouse inactivity warning</label>
-                            </div>
-                        </div>
-                        <div class="parameter-help">Optional: show a reminder when no mouse movement is detected for a while.</div>
-                    </div>
-                    <div id="mouseInactivityPromptSettings" style="display:none;">
-                        <div class="parameter-row">
-                            <label class="parameter-label">Idle Threshold (ms):</label>
-                            <input type="number" class="form-control parameter-input" id="mouseInactivityThresholdMs" value="15000" min="500" max="300000" step="100">
-                            <div class="parameter-help">How long to wait without mouse movement before showing the warning.</div>
-                        </div>
-                        <div class="parameter-row">
-                            <label class="parameter-label">Reminder Cooldown (ms):</label>
-                            <input type="number" class="form-control parameter-input" id="mouseInactivityReminderCooldownMs" value="10000" min="0" max="300000" step="100">
-                            <div class="parameter-help">Minimum delay before showing the warning again.</div>
-                        </div>
-                        <div class="parameter-row">
-                            <label class="parameter-label">Warning Message:</label>
-                            <input type="text" class="form-control parameter-input" id="mouseInactivityPromptText" value="Please keep moving the mouse to continue." maxlength="240">
-                            <div class="parameter-help">Displayed below the canvas when inactivity is detected.</div>
-                        </div>
-                    </div>
                     <div id="mouseAccuracySettings">
                         <div class="parameter-row">
                             <label class="parameter-label">Accuracy Mode:</label>
@@ -6138,11 +5643,6 @@ class JsonBuilder {
         const feedbackArrowColorModeEl = document.getElementById('defaultFeedbackArrowColorMode');
         if (feedbackArrowColorModeEl) {
             feedbackArrowColorModeEl.addEventListener('change', () => this.updateConditionalUI());
-        }
-
-        const mouseInactivityEnabledEl = document.getElementById('mouseInactivityPromptEnabled');
-        if (mouseInactivityEnabledEl) {
-            mouseInactivityEnabledEl.addEventListener('change', () => this.updateConditionalUI());
         }
 
         // Task-specific conditional UI (Gabor response keys)
@@ -6893,6 +6393,32 @@ class JsonBuilder {
                 </div>
 
                 <div class="parameter-row">
+                    <label class="parameter-label">Default Response Paradigm:</label>
+                    <select class="form-control parameter-input" id="cipDefaultResponseParadigm">
+                        <option value="categorization" selected>Categorization</option>
+                        <option value="nback">N-back</option>
+                    </select>
+                    <div class="parameter-help">Used for newly-added CIP blocks. Existing blocks keep their own value unless manually changed.</div>
+                </div>
+
+                <div class="parameter-row">
+                    <label class="parameter-label">Default Category Count:</label>
+                    <input type="number" class="form-control parameter-input" id="cipDefaultCategoryCount" value="2" min="2" max="7" step="1">
+                    <div class="parameter-help">Used when default paradigm is categorization.</div>
+                </div>
+
+                <div class="parameter-row">
+                    <label class="parameter-label">Show Category Buttons:</label>
+                    <div class="parameter-input">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="cipDefaultShowCategoryButtons">
+                            <label class="form-check-label" for="cipDefaultShowCategoryButtons">Enable</label>
+                        </div>
+                    </div>
+                    <div class="parameter-help">When enabled, newly-added categorization blocks show clickable category buttons in addition to keys.</div>
+                </div>
+
+                <div class="parameter-row">
                     <label class="parameter-label">Preview:</label>
                     <div class="parameter-input">
                         <div id="cipDefaultsPreview" style="position: relative; width: 240px; height: 140px; border: 1px solid #555; background: #111; overflow: hidden; border-radius: 6px;">
@@ -6987,30 +6513,6 @@ class JsonBuilder {
                     <label class="parameter-label">Number of Tasks:</label>
                     <input type="number" class="form-control parameter-input" id="socNumTasks" value="1" min="1" max="4">
                     <div class="parameter-help">Fallback window count used when no subtasks are configured (1–4)</div>
-                </div>
-
-                <div class="parameter-row">
-                    <label class="parameter-label">Subtask Control Mode:</label>
-                    <select class="form-control parameter-input" id="socSubtaskControlMode">
-                        <option value="duration_based" selected>Duration-based</option>
-                        <option value="timeline_order_based">Timeline order-based</option>
-                    </select>
-                    <div class="parameter-help">Duration-based uses each subtask's schedule fields; Timeline order-based runs SOC subtasks sequentially in authored timeline order.</div>
-                </div>
-
-                <div class="parameter-row">
-                    <label class="parameter-label">Default Subtask Duration Mode:</label>
-                    <select class="form-control parameter-input" id="socSubtaskDurationMode">
-                        <option value="time_ms" selected>Time (ms)</option>
-                        <option value="entries">Trial / Frame count</option>
-                    </select>
-                    <div class="parameter-help">Default fallback for SOC subtask duration interpretation when subtask-level override is not set.</div>
-                </div>
-
-                <div class="parameter-row">
-                    <label class="parameter-label">Default Duration Entries:</label>
-                    <input type="number" class="form-control parameter-input" id="socSubtaskDurationEntries" value="200" min="0" max="100000">
-                    <div class="parameter-help">Used when duration mode is Trial / Frame count (e.g., 200 log entries in SART-like).</div>
                 </div>
 
                 <div class="parameter-row">
@@ -7288,33 +6790,6 @@ class JsonBuilder {
                         </select>
                         <div class="parameter-help">How a segment selection is registered</div>
                     </div>
-                    <div class="parameter-row">
-                        <label class="parameter-label">Inactivity Prompt:</label>
-                        <div class="parameter-input">
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="mouseInactivityPromptEnabled">
-                                <label class="form-check-label" for="mouseInactivityPromptEnabled">Enable mouse inactivity warning</label>
-                            </div>
-                        </div>
-                        <div class="parameter-help">Optional: show a reminder when no mouse movement is detected for a while.</div>
-                    </div>
-                    <div id="mouseInactivityPromptSettings" style="display:none;">
-                        <div class="parameter-row">
-                            <label class="parameter-label">Idle Threshold (ms):</label>
-                            <input type="number" class="form-control parameter-input" id="mouseInactivityThresholdMs" value="15000" min="500" max="300000" step="100">
-                            <div class="parameter-help">How long to wait without mouse movement before showing the warning.</div>
-                        </div>
-                        <div class="parameter-row">
-                            <label class="parameter-label">Reminder Cooldown (ms):</label>
-                            <input type="number" class="form-control parameter-input" id="mouseInactivityReminderCooldownMs" value="10000" min="0" max="300000" step="100">
-                            <div class="parameter-help">Minimum delay before showing the warning again.</div>
-                        </div>
-                        <div class="parameter-row">
-                            <label class="parameter-label">Warning Message:</label>
-                            <input type="text" class="form-control parameter-input" id="mouseInactivityPromptText" value="Please keep moving the mouse to continue." maxlength="240">
-                            <div class="parameter-help">Displayed below the canvas when inactivity is detected.</div>
-                        </div>
-                    </div>
                     <div id="mouseAccuracySettings">
                         <div class="parameter-row">
                             <label class="parameter-label">Accuracy Mode:</label>
@@ -7363,11 +6838,6 @@ class JsonBuilder {
         const feedbackArrowColorModeEl = document.getElementById('defaultFeedbackArrowColorMode');
         if (feedbackArrowColorModeEl) {
             feedbackArrowColorModeEl.addEventListener('change', () => this.updateConditionalUI());
-        }
-
-        const mouseInactivityEnabledEl = document.getElementById('mouseInactivityPromptEnabled');
-        if (mouseInactivityEnabledEl) {
-            mouseInactivityEnabledEl.addEventListener('change', () => this.updateConditionalUI());
         }
 
         // Task-specific conditional UI (Gabor response keys)
@@ -7564,13 +7034,6 @@ class JsonBuilder {
                 sart_mask_duration_max: { type: 'number', default: 1200, min: 0, max: 10000 },
                 sart_trial_duration_min: { type: 'number', default: 800, min: 0, max: 60000 },
                 sart_trial_duration_max: { type: 'number', default: 2000, min: 0, max: 60000 },
-                sart_show_feedback: { type: 'boolean', default: false },
-                sart_feedback_text_correct: { type: 'string', default: 'Correct', description: 'Text shown to participant when their response is correct.' },
-                sart_feedback_text_incorrect: { type: 'string', default: 'Incorrect', description: 'Text shown to participant when their response is incorrect.' },
-                sart_feedback_color_correct: { type: 'COLOR', default: '#86efac', description: 'Color of correct-response feedback text.' },
-                sart_feedback_color_incorrect: { type: 'COLOR', default: '#fca5a5', description: 'Color of incorrect-response feedback text.' },
-                sart_feedback_duration_min: { type: 'number', default: 300, min: 0, max: 10000 },
-                sart_feedback_duration_max: { type: 'number', default: 300, min: 0, max: 10000 },
                 sart_iti_min: { type: 'number', default: 200, min: 0, max: 10000 },
                 sart_iti_max: { type: 'number', default: 800, min: 0, max: 10000 }
             };
@@ -7592,8 +7055,6 @@ class JsonBuilder {
                 gabor_spatial_cue_validity_probability: { type: 'number', default: 1, min: 0, max: 1, step: 0.01, description: 'When target-cue coupling is enabled, probability that a unilateral cue is valid.' },
                 gabor_target_left_probability: { type: 'number', default: null, min: 0, max: 1, step: 0.01, description: 'Optional target-side bias. When both target locations are available, this sets P(target = left). Leave blank for uniform sampling.' },
                 gabor_spatial_cue_target_mode: { type: 'select', default: 'couple_target_to_cue', options: ['couple_target_to_cue', 'preserve_target_distribution'], description: 'Choose whether cue validity flips the target side, or whether the sampled target distribution is preserved.' },
-                gabor_counterbalance_scope: { type: 'select', default: 'per_block', options: ['per_block', 'group'], description: 'Per-block = balance inside this block only. Group = share balancing queues across blocks with the same Group ID.' },
-                gabor_counterbalance_group_id: { type: 'string', default: '', description: 'Optional ID for sharing target-side/cue balancing across independently configured Gabor blocks.' },
                 gabor_value_cue_enabled: { type: 'boolean', default: true },
                 gabor_left_value_options: { type: 'string', default: 'neutral,high,low', description: 'Allowed value cues for the left side.' },
                 gabor_right_value_options: { type: 'string', default: 'neutral,high,low', description: 'Allowed value cues for the right side.' },
@@ -7855,6 +7316,43 @@ class JsonBuilder {
                 cip_image_duration_ms: { type: 'number', default: 750, min: 0, max: 60000 },
                 cip_transition_duration_ms: { type: 'number', default: 250, min: 0, max: 60000 },
                 cip_choice_keys: { type: 'string', default: 'f,j' },
+                cip_response_paradigm: { type: 'select', default: (document.getElementById('cipDefaultResponseParadigm')?.value || 'categorization').toString(), options: ['categorization', 'nback'] },
+                cip_category_count: { type: 'number', default: Number.parseInt(document.getElementById('cipDefaultCategoryCount')?.value || '2', 10), min: 2, max: 7 },
+                cip_show_category_buttons: { type: 'boolean', default: !!document.getElementById('cipDefaultShowCategoryButtons')?.checked },
+                cip_category_1_label: { type: 'string', default: 'Category 1' },
+                cip_category_1_key: { type: 'string', default: 'f' },
+                cip_category_2_label: { type: 'string', default: 'Category 2' },
+                cip_category_2_key: { type: 'string', default: 'j' },
+                cip_category_3_label: { type: 'string', default: 'Category 3' },
+                cip_category_3_key: { type: 'string', default: '1' },
+                cip_category_4_label: { type: 'string', default: 'Category 4' },
+                cip_category_4_key: { type: 'string', default: '2' },
+                cip_category_5_label: { type: 'string', default: 'Category 5' },
+                cip_category_5_key: { type: 'string', default: '3' },
+                cip_category_6_label: { type: 'string', default: 'Category 6' },
+                cip_category_6_key: { type: 'string', default: '4' },
+                cip_category_7_label: { type: 'string', default: 'Category 7' },
+                cip_category_7_key: { type: 'string', default: '5' },
+
+                // N-back-in-CIP options (shown when cip_response_paradigm = nback)
+                nback_n: { type: 'number', default: Number.parseInt(document.getElementById('nbackDefaultN')?.value || '2', 10), min: 1, max: 10 },
+                nback_target_probability: { type: 'number', default: Number.parseFloat(document.getElementById('nbackDefaultTargetProb')?.value || '0.25'), min: 0, max: 1, step: 0.01 },
+                nback_stimulus_mode: { type: 'select', default: (document.getElementById('nbackDefaultStimulusMode')?.value || 'letters').toString(), options: ['letters', 'numbers', 'symbols', 'custom'] },
+                nback_stimulus_pool: { type: 'string', default: (document.getElementById('nbackDefaultStimulusPool')?.value || '').toString() },
+                nback_render_mode: { type: 'select', default: (document.getElementById('nbackDefaultRenderMode')?.value || 'token').toString(), options: ['token', 'custom_html'] },
+                nback_stimulus_template_html: { type: 'textarea', default: (document.getElementById('nbackDefaultTemplateHtml')?.value || '<div style="font-size:72px; font-weight:700; letter-spacing:0.02em;">{{TOKEN}}</div>').toString(), rows: 3 },
+                nback_stimulus_duration_ms: { type: 'number', default: Number.parseInt(document.getElementById('nbackDefaultStimulusMs')?.value || '500', 10), min: 0, max: 60000 },
+                nback_isi_duration_ms: { type: 'number', default: Number.parseInt(document.getElementById('nbackDefaultIsiMs')?.value || '700', 10), min: 0, max: 60000 },
+                nback_trial_duration_ms: { type: 'number', default: Number.parseInt(document.getElementById('nbackDefaultTrialMs')?.value || '1200', 10), min: 0, max: 60000 },
+                nback_show_fixation_cross_between_trials: { type: 'boolean', default: !!document.getElementById('nbackDefaultShowFixationCrossBetweenTrials')?.checked },
+                nback_response_paradigm: { type: 'select', default: (document.getElementById('nbackDefaultParadigm')?.value || 'go_nogo').toString(), options: ['go_nogo', '2afc'] },
+                nback_response_device: { type: 'select', default: 'inherit', options: ['inherit', 'keyboard', 'mouse'] },
+                nback_go_key: { type: 'string', default: (document.getElementById('nbackDefaultGoKey')?.value || 'space').toString() },
+                nback_match_key: { type: 'string', default: (document.getElementById('nbackDefaultMatchKey')?.value || 'j').toString() },
+                nback_nonmatch_key: { type: 'string', default: (document.getElementById('nbackDefaultNonmatchKey')?.value || 'f').toString() },
+                nback_show_buttons: { type: 'boolean', default: !!document.getElementById('nbackDefaultShowButtons')?.checked },
+                nback_show_feedback: { type: 'boolean', default: !!document.getElementById('nbackDefaultFeedback')?.checked },
+                nback_feedback_duration_ms: { type: 'number', default: Number.parseInt(document.getElementById('nbackDefaultFeedbackMs')?.value || '250', 10), min: 0, max: 10000 },
 
                 // Filenames are shown/edited by researchers; URL lists are filled by the modal helper.
                 cip_asset_filenames: { type: 'textarea', default: '', rows: 8 },
@@ -8094,8 +7592,7 @@ class JsonBuilder {
                 type: 'randomize-start',
                 parameters: {
                     random_group_id: { type: 'string', default: '' },
-                    randomizable_across_markers: { type: 'boolean', default: true },
-                    pool_across_randomize_groups: { type: 'boolean', default: true }
+                    randomizable_across_markers: { type: 'boolean', default: true }
                 }
             },
             {
@@ -8108,17 +7605,6 @@ class JsonBuilder {
                 type: 'randomize-end',
                 parameters: {
                     random_group_id: { type: 'string', default: '' }
-                }
-            },
-            {
-                id: 'checkpoint',
-                name: 'Save Checkpoint',
-                icon: 'fas fa-bookmark',
-                description: 'Saves participant data to the platform at this point in the timeline without ending the session. Invisible to participants.',
-                category: 'utility',
-                type: 'checkpoint',
-                parameters: {
-                    label: { type: 'string', default: '' }
                 }
             },
             {
@@ -9606,12 +9092,13 @@ class JsonBuilder {
             const d = this.getCurrentContinuousImageDefaults();
             config.continuous_image_settings = {
                 mask_type: d.mask_type,
-                mask_noise_amp: d.mask_noise_amp,
-                mask_block_size: d.mask_block_size,
                 image_duration_ms: d.image_duration_ms,
                 transition_duration_ms: d.transition_duration_ms,
                 transition_frames: d.transition_frames,
-                choice_keys: d.choice_keys
+                choice_keys: d.choice_keys,
+                cip_response_paradigm: d.cip_response_paradigm,
+                cip_category_count: d.cip_category_count,
+                cip_show_category_buttons: d.cip_show_category_buttons
             };
         }
 
@@ -9918,11 +9405,6 @@ class JsonBuilder {
                 ? parseInt(numTasksRaw)
                 : 1;
 
-            const durationEntriesRaw = document.getElementById('socSubtaskDurationEntries')?.value;
-            const durationEntries = (durationEntriesRaw !== undefined && durationEntriesRaw !== null && `${durationEntriesRaw}` !== '')
-                ? parseInt(durationEntriesRaw)
-                : 200;
-
             const safeNumTasks = Number.isFinite(numTasks)
                 ? Math.max(1, Math.min(4, Math.floor(numTasks)))
                 : 1;
@@ -9933,9 +9415,6 @@ class JsonBuilder {
                 background_color: (document.getElementById('socBackgroundColor')?.value || '#0b1220').toString(),
                 default_app: defaultApp,
                 num_tasks: safeNumTasks,
-                subtask_control_mode: (document.getElementById('socSubtaskControlMode')?.value || 'duration_based').toString(),
-                subtask_duration_mode: (document.getElementById('socSubtaskDurationMode')?.value || 'time_ms').toString(),
-                subtask_duration_entries: Number.isFinite(durationEntries) ? Math.max(0, Math.floor(durationEntries)) : 200,
                 trial_duration_ms: Number.isFinite(durationMs) ? durationMs : 60000,
                 end_key: (document.getElementById('socEndKey')?.value || 'escape').toString(),
                 icons_clickable: !!document.getElementById('socIconsClickable')?.checked,
@@ -11064,9 +10543,6 @@ class JsonBuilder {
             background_color: (document.getElementById('socBackgroundColor')?.value || '#0b1220').toString(),
             default_app: (document.getElementById('socDefaultApp')?.value || 'soc').toString(),
             num_tasks: parseInt(document.getElementById('socNumTasks')?.value || '1', 10),
-            subtask_control_mode: (document.getElementById('socSubtaskControlMode')?.value || 'duration_based').toString(),
-            subtask_duration_mode: (document.getElementById('socSubtaskDurationMode')?.value || 'time_ms').toString(),
-            subtask_duration_entries: parseInt(document.getElementById('socSubtaskDurationEntries')?.value || '200', 10),
             trial_duration_ms: parseInt(document.getElementById('socSessionDurationMs')?.value || '60000', 10),
             end_key: (document.getElementById('socEndKey')?.value || 'escape').toString(),
             icons_clickable: !!document.getElementById('socIconsClickable')?.checked,
@@ -11090,6 +10566,10 @@ class JsonBuilder {
             if (!Number.isFinite(v)) return fallback;
             const clampedMin = (min === null) ? v : Math.max(min, v);
             return (max === null) ? clampedMin : Math.min(max, clampedMin);
+        };
+        const normalizeCipResponseParadigm = (raw) => {
+            const s = (raw ?? 'categorization').toString().trim().toLowerCase();
+            return s === 'nback' ? 'nback' : 'categorization';
         };
 
         const normalizeCipMaskType = (raw) => {
@@ -11118,6 +10598,9 @@ class JsonBuilder {
         const maskType = normalizeCipMaskType(maskTypeRaw);
         const maskNoiseAmp = safeInt(document.getElementById('cipDefaultMaskNoiseAmp')?.value, 24, { min: 0, max: 128 });
         const maskBlockSize = safeInt(document.getElementById('cipDefaultMaskBlockSize')?.value, 12, { min: 1, max: 128 });
+        const cipResponseParadigm = normalizeCipResponseParadigm(document.getElementById('cipDefaultResponseParadigm')?.value);
+        const cipCategoryCount = safeInt(document.getElementById('cipDefaultCategoryCount')?.value, 2, { min: 2, max: 7 });
+        const cipShowCategoryButtons = !!document.getElementById('cipDefaultShowCategoryButtons')?.checked;
 
         return {
             mask_type: maskType,
@@ -11126,7 +10609,10 @@ class JsonBuilder {
             image_duration_ms: safeInt(document.getElementById('cipDefaultImageDurationMs')?.value, 750, { min: 0, max: 60000 }),
             transition_duration_ms: safeInt(document.getElementById('cipDefaultTransitionDurationMs')?.value, 250, { min: 0, max: 60000 }),
             transition_frames: safeInt(document.getElementById('cipDefaultTransitionFrames')?.value, 8, { min: 2, max: 60 }),
-            choice_keys: (document.getElementById('cipDefaultChoiceKeys')?.value || 'f,j').toString().trim() || 'f,j'
+            choice_keys: (document.getElementById('cipDefaultChoiceKeys')?.value || 'f,j').toString().trim() || 'f,j',
+            cip_response_paradigm: cipResponseParadigm,
+            cip_category_count: cipCategoryCount,
+            cip_show_category_buttons: cipShowCategoryButtons
         };
     }
 
@@ -11144,6 +10630,23 @@ class JsonBuilder {
         const d = this.getCurrentContinuousImageDefaults();
         return {
             block_component_type: 'continuous-image-presentation',
+            cip_response_paradigm: d.cip_response_paradigm,
+            cip_category_count: d.cip_category_count,
+            cip_show_category_buttons: d.cip_show_category_buttons,
+            cip_category_1_label: 'Category 1',
+            cip_category_1_key: 'f',
+            cip_category_2_label: 'Category 2',
+            cip_category_2_key: 'j',
+            cip_category_3_label: 'Category 3',
+            cip_category_3_key: '1',
+            cip_category_4_label: 'Category 4',
+            cip_category_4_key: '2',
+            cip_category_5_label: 'Category 5',
+            cip_category_5_key: '3',
+            cip_category_6_label: 'Category 6',
+            cip_category_6_key: '4',
+            cip_category_7_label: 'Category 7',
+            cip_category_7_key: '5',
             cip_mask_type: d.mask_type,
             cip_mask_noise_amp: d.mask_noise_amp,
             cip_mask_block_size: d.mask_block_size,
@@ -11329,8 +10832,6 @@ class JsonBuilder {
             gabor_spatial_cue_probability: Number.parseFloat(document.getElementById('gaborSpatialCueProbability')?.value || '1'),
             gabor_spatial_cue_target_mode: 'couple_target_to_cue',
             gabor_target_left_probability: null,
-            gabor_counterbalance_scope: 'per_block',
-            gabor_counterbalance_group_id: '',
 
             gabor_value_cue_enabled: !!document.getElementById('gaborValueCueEnabled')?.checked,
             gabor_left_value_options: (document.getElementById('gaborLeftValueOptions')?.value || 'neutral,high,low').toString(),
@@ -11565,9 +11066,6 @@ class JsonBuilder {
                 const randomNode = {
                     type: 'randomize-group',
                     randomizable_across_markers: item.randomizable_across_markers !== false,
-                    ...(item.pool_across_randomize_groups === true || item.pool_across_randomize_groups === false
-                        ? { pool_across_randomize_groups: item.pool_across_randomize_groups === true }
-                        : {}),
                     ...(randomId ? { random_group_id: randomId } : {}),
                     items: []
                 };
@@ -11695,48 +11193,11 @@ class JsonBuilder {
         if (component.type === 'html-keyboard-response') {
             // Instructions components store parameters directly on the component object
                 let _stimulus = (component.stimulus || '');
-                // Convert Quill alignment classes into inline text-align without dropping other classes.
-                // Quill outputs class tokens like ql-align-center, but Interpreter doesn't include Quill CSS.
-                try {
-                    const parsed = new DOMParser().parseFromString(`<div data-cf-root="1">${_stimulus}</div>`, 'text/html');
-                    const root = parsed.body && parsed.body.querySelector('[data-cf-root="1"]');
-                    if (root) {
-                        root.querySelectorAll('[class*="ql-align-"]').forEach((el) => {
-                            const classAttr = (el.getAttribute('class') || '').trim();
-                            if (!classAttr) return;
-
-                            const tokens = classAttr.split(/\s+/).filter(Boolean);
-                            let align = null;
-                            const kept = [];
-                            tokens.forEach((tok) => {
-                                const m = tok.match(/^ql-align-(center|right)$/i);
-                                if (m) {
-                                    align = m[1].toLowerCase();
-                                } else {
-                                    kept.push(tok);
-                                }
-                            });
-
-                            if (!align) return;
-
-                            if (kept.length > 0) {
-                                el.setAttribute('class', kept.join(' '));
-                            } else {
-                                el.removeAttribute('class');
-                            }
-
-                            const styleAttr = (el.getAttribute('style') || '').trim();
-                            if (!/text-align\s*:/i.test(styleAttr)) {
-                                const sep = styleAttr && !styleAttr.endsWith(';') ? '; ' : (styleAttr ? ' ' : '');
-                                el.setAttribute('style', `${styleAttr}${sep}text-align: ${align};`.trim());
-                            }
-                        });
-
-                        _stimulus = root.innerHTML;
-                    }
-                } catch {
-                    // If parsing fails, keep source HTML unchanged.
-                }
+                // Strip Quill's ql-align-* classes and replace with inline styles.
+                // Quill outputs <p class="ql-align-center"> but Interpreter doesn't have Quill CSS.
+                _stimulus = _stimulus.replace(/class="[^"]*ql-align-(center|right)[^"]*"/g, (_match, align) => {
+                    return `style='text-align: ${align};'`;
+                });
                 // Also apply text_align field if explicitly set (takes precedence over Quill markup)
                 const _alignVal = (component.text_align || 'left').toString().trim().toLowerCase();
                 const _stimulus_final = (_alignVal === 'center' || _alignVal === 'right')
@@ -11759,10 +11220,6 @@ class JsonBuilder {
                     delete instructionsComponent[key];
                 }
             });
-
-            if (component.label !== undefined && component.label !== null && component.label !== '') {
-                instructionsComponent.label = component.label;
-            }
             
             console.log('Transformed Instructions component:', instructionsComponent);
             return instructionsComponent;
@@ -11778,9 +11235,6 @@ class JsonBuilder {
                 type: component.type,
                 ...component.parameters
             };
-            if (component.label !== undefined && component.label !== null && component.label !== '') {
-                baseComponent.label = component.label;
-            }
         } else {
             // Flat structure (like from component library) - spread all properties except type and name
             console.log('Using flat structure for component:', component.type);
@@ -12269,22 +11723,10 @@ class JsonBuilder {
             if (goKey) {
                 values.go_key = goKey;
             }
-            if (blockComponent.sart_show_feedback !== undefined) {
-                values.show_feedback = !!blockComponent.sart_show_feedback;
-            }
-            const sartFbCorrect = (blockComponent.sart_feedback_text_correct ?? '').toString().trim();
-            if (sartFbCorrect) values.feedback_text_correct = sartFbCorrect;
-            const sartFbIncorrect = (blockComponent.sart_feedback_text_incorrect ?? '').toString().trim();
-            if (sartFbIncorrect) values.feedback_text_incorrect = sartFbIncorrect;
-            const sartFbColorCorrect = (blockComponent.sart_feedback_color_correct ?? '').toString().trim();
-            if (sartFbColorCorrect) values.feedback_color_correct = sartFbColorCorrect;
-            const sartFbColorIncorrect = (blockComponent.sart_feedback_color_incorrect ?? '').toString().trim();
-            if (sartFbColorIncorrect) values.feedback_color_incorrect = sartFbColorIncorrect;
 
             addWindow('stimulus_duration_ms', blockComponent.sart_stimulus_duration_min, blockComponent.sart_stimulus_duration_max);
             addWindow('mask_duration_ms', blockComponent.sart_mask_duration_min, blockComponent.sart_mask_duration_max);
             addWindow('trial_duration_ms', blockComponent.sart_trial_duration_min, blockComponent.sart_trial_duration_max);
-            addWindow('feedback_duration_ms', blockComponent.sart_feedback_duration_min, blockComponent.sart_feedback_duration_max);
             addWindow('iti_ms', blockComponent.sart_iti_min, blockComponent.sart_iti_max);
         } else if (resolvedComponentType === 'gabor-trial' || resolvedComponentType === 'gabor-quest' || resolvedComponentType === 'gabor-learning') {
             const parseStringList = (raw) => {
@@ -12348,16 +11790,6 @@ class JsonBuilder {
             const spatialCueTargetMode = (blockComponent.gabor_spatial_cue_target_mode ?? '').toString().trim().toLowerCase();
             if (spatialCueTargetMode === 'couple_target_to_cue' || spatialCueTargetMode === 'preserve_target_distribution') {
                 values.spatial_cue_target_mode = spatialCueTargetMode;
-            }
-
-            const counterbalanceScope = (blockComponent.gabor_counterbalance_scope ?? '').toString().trim().toLowerCase();
-            if (counterbalanceScope === 'per_block' || counterbalanceScope === 'group') {
-                values.counterbalance_scope = counterbalanceScope;
-            }
-
-            const counterbalanceGroupId = (blockComponent.gabor_counterbalance_group_id ?? '').toString().trim();
-            if (counterbalanceGroupId) {
-                values.counterbalance_group_id = counterbalanceGroupId;
             }
 
             const lv = parseStringList(blockComponent.gabor_left_value_options);
@@ -12915,10 +12347,6 @@ class JsonBuilder {
             parameter_windows: windows
         };
 
-        if (blockComponent.label !== undefined && blockComponent.label !== null && blockComponent.label !== '') {
-            out.label = blockComponent.label;
-        }
-
         if (this.experimentType === 'continuous') {
             out.block_sizing_mode = sizingMode;
             if (sizingMode === 'by_duration' && Number.isFinite(blockDurationSeconds) && blockDurationSeconds > 0) {
@@ -13110,23 +12538,19 @@ class JsonBuilder {
 
         // Apply mouse overrides
         if (effectiveDevice === 'mouse') {
-            const existingMouse = (merged.mouse_response && typeof merged.mouse_response === 'object')
-                ? merged.mouse_response
-                : {};
             merged.mouse_response = {
-                ...existingMouse,
                 enabled: true,
                 mode: 'aperture-segments',
-                segments: parseInt(componentParams.mouse_segments ?? existingMouse.segments ?? 2),
-                start_angle_deg: parseFloat(componentParams.mouse_start_angle_deg ?? existingMouse.start_angle_deg ?? 0),
-                selection_mode: componentParams.mouse_selection_mode ?? existingMouse.selection_mode ?? 'click',
-                accuracy_mode: componentParams.mouse_accuracy_mode ?? existingMouse.accuracy_mode,
+                segments: parseInt(componentParams.mouse_segments ?? merged.mouse_response?.segments ?? 2),
+                start_angle_deg: parseFloat(componentParams.mouse_start_angle_deg ?? merged.mouse_response?.start_angle_deg ?? 0),
+                selection_mode: componentParams.mouse_selection_mode ?? merged.mouse_response?.selection_mode ?? 'click',
+                accuracy_mode: componentParams.mouse_accuracy_mode ?? merged.mouse_response?.accuracy_mode,
                 accuracy_tolerance_deg: (componentParams.mouse_accuracy_tolerance_deg !== undefined && componentParams.mouse_accuracy_tolerance_deg !== null && componentParams.mouse_accuracy_tolerance_deg !== '')
                     ? parseFloat(componentParams.mouse_accuracy_tolerance_deg)
-                    : existingMouse.accuracy_tolerance_deg,
+                    : merged.mouse_response?.accuracy_tolerance_deg,
                 accuracy_slack_deg: (componentParams.mouse_accuracy_slack_deg !== undefined && componentParams.mouse_accuracy_slack_deg !== null && componentParams.mouse_accuracy_slack_deg !== '')
                     ? parseFloat(componentParams.mouse_accuracy_slack_deg)
-                    : existingMouse.accuracy_slack_deg
+                    : merged.mouse_response?.accuracy_slack_deg
             };
         } else {
             // Keep output clean if not a mouse-response component
@@ -13236,11 +12660,10 @@ class JsonBuilder {
      * Get RDM display parameters from UI - SIMPLIFIED
      */
     getRDMDisplayParameters() {
-        const bg = (document.getElementById('backgroundColor')?.value || '').toString().trim();
         return {
             canvas_width: parseInt(document.getElementById('canvasWidth')?.value || 600),
             canvas_height: parseInt(document.getElementById('canvasHeight')?.value || 600),
-            background_color: bg || '#404040'
+            background_color: "#404040"
         };
     }
 
@@ -13402,19 +12825,6 @@ class JsonBuilder {
                 start_angle_deg: parseFloat(document.getElementById('mouseSegmentStartAngle')?.value || 0),
                 selection_mode: document.getElementById('mouseSelectionMode')?.value || 'click'
             };
-
-            const inactivityEnabled = document.getElementById('mouseInactivityPromptEnabled')?.checked === true;
-            if (inactivityEnabled) {
-                const idleThresholdMs = Number.parseInt(document.getElementById('mouseInactivityThresholdMs')?.value || '15000', 10);
-                const reminderCooldownMs = Number.parseInt(document.getElementById('mouseInactivityReminderCooldownMs')?.value || '10000', 10);
-                const messageRaw = (document.getElementById('mouseInactivityPromptText')?.value || '').toString().trim();
-                responseParams.mouse_response.inactivity_prompt = {
-                    enabled: true,
-                    idle_threshold_ms: Number.isFinite(idleThresholdMs) && idleThresholdMs > 0 ? idleThresholdMs : 15000,
-                    reminder_cooldown_ms: Number.isFinite(reminderCooldownMs) && reminderCooldownMs >= 0 ? reminderCooldownMs : 10000,
-                    ...(messageRaw ? { message: messageRaw } : {})
-                };
-            }
 
             const accuracyMode = (document.getElementById('mouseAccuracyMode')?.value || 'auto').toString();
             const accuracyTolerance = Number.parseFloat(document.getElementById('mouseAccuracyToleranceDeg')?.value || '');
@@ -14251,15 +13661,6 @@ class JsonBuilder {
             this.setElementValue('mouseAccuracyMode', exp.response_parameters.mouse_response.accuracy_mode);
             this.setElementValue('mouseAccuracyToleranceDeg', exp.response_parameters.mouse_response.accuracy_tolerance_deg);
             this.setElementValue('mouseAccuracySlackDeg', exp.response_parameters.mouse_response.accuracy_slack_deg);
-            this.setElementChecked('mouseInactivityPromptEnabled', exp.response_parameters.mouse_response.inactivity_prompt?.enabled === true);
-            this.setElementValue('mouseInactivityThresholdMs', exp.response_parameters.mouse_response.inactivity_prompt?.idle_threshold_ms ?? 15000);
-            this.setElementValue('mouseInactivityReminderCooldownMs', exp.response_parameters.mouse_response.inactivity_prompt?.reminder_cooldown_ms ?? 10000);
-            this.setElementValue('mouseInactivityPromptText', exp.response_parameters.mouse_response.inactivity_prompt?.message ?? 'Please keep moving the mouse to continue.');
-        } else {
-            this.setElementChecked('mouseInactivityPromptEnabled', false);
-            this.setElementValue('mouseInactivityThresholdMs', 15000);
-            this.setElementValue('mouseInactivityReminderCooldownMs', 10000);
-            this.setElementValue('mouseInactivityPromptText', 'Please keep moving the mouse to continue.');
         }
         this.setElementChecked('enableFixation', true);
         
@@ -14791,27 +14192,13 @@ class JsonBuilder {
 
         const getCsrfToken = () => {
             try {
-                // If duplicate csrftoken cookies exist, use the last one to align
-                // with browser cookie header ordering.
-                const matches = Array.from(document.cookie.matchAll(/(?:^|;\s*)csrftoken=([^;]+)/g));
-                if (matches.length > 0) {
-                    return decodeURIComponent(matches[matches.length - 1][1]);
-                }
+                const fromCookie = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+                if (fromCookie && fromCookie[1]) return decodeURIComponent(fromCookie[1]);
                 const fromMeta = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
                 return (fromMeta || '').trim();
             } catch {
                 return '';
             }
-        };
-
-        const ensureCsrfReady = async () => {
-            if (getCsrfToken()) return true;
-            try {
-                await fetch(`${platformUrl}/api/v1/auth/csrf`, { credentials: 'include' });
-            } catch {
-                // Ignore network issues here; publish will surface the real error.
-            }
-            return !!getCsrfToken();
         };
 
         const safePrompt = (message, defaultValue = '') => {
@@ -15075,32 +14462,18 @@ class JsonBuilder {
         this.showValidationResult('success', `Publishing to ${platformUrl}…`);
 
         try {
-            await ensureCsrfReady();
+            const csrfToken = getCsrfToken();
+            const response = await fetch(`${platformUrl}/api/v1/configs/publish`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {})
+                },
+                body: JSON.stringify(payload),
+            });
 
-            const doPublish = async () => {
-                const csrfToken = getCsrfToken();
-                const resp = await fetch(`${platformUrl}/api/v1/configs/publish`, {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {})
-                    },
-                    body: JSON.stringify(payload),
-                });
-                const body = await resp.json().catch(() => ({}));
-                return { resp, body };
-            };
-
-            let { resp: response, body: data } = await doPublish();
-
-            if (!response.ok && response.status === 403) {
-                const maybeCsrf = String(data?.detail || data?.error || '');
-                if (/csrf/i.test(maybeCsrf)) {
-                    await fetch(`${platformUrl}/api/v1/auth/csrf`, { credentials: 'include' }).catch(() => {});
-                    ({ resp: response, body: data } = await doPublish());
-                }
-            }
+            const data = await response.json().catch(() => ({}));
 
             if (response.ok) {
                 const dashUrl = data.dashboard_url || `${platformUrl}/studies/${data.study_slug || studySlug}/`;

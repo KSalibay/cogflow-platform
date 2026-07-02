@@ -106,25 +106,6 @@ class JSPsychSchemas {
                         max: 4,
                         description: 'Fallback: number of placeholder windows shown when no subtasks are configured (1–4)'
                     },
-                    subtask_control_mode: {
-                        type: this.parameterTypes.SELECT,
-                        default: 'duration_based',
-                        options: ['duration_based', 'timeline_order_based'],
-                        description: 'How SOC subtask windows are sequenced: duration-based scheduling vs timeline-order sequencing'
-                    },
-                    subtask_duration_mode: {
-                        type: this.parameterTypes.SELECT,
-                        default: 'time_ms',
-                        options: ['time_ms', 'entries'],
-                        description: 'Default subtask duration interpretation: explicit ms schedule vs trial/frame entries'
-                    },
-                    subtask_duration_entries: {
-                        type: this.parameterTypes.INT,
-                        default: 200,
-                        min: 0,
-                        max: 100000,
-                        description: 'Default entry count when subtask duration mode is entries (e.g., ~200 log rows)'
-                    },
                     icons_clickable: {
                         type: this.parameterTypes.BOOL,
                         default: true,
@@ -166,19 +147,6 @@ class JSPsychSchemas {
                         min: 0,
                         max: 3600000,
                         description: 'Scheduled duration (ms). If 0, scheduling is disabled unless end_at_ms is provided manually in JSON.'
-                    },
-                    subtask_duration_mode: {
-                        type: this.parameterTypes.SELECT,
-                        default: 'time_ms',
-                        options: ['time_ms', 'entries'],
-                        description: 'Override for this subtask: time-based scheduling in ms vs trial/frame entries'
-                    },
-                    subtask_duration_entries: {
-                        type: this.parameterTypes.INT,
-                        default: 0,
-                        min: 0,
-                        max: 100000,
-                        description: 'When duration mode is entries, number of entries/trials to run (0 = use session default)'
                     },
                     instructions: {
                         type: this.parameterTypes.HTML_STRING,
@@ -250,38 +218,6 @@ class JSPsychSchemas {
                         type: this.parameterTypes.BOOL,
                         default: true,
                         description: 'Show ALLOW/BLOCK feedback in the Action column after GO responses'
-                    },
-                    show_feedback: {
-                        type: this.parameterTypes.BOOL,
-                        default: false,
-                        description: 'Show correct/incorrect text feedback after each SART-like response'
-                    },
-                    feedback_text_correct: {
-                        type: this.parameterTypes.STRING,
-                        default: 'Correct',
-                        description: 'SART feedback: text shown on correct response'
-                    },
-                    feedback_text_incorrect: {
-                        type: this.parameterTypes.STRING,
-                        default: 'Incorrect',
-                        description: 'SART feedback: text shown on incorrect response'
-                    },
-                    feedback_color_correct: {
-                        type: this.parameterTypes.COLOR,
-                        default: '#86efac',
-                        description: 'SART feedback: color for correct response text'
-                    },
-                    feedback_color_incorrect: {
-                        type: this.parameterTypes.COLOR,
-                        default: '#fca5a5',
-                        description: 'SART feedback: color for incorrect response text'
-                    },
-                    feedback_duration_ms: {
-                        type: this.parameterTypes.INT,
-                        default: 300,
-                        min: 0,
-                        max: 5000,
-                        description: 'SART feedback: how long the feedback text is shown (ms)'
                     },
                     highlight_subdomains: {
                         type: this.parameterTypes.BOOL,
@@ -356,19 +292,6 @@ class JSPsychSchemas {
                         min: 0,
                         max: 3600000,
                         description: 'Scheduled duration (ms). If 0, scheduling is disabled unless end_at_ms is provided manually in JSON.'
-                    },
-                    subtask_duration_mode: {
-                        type: this.parameterTypes.SELECT,
-                        default: 'time_ms',
-                        options: ['time_ms', 'entries'],
-                        description: 'Override for this subtask: time-based scheduling in ms vs trial/frame entries'
-                    },
-                    subtask_duration_entries: {
-                        type: this.parameterTypes.INT,
-                        default: 0,
-                        min: 0,
-                        max: 100000,
-                        description: 'When duration mode is entries, number of entries/trials to run (0 = use session default)'
                     },
                     num_trials: {
                         type: this.parameterTypes.INT,
@@ -508,19 +431,6 @@ class JSPsychSchemas {
                         max: 3600000,
                         description: 'Scheduled duration (ms). If 0, scheduling is disabled unless end_at_ms is provided manually in JSON.'
                     },
-                    subtask_duration_mode: {
-                        type: this.parameterTypes.SELECT,
-                        default: 'time_ms',
-                        options: ['time_ms', 'entries'],
-                        description: 'Override for this subtask: time-based scheduling in ms vs trial/frame entries'
-                    },
-                    subtask_duration_entries: {
-                        type: this.parameterTypes.INT,
-                        default: 0,
-                        min: 0,
-                        max: 100000,
-                        description: 'When duration mode is entries, number of entries/trials to run (0 = use session default)'
-                    },
                     instructions: {
                         type: this.parameterTypes.HTML_STRING,
                         default: '<p>You will see a stream of security alerts, one at a time.</p>\n<p>Press <b>{{GO_CONTROL}}</b> when the current alert matches the one from <b>{{N}}-back</b> on <b>{{MATCH_FIELD}}</b>.</p>\n<p>If it does not match, respond <b>{{NOGO_CONTROL}}</b> (or withhold if using Go/No-Go).</p>\n<p><i>Click this popup to begin.</i></p>',
@@ -625,19 +535,6 @@ class JSPsychSchemas {
                         min: 0,
                         max: 3600000,
                         description: 'Scheduled duration (ms). If 0, scheduling is disabled unless end_at_ms is provided manually in JSON.'
-                    },
-                    subtask_duration_mode: {
-                        type: this.parameterTypes.SELECT,
-                        default: 'time_ms',
-                        options: ['time_ms', 'entries'],
-                        description: 'Override for this subtask: time-based scheduling in ms vs trial/frame entries'
-                    },
-                    subtask_duration_entries: {
-                        type: this.parameterTypes.INT,
-                        default: 0,
-                        min: 0,
-                        max: 100000,
-                        description: 'When duration mode is entries, number of entries/trials to run (0 = use session default)'
                     },
                     instructions: {
                         type: this.parameterTypes.HTML_STRING,
@@ -860,19 +757,6 @@ class JSPsychSchemas {
                         min: 0,
                         max: 3600000,
                         description: 'Scheduled duration (ms). If 0, scheduling is disabled unless end_at_ms is provided manually in JSON.'
-                    },
-                    subtask_duration_mode: {
-                        type: this.parameterTypes.SELECT,
-                        default: 'time_ms',
-                        options: ['time_ms', 'entries'],
-                        description: 'Override for this subtask: time-based scheduling in ms vs trial/frame entries'
-                    },
-                    subtask_duration_entries: {
-                        type: this.parameterTypes.INT,
-                        default: 0,
-                        min: 0,
-                        max: 100000,
-                        description: 'When duration mode is entries, number of entries/trials to run (0 = use session default)'
                     },
                     instructions: {
                         type: this.parameterTypes.HTML_STRING,
@@ -1121,28 +1005,6 @@ class JSPsychSchemas {
                         type: this.parameterTypes.INT,
                         default: 1150,
                         description: 'Total trial duration (ms)'
-                    },
-                    show_feedback: {
-                        type: this.parameterTypes.BOOL,
-                        default: false,
-                        description: 'Show brief Correct/Incorrect feedback after responses'
-                    },
-                    feedback_duration_ms: {
-                        type: this.parameterTypes.INT,
-                        default: 300,
-                        min: 0,
-                        max: 10000,
-                        description: 'Feedback display duration (ms)'
-                    },
-                    feedback_text_correct: {
-                        type: this.parameterTypes.STRING,
-                        default: 'Correct',
-                        description: 'Feedback text for correct responses'
-                    },
-                    feedback_text_incorrect: {
-                        type: this.parameterTypes.STRING,
-                        default: 'Incorrect',
-                        description: 'Feedback text for incorrect responses'
                     },
                     iti_ms: {
                         type: this.parameterTypes.INT,
@@ -2547,11 +2409,116 @@ class JSPsychSchemas {
                         blockTarget: 'continuous-image-presentation',
                         description: 'CIP: comma-separated response keys'
                     },
+                    cip_response_paradigm: {
+                        type: this.parameterTypes.SELECT,
+                        default: 'categorization',
+                        options: ['categorization', 'nback'],
+                        blockTarget: 'continuous-image-presentation',
+                        description: 'CIP: participant response mode. Use categorization keys or N-back scoring over the CIP image stream.'
+                    },
+                    cip_category_count: {
+                        type: this.parameterTypes.INT,
+                        default: 2,
+                        min: 2,
+                        max: 7,
+                        blockTarget: 'continuous-image-presentation',
+                        description: 'CIP categorization: number of active categories (2 required, up to 7 total).'
+                    },
+                    cip_show_category_buttons: {
+                        type: this.parameterTypes.BOOL,
+                        default: false,
+                        blockTarget: 'continuous-image-presentation',
+                        description: 'CIP categorization: show clickable category buttons in addition to keyboard keys.'
+                    },
+                    cip_category_1_label: {
+                        type: this.parameterTypes.STRING,
+                        default: 'Category 1',
+                        blockTarget: 'continuous-image-presentation',
+                        description: 'CIP categorization: label for category 1.'
+                    },
+                    cip_category_1_key: {
+                        type: this.parameterTypes.STRING,
+                        default: 'f',
+                        blockTarget: 'continuous-image-presentation',
+                        description: 'CIP categorization: response key for category 1.'
+                    },
+                    cip_category_2_label: {
+                        type: this.parameterTypes.STRING,
+                        default: 'Category 2',
+                        blockTarget: 'continuous-image-presentation',
+                        description: 'CIP categorization: label for category 2.'
+                    },
+                    cip_category_2_key: {
+                        type: this.parameterTypes.STRING,
+                        default: 'j',
+                        blockTarget: 'continuous-image-presentation',
+                        description: 'CIP categorization: response key for category 2.'
+                    },
+                    cip_category_3_label: {
+                        type: this.parameterTypes.STRING,
+                        default: 'Category 3',
+                        blockTarget: 'continuous-image-presentation',
+                        description: 'CIP categorization: label for category 3 (optional).'
+                    },
+                    cip_category_3_key: {
+                        type: this.parameterTypes.STRING,
+                        default: '1',
+                        blockTarget: 'continuous-image-presentation',
+                        description: 'CIP categorization: response key for category 3 (optional).'
+                    },
+                    cip_category_4_label: {
+                        type: this.parameterTypes.STRING,
+                        default: 'Category 4',
+                        blockTarget: 'continuous-image-presentation',
+                        description: 'CIP categorization: label for category 4 (optional).'
+                    },
+                    cip_category_4_key: {
+                        type: this.parameterTypes.STRING,
+                        default: '2',
+                        blockTarget: 'continuous-image-presentation',
+                        description: 'CIP categorization: response key for category 4 (optional).'
+                    },
+                    cip_category_5_label: {
+                        type: this.parameterTypes.STRING,
+                        default: 'Category 5',
+                        blockTarget: 'continuous-image-presentation',
+                        description: 'CIP categorization: label for category 5 (optional).'
+                    },
+                    cip_category_5_key: {
+                        type: this.parameterTypes.STRING,
+                        default: '3',
+                        blockTarget: 'continuous-image-presentation',
+                        description: 'CIP categorization: response key for category 5 (optional).'
+                    },
+                    cip_category_6_label: {
+                        type: this.parameterTypes.STRING,
+                        default: 'Category 6',
+                        blockTarget: 'continuous-image-presentation',
+                        description: 'CIP categorization: label for category 6 (optional).'
+                    },
+                    cip_category_6_key: {
+                        type: this.parameterTypes.STRING,
+                        default: '4',
+                        blockTarget: 'continuous-image-presentation',
+                        description: 'CIP categorization: response key for category 6 (optional).'
+                    },
+                    cip_category_7_label: {
+                        type: this.parameterTypes.STRING,
+                        default: 'Category 7',
+                        blockTarget: 'continuous-image-presentation',
+                        description: 'CIP categorization: label for category 7 (optional).'
+                    },
+                    cip_category_7_key: {
+                        type: this.parameterTypes.STRING,
+                        default: '5',
+                        blockTarget: 'continuous-image-presentation',
+                        description: 'CIP categorization: response key for category 7 (optional).'
+                    },
                     cip_asset_filenames: {
                         type: this.parameterTypes.STRING,
                         default: '',
                         blockTarget: 'continuous-image-presentation',
-                        description: 'CIP: source image filenames (comma/newline separated)'
+                        description: 'CIP: source image filenames (comma/newline separated). For categorization accuracy, include category tags in filenames like "cat1" or "cat2" (also accepts "category1"/"category2").'
                     },
                     cip_image_urls: {
                         type: this.parameterTypes.STRING,
@@ -2578,7 +2545,7 @@ class JSPsychSchemas {
                         default: 2,
                         min: 1,
                         max: 6,
-                        blockTarget: 'nback-block',
+                        blockTarget: 'nback-block,continuous-image-presentation',
                         description: 'N-back depth'
                     },
                     nback_target_probability: {
@@ -2586,33 +2553,33 @@ class JSPsychSchemas {
                         default: 0.25,
                         min: 0,
                         max: 1,
-                        blockTarget: 'nback-block',
+                        blockTarget: 'nback-block,continuous-image-presentation',
                         description: 'Probability an item is forced to match the item N-back'
                     },
                     nback_stimulus_mode: {
                         type: this.parameterTypes.SELECT,
                         default: 'letters',
                         options: ['letters', 'numbers', 'shapes', 'custom'],
-                        blockTarget: 'nback-block',
+                        blockTarget: 'nback-block,continuous-image-presentation',
                         description: 'Token set to use (custom uses the custom pool string)'
                     },
                     nback_stimulus_pool: {
                         type: this.parameterTypes.STRING,
                         default: '',
-                        blockTarget: 'nback-block',
+                        blockTarget: 'nback-block,continuous-image-presentation',
                         description: 'Custom pool tokens (comma/newline separated); used when stimulus_mode=custom'
                     },
                     nback_render_mode: {
                         type: this.parameterTypes.SELECT,
                         default: 'token',
                         options: ['token', 'custom_html'],
-                        blockTarget: 'nback-block',
+                        blockTarget: 'nback-block,continuous-image-presentation',
                         description: 'Whether to render raw token text or use a custom HTML template'
                     },
                     nback_stimulus_template_html: {
                         type: this.parameterTypes.HTML_STRING,
                         default: '<div style="font-size:72px; font-weight:700; letter-spacing:0.02em;">{{TOKEN}}</div>',
-                        blockTarget: 'nback-block',
+                        blockTarget: 'nback-block,continuous-image-presentation',
                         description: 'HTML template used when render_mode=custom_html. Variable: {{TOKEN}}'
                     },
                     nback_stimulus_duration_ms: {
@@ -2620,7 +2587,7 @@ class JSPsychSchemas {
                         default: 500,
                         min: 0,
                         max: 60000,
-                        blockTarget: 'nback-block',
+                        blockTarget: 'nback-block,continuous-image-presentation',
                         description: 'Stimulus display duration (ms)'
                     },
                     nback_isi_duration_ms: {
@@ -2628,7 +2595,7 @@ class JSPsychSchemas {
                         default: 700,
                         min: 0,
                         max: 60000,
-                        blockTarget: 'nback-block',
+                        blockTarget: 'nback-block,continuous-image-presentation',
                         description: 'Inter-stimulus interval duration (ms)'
                     },
                     nback_trial_duration_ms: {
@@ -2636,57 +2603,57 @@ class JSPsychSchemas {
                         default: 1200,
                         min: 0,
                         max: 60000,
-                        blockTarget: 'nback-block',
+                        blockTarget: 'nback-block,continuous-image-presentation',
                         description: 'Total item/trial duration (ms)'
                     },
                     nback_show_fixation_cross_between_trials: {
                         type: this.parameterTypes.BOOL,
                         default: false,
-                        blockTarget: 'nback-block',
+                        blockTarget: 'nback-block,continuous-image-presentation',
                         description: 'Show a fixation cross (+) when the token is hidden (during ISI/ITI between items)'
                     },
                     nback_response_paradigm: {
                         type: this.parameterTypes.SELECT,
                         default: 'go_nogo',
                         options: ['go_nogo', '2afc'],
-                        blockTarget: 'nback-block',
+                        blockTarget: 'nback-block,continuous-image-presentation',
                         description: 'go_nogo: respond on matches; 2afc: match vs non-match keys'
                     },
                     nback_response_device: {
                         type: this.parameterTypes.SELECT,
                         default: 'inherit',
                         options: ['inherit', 'keyboard', 'mouse'],
-                        blockTarget: 'nback-block',
+                        blockTarget: 'nback-block,continuous-image-presentation',
                         description: 'Response device used by generated N-back items'
                     },
                     nback_go_key: {
                         type: this.parameterTypes.STRING,
                         default: 'space',
-                        blockTarget: 'nback-block',
+                        blockTarget: 'nback-block,continuous-image-presentation',
                         description: 'Go key for matches (go/no-go)'
                     },
                     nback_match_key: {
                         type: this.parameterTypes.STRING,
                         default: 'j',
-                        blockTarget: 'nback-block',
+                        blockTarget: 'nback-block,continuous-image-presentation',
                         description: 'Match key (2AFC)'
                     },
                     nback_nonmatch_key: {
                         type: this.parameterTypes.STRING,
                         default: 'f',
-                        blockTarget: 'nback-block',
+                        blockTarget: 'nback-block,continuous-image-presentation',
                         description: 'Non-match key (2AFC)'
                     },
                     nback_show_buttons: {
                         type: this.parameterTypes.BOOL,
                         default: true,
-                        blockTarget: 'nback-block',
+                        blockTarget: 'nback-block,continuous-image-presentation',
                         description: 'Show clickable buttons when using mouse'
                     },
                     nback_show_feedback: {
                         type: this.parameterTypes.BOOL,
                         default: false,
-                        blockTarget: 'nback-block',
+                        blockTarget: 'nback-block,continuous-image-presentation',
                         description: 'Show correctness feedback after response/timeout'
                     },
                     nback_feedback_duration_ms: {
@@ -2694,7 +2661,7 @@ class JSPsychSchemas {
                         default: 250,
                         min: 0,
                         max: 5000,
-                        blockTarget: 'nback-block',
+                        blockTarget: 'nback-block,continuous-image-presentation',
                         description: 'Feedback duration (ms)'
                     },
 
@@ -3230,48 +3197,6 @@ class JSPsychSchemas {
                         default: 2000,
                         blockTarget: 'sart-trial',
                         description: 'SART: total trial duration max (ms)'
-                    },
-                    sart_show_feedback: {
-                        type: this.parameterTypes.BOOL,
-                        default: false,
-                        blockTarget: 'sart-trial',
-                        description: 'SART: show feedback text after responses'
-                    },
-                    sart_feedback_text_correct: {
-                        type: this.parameterTypes.STRING,
-                        default: 'Correct',
-                        blockTarget: 'sart-trial',
-                        description: 'SART: text shown when response is correct'
-                    },
-                    sart_feedback_text_incorrect: {
-                        type: this.parameterTypes.STRING,
-                        default: 'Incorrect',
-                        blockTarget: 'sart-trial',
-                        description: 'SART: text shown when response is incorrect'
-                    },
-                    sart_feedback_color_correct: {
-                        type: this.parameterTypes.COLOR,
-                        default: '#86efac',
-                        blockTarget: 'sart-trial',
-                        description: 'SART: color of correct-response feedback text'
-                    },
-                    sart_feedback_color_incorrect: {
-                        type: this.parameterTypes.COLOR,
-                        default: '#fca5a5',
-                        blockTarget: 'sart-trial',
-                        description: 'SART: color of incorrect-response feedback text'
-                    },
-                    sart_feedback_duration_min: {
-                        type: this.parameterTypes.INT,
-                        default: 300,
-                        blockTarget: 'sart-trial',
-                        description: 'SART: feedback duration min (ms)'
-                    },
-                    sart_feedback_duration_max: {
-                        type: this.parameterTypes.INT,
-                        default: 300,
-                        blockTarget: 'sart-trial',
-                        description: 'SART: feedback duration max (ms)'
                     },
                     sart_iti_min: {
                         type: this.parameterTypes.INT,

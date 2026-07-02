@@ -35,13 +35,10 @@ class TimelineBuilder {
         const builderId = (component?.builderComponentId || '').toString().trim().toLowerCase();
         const name = (component?.name || '').toString().trim().toLowerCase();
 
-        // Block wrappers should always expose miniblock controls.
         if (type === 'block' || builderId === 'block') return true;
 
-        // Imported timelines may carry only a human-facing block name.
         if (name.includes(' block') || name.endsWith('block')) return true;
 
-        // Known task block subtypes can appear directly after imports/rehydration.
         const knownBlockSubtypes = new Set([
             'rdm-trial',
             'gabor-trial',
@@ -58,7 +55,6 @@ class TimelineBuilder {
         ]);
         if (knownBlockSubtypes.has(type)) return true;
 
-        // Some timelines store blocks under task aliases instead of *-trial ids.
         const knownTaskAliases = new Set([
             'rdm',
             'gabor',
@@ -79,7 +75,6 @@ class TimelineBuilder {
         ]);
         if (knownTaskAliases.has(type)) return true;
 
-        // Some payload shapes carry the inner block type in one of these fields.
         const directInner = (component?.block_component_type ?? component?.component_type ?? '')
             .toString()
             .trim()
@@ -96,7 +91,6 @@ class TimelineBuilder {
             .toLowerCase();
         if (nestedInner) return true;
 
-        // Last-resort structural cues for block components.
         const params = (component?.parameters && typeof component.parameters === 'object') ? component.parameters : null;
         const hasBlockFields = (
             component?.length !== undefined
@@ -145,9 +139,7 @@ class TimelineBuilder {
             const componentElement = this.createComponentElementNew(component, index);
             this.timelineContainer.appendChild(componentElement);
             // Restore miniblock badge if already configured
-            const isMiniblockEligible = this._isMiniblockEligible(component);
-
-            if (isMiniblockEligible) {
+            if (this._isMiniblockEligible(component)) {
                 const mb = component.miniblock_structure || component.parameters?.miniblock_structure;
                 if (mb) this._updateMiniblockBadge(componentElement, mb);
             }
@@ -176,7 +168,6 @@ class TimelineBuilder {
         const componentElement = document.createElement('div');
         componentElement.className = 'timeline-component card mb-2';
         componentElement.dataset.componentType = component.type;
-        const isMiniblockEligible = this._isMiniblockEligible(component);
         if (component && component.builderComponentId) {
             componentElement.dataset.builderComponentId = component.builderComponentId;
         }
@@ -278,7 +269,7 @@ class TimelineBuilder {
                         <button class="btn btn-sm btn-outline-secondary" onclick="editComponent(this)" title="Edit">
                             <i class="fas fa-pencil-alt"></i>
                         </button>
-                        ${isMiniblockEligible ? `<button class="btn btn-sm btn-outline-secondary miniblock-btn" onclick="window._cogflowTimelineBuilder && window._cogflowTimelineBuilder.showMiniblockModal(this.closest('.timeline-component'))" title="Miniblock Structure"><i class="fas fa-chart-pie"></i></button>` : ''}
+                        ${this._isMiniblockEligible(component) ? `<button class="btn btn-sm btn-outline-secondary miniblock-btn" onclick="window._cogflowTimelineBuilder && window._cogflowTimelineBuilder.showMiniblockModal(this.closest('.timeline-component'))" title="Miniblock Structure"><i class="fas fa-chart-pie"></i></button>` : ''}
                         <button class="btn btn-sm btn-outline-secondary" onclick="duplicateComponent(this)" title="Duplicate Below">
                             <i class="fas fa-copy"></i>
                         </button>
@@ -1155,9 +1146,9 @@ class TimelineBuilder {
         const isMwProbe = component.type === 'mw-probe';
         const minIntervalMs = component.min_interval_ms ?? component.parameters?.min_interval_ms ?? 0;
         const maxIntervalMs = component.max_interval_ms ?? component.parameters?.max_interval_ms ?? 0;
-        const globalProbeCountPerBlock = component.global_probe_count_per_block ?? component.parameters?.global_probe_count_per_block ?? 1;
-        const globalIntervalMinMs = component.global_interval_min_ms ?? component.parameters?.global_interval_min_ms ?? minIntervalMs;
-        const globalIntervalMaxMs = component.global_interval_max_ms ?? component.parameters?.global_interval_max_ms ?? maxIntervalMs;
+        const globalProbeCountPerBlock = component.global_probe_count_per_block ?? component.parameters?.global_probe_count_per_block ?? null;
+        const globalIntervalMinMs = component.global_interval_min_ms ?? component.parameters?.global_interval_min_ms ?? null;
+        const globalIntervalMaxMs = component.global_interval_max_ms ?? component.parameters?.global_interval_max_ms ?? null;
 
         const coerceToHtml = (raw) => {
             const s = (raw === null || raw === undefined) ? '' : String(raw);
@@ -1222,26 +1213,26 @@ class TimelineBuilder {
                         <input type="number" class="form-control" id="mw_max_interval_ms" min="0" value="${this.escapeHtmlAttr(String(maxIntervalMs))}" placeholder="0">
                     </div>
                     <div class="col-md-4 d-flex align-items-end pb-1">
-                        <small class="text-muted">Jitter [min,max] is sampled when the probe is adjacent to block-generated trials; otherwise it runs at authored position.</small>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Probes per adjacent block run</label>
-                        <input type="number" class="form-control" id="mw_global_probe_count_per_block" min="1" max="100" value="${this.escapeHtmlAttr(String(globalProbeCountPerBlock))}">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Global interval min (ms)</label>
-                        <input type="number" class="form-control" id="mw_global_interval_min_ms" min="0" value="${this.escapeHtmlAttr(String(globalIntervalMinMs))}" placeholder="0">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Global interval max (ms)</label>
-                        <input type="number" class="form-control" id="mw_global_interval_max_ms" min="0" value="${this.escapeHtmlAttr(String(globalIntervalMaxMs))}" placeholder="0">
-                    </div>
-                    <div class="col-md-8 d-flex align-items-end pb-1">
-                        <small class="text-muted">When probes-per-run &gt; 1, additional probes are inserted using repeated random gaps sampled from global interval [min,max].</small>
+                        <small class="text-muted">One mw-probe component inserts one probe. Jitter [min,max] is applied only when the probe is adjacent to block-generated trials; otherwise it runs at authored position.</small>
                     </div>
                 </div>
-                <div id="mw_probe_warning" class="alert alert-warning mt-3 mb-0 d-none" role="alert">
-                    Your block appears to be short; probes will appear more often to honor the number of probes you selected; you may want to reduce the number.
+            </div>
+            <div class="mb-3">
+                <h6 class="fw-bold">Multi-Probe Scheduling (Global)</h6>
+                <small class="text-muted d-block mb-2">Override per-block probe count and use uniform random timing across trial durations.</small>
+                <div class="row g-2">
+                    <div class="col-md-4">
+                        <label class="form-label">Probes per block (override)</label>
+                        <input type="number" class="form-control" id="mw_global_probe_count_per_block" min="1" max="20" value="${globalProbeCountPerBlock !== null ? this.escapeHtmlAttr(String(globalProbeCountPerBlock)) : ''}" placeholder="(use component count)">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Global min interval (ms)</label>
+                        <input type="number" class="form-control" id="mw_global_interval_min_ms" min="0" value="${globalIntervalMinMs !== null ? this.escapeHtmlAttr(String(globalIntervalMinMs)) : ''}" placeholder="(use per-probe)">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Global max interval (ms)</label>
+                        <input type="number" class="form-control" id="mw_global_interval_max_ms" min="0" value="${globalIntervalMaxMs !== null ? this.escapeHtmlAttr(String(globalIntervalMaxMs)) : ''}" placeholder="(use per-probe)">
+                    </div>
                 </div>
             </div>` : ''}
 
@@ -1258,11 +1249,6 @@ class TimelineBuilder {
                 Supported types: likert, radio, text, slider, number. Responses are keyed by question id.
             </small>
         `;
-
-        // The survey/mw-probe modal uses a custom renderer, so add the shared
-        // timeline label input explicitly (it is otherwise injected only for
-        // schema-driven forms).
-        this._prependLabelFieldToModal(modalBody, component);
 
         // Toggle timeout input enable/disable
         const allowTimeoutEl = modalBody.querySelector('#survey_allow_empty_on_timeout');
@@ -1285,289 +1271,9 @@ class TimelineBuilder {
         }
         syncTimeoutUi();
 
-        if (isMwProbe) {
-            const mwWarningEl = modalBody.querySelector('#mw_probe_warning');
-            const probeCountEl = modalBody.querySelector('#mw_global_probe_count_per_block');
-            const minFromStartEl = modalBody.querySelector('#mw_min_interval_ms');
-            const maxFromStartEl = modalBody.querySelector('#mw_max_interval_ms');
-            const minGapEl = modalBody.querySelector('#mw_global_interval_min_ms');
-            const maxGapEl = modalBody.querySelector('#mw_global_interval_max_ms');
-
-            const parsePosNum = (raw) => {
-                const n = Number(raw);
-                return Number.isFinite(n) && n > 0 ? n : 0;
-            };
-
-            const getKnownDurationMs = () => {
-                const candidates = [
-                    component?.trial_duration_ms,
-                    component?.duration_ms,
-                    component?.block_duration_ms,
-                    component?.block_duration_seconds !== undefined ? Number(component.block_duration_seconds) * 1000 : null,
-                    component?.block_length_ms,
-                    component?.parameters?.trial_duration_ms,
-                    component?.parameters?.duration_ms,
-                    component?.parameters?.block_duration_ms,
-                    component?.parameters?.block_duration_seconds !== undefined ? Number(component.parameters.block_duration_seconds) * 1000 : null,
-                    component?.parameters?.block_length_ms
-                ];
-
-                for (const candidate of candidates) {
-                    const durationMs = parsePosNum(candidate);
-                    if (durationMs > 0) return durationMs;
-                }
-
-                const estimateDurationFromComponentData = (rawItem) => {
-                    if (!rawItem || typeof rawItem !== 'object') return null;
-
-                    const typeNorm = String(rawItem.type || '').trim().toLowerCase();
-
-                    const estimateSocEntryDurationMs = (socType) => {
-                        const t = String(socType || '').trim().toLowerCase().replace(/^soc-subtask-/, '');
-                        if (t === 'sart-like') return parsePosNum(rawItem.scroll_interval_ms ?? pv.scroll_interval_ms) || 900;
-                        if (t === 'flanker-like') return parsePosNum(rawItem.trial_interval_ms ?? pv.trial_interval_ms) || 1400;
-                        if (t === 'nback-like') return parsePosNum(rawItem.stimulus_interval_ms ?? pv.stimulus_interval_ms) || 1200;
-                        if (t === 'wcst-like') {
-                            const rw = parsePosNum(rawItem.response_window_ms ?? pv.response_window_ms) || 3500;
-                            const iti = parsePosNum(rawItem.iti_ms ?? pv.iti_ms ?? rawItem.trial_interval_ms ?? pv.trial_interval_ms) || 200;
-                            return rw + iti;
-                        }
-                        if (t === 'pvt-like') return parsePosNum(rawItem.log_scroll_interval_ms ?? pv.log_scroll_interval_ms ?? rawItem.scroll_interval_ms ?? pv.scroll_interval_ms) || 400;
-                        if (t === 'soc-inline-html-keyboard' || t === 'html-keyboard-response' || t === 'instructions') {
-                            return parsePosNum(rawItem.trial_duration_ms ?? pv.trial_duration_ms ?? rawItem.trial_duration ?? pv.trial_duration ?? rawItem.duration_ms ?? pv.duration_ms) || 4000;
-                        }
-                        return 1000;
-                    };
-
-                    const pv = (rawItem.parameter_values && typeof rawItem.parameter_values === 'object')
-                        ? rawItem.parameter_values
-                        : ((rawItem.parameters && typeof rawItem.parameters === 'object') ? rawItem.parameters : {});
-
-                    const directCandidates = [
-                        rawItem.trial_duration_ms,
-                        rawItem.duration_ms,
-                        rawItem.block_duration_ms,
-                        rawItem.block_duration_seconds !== undefined ? Number(rawItem.block_duration_seconds) * 1000 : null,
-                        rawItem.block_length_ms,
-                        pv.trial_duration_ms,
-                        pv.duration_ms,
-                        pv.block_duration_ms,
-                        pv.block_duration_seconds !== undefined ? Number(pv.block_duration_seconds) * 1000 : null,
-                        pv.block_length_ms
-                    ];
-
-                    for (const candidate of directCandidates) {
-                        const ms = parsePosNum(candidate);
-                        if (ms > 0) return ms;
-                    }
-
-                    const bySeconds = parsePosNum(rawItem.block_duration_seconds ?? pv.block_duration_seconds);
-                    if (bySeconds > 0) return bySeconds * 1000;
-
-                    const socTypeRaw = String(rawItem.type ?? rawItem.subtask_type ?? '').trim();
-                    const socDurationMode = String(rawItem.subtask_duration_mode ?? pv.subtask_duration_mode ?? '').trim().toLowerCase();
-                    const socEntries = parsePosNum(rawItem.subtask_duration_entries ?? pv.subtask_duration_entries);
-                    const isSocLike = socTypeRaw.toLowerCase().startsWith('soc-subtask-')
-                        || socTypeRaw.toLowerCase().endsWith('-like')
-                        || socTypeRaw.toLowerCase() === 'soc-inline-html-keyboard'
-                        || typeNorm === 'soc-inline-html-keyboard';
-
-                    if (isSocLike) {
-                        if ((socDurationMode === 'entries' || socEntries > 0) && socEntries > 0) {
-                            const entryMs = estimateSocEntryDurationMs(socTypeRaw || typeNorm);
-                            if (entryMs > 0) return socEntries * entryMs;
-                        }
-
-                        const socDurationCandidates = [
-                            rawItem.duration_ms,
-                            pv.duration_ms,
-                            rawItem.trial_duration_ms,
-                            pv.trial_duration_ms,
-                            rawItem.trial_duration,
-                            pv.trial_duration,
-                            rawItem.min_run_ms,
-                            pv.min_run_ms,
-                            rawItem.max_run_ms,
-                            pv.max_run_ms
-                        ];
-                        for (const candidate of socDurationCandidates) {
-                            const ms = parsePosNum(candidate);
-                            if (ms > 0) return ms;
-                        }
-                    }
-
-                    const blockLike = (rawItem.type === 'block')
-                        || rawItem.block_component_type !== undefined
-                        || rawItem.component_type !== undefined
-                        || pv.block_length !== undefined
-                        || rawItem.block_length !== undefined
-                        || rawItem.length !== undefined;
-                    if (!blockLike) return null;
-
-                    const trialDurationMs = parsePosNum(
-                        rawItem.trial_duration_ms
-                        ?? pv.trial_duration_ms
-                        ?? rawItem.stimulus_duration_ms
-                        ?? pv.stimulus_duration_ms
-                    );
-                    const itiMs = parsePosNum(
-                        rawItem.iti_ms
-                        ?? pv.iti_ms
-                        ?? rawItem.post_trial_gap_ms
-                        ?? pv.post_trial_gap_ms
-                        ?? rawItem.inter_trial_interval_ms
-                        ?? pv.inter_trial_interval_ms
-                    );
-                    const length = parsePosNum(
-                        rawItem.block_length
-                        ?? pv.block_length
-                        ?? rawItem.length
-                        ?? pv.length
-                    );
-
-                    if (length > 0 && trialDurationMs > 0) {
-                        return length * (trialDurationMs + itiMs);
-                    }
-
-                    return null;
-                };
-
-                // The mw-probe has no own duration fields. Infer from nearby items
-                // in the rendered timeline first, then fall back to model timeline.
-                try {
-                    const container = componentElement?.parentElement;
-                    if (container) {
-                        const allEls = Array.from(container.querySelectorAll('.timeline-component'));
-                        const probeIdx = allEls.indexOf(componentElement);
-                        if (probeIdx >= 0) {
-                            for (const offset of [-1, 1, -2, 2]) {
-                                const el = allEls[probeIdx + offset];
-                                if (!el) continue;
-                                let neighborData = null;
-                                try {
-                                    neighborData = JSON.parse(el.dataset?.componentData || '{}');
-                                } catch {
-                                    neighborData = null;
-                                }
-                                const estimatedMs = estimateDurationFromComponentData(neighborData);
-                                if (estimatedMs > 0) return estimatedMs;
-                            }
-                        }
-                    }
-
-                    const tl = this.jsonBuilder?.timeline;
-                    if (Array.isArray(tl) && tl.length > 0) {
-                        // Take the maximum across all items so a short practice
-                        // subtask does not shadow the longer main block duration.
-                        let bestMs = 0;
-                        for (const item of tl) {
-                            const estimatedMs = estimateDurationFromComponentData(item);
-                            if (estimatedMs > bestMs) bestMs = estimatedMs;
-                        }
-                        if (bestMs > 0) return bestMs;
-                    }
-
-                    if (componentElement?.dataset?.componentData) {
-                        let selfData = null;
-                        try {
-                            selfData = JSON.parse(componentElement.dataset.componentData || '{}');
-                        } catch {
-                            selfData = null;
-                        }
-                        const estimatedMs = estimateDurationFromComponentData(selfData);
-                        if (estimatedMs > 0) return estimatedMs;
-                    }
-                } catch {
-                    // best-effort estimate only - ignore any errors
-                }
-
-                // Final fallback: infer from the Builder's current generated config.
-                // This avoids DOM/dataset shape mismatches and reflects the JSON preview.
-                try {
-                    const generated = (typeof this.jsonBuilder?.generateJSON === 'function')
-                        ? this.jsonBuilder.generateJSON()
-                        : null;
-
-                    // For SOC configs, session-level duration fields must be
-                    // checked before iterating timeline items. A short practice
-                    // subtask is always the first item and would otherwise shadow
-                    // the full session duration, producing a near-zero capacity
-                    // estimate (the bug Tariq reported: estimate missing/0).
-                    const socSessionMs = parsePosNum(generated?.soc_dashboard_settings?.trial_duration_ms);
-                    if (socSessionMs > 0) return socSessionMs;
-
-                    const globalDurationSec = parsePosNum(generated?.duration);
-                    if (globalDurationSec > 0) return globalDurationSec * 1000;
-
-                    // Non-SOC fallback: take the maximum individual item estimate
-                    // so a short instructions block never shadows a longer task block.
-                    const tl = Array.isArray(generated?.timeline) ? generated.timeline : [];
-                    let bestMs = 0;
-                    for (const item of tl) {
-                        const estimatedMs = estimateDurationFromComponentData(item);
-                        if (estimatedMs > bestMs) bestMs = estimatedMs;
-                    }
-                    if (bestMs > 0) return bestMs;
-                } catch {
-                    // best-effort estimate only - ignore any errors
-                }
-
-                return null;
-            };
-
-            const updateMwProbeWarning = () => {
-                if (!mwWarningEl) return;
-
-                const probeCount = Math.max(1, Math.round(parsePosNum(probeCountEl?.value ?? 1)));
-                const singleMinRaw = parsePosNum(minFromStartEl?.value ?? 0);
-                const singleMaxRaw = parsePosNum(maxFromStartEl?.value ?? singleMinRaw);
-                const singleGapMax = Math.max(singleMinRaw, singleMaxRaw);
-                const minRaw = parsePosNum(minGapEl?.value ?? 0);
-                const maxRaw = parsePosNum(maxGapEl?.value ?? minRaw);
-                const globalGapMax = Math.max(minRaw, maxRaw);
-                let gapMax = probeCount > 1 ? globalGapMax : singleGapMax;
-                if (!(gapMax > 0)) {
-                    gapMax = Math.max(singleGapMax, globalGapMax);
-                }
-                const durationMs = getKnownDurationMs();
-
-                let risky = false;
-                let effectiveMax = null;
-                if (durationMs && gapMax > 0) {
-                    effectiveMax = Math.max(0, Math.floor(durationMs / gapMax));
-                    risky = probeCount > effectiveMax;
-                }
-
-                mwWarningEl.classList.remove('d-none');
-                mwWarningEl.classList.remove('alert-warning', 'alert-info');
-                mwWarningEl.classList.add(risky ? 'alert-warning' : 'alert-info');
-
-                if (Number.isFinite(effectiveMax)) {
-                    const prefix = risky
-                        ? 'Your block appears to be short; probes will appear more often to honor the number of probes you selected; you may want to reduce the number.'
-                        : 'Live capacity estimate.';
-                    mwWarningEl.textContent = `${prefix} Selected: ${probeCount}. Estimated maximum that fits this block: ${effectiveMax}.`;
-                    return;
-                }
-
-                if (durationMs && !(gapMax > 0)) {
-                    mwWarningEl.textContent = 'Set a max interval greater than 0 to compute a live capacity estimate.';
-                    return;
-                }
-
-                mwWarningEl.textContent = 'Live capacity estimate unavailable here because block/session duration is not known in this editor context.';
-            };
-
-            [probeCountEl, minFromStartEl, maxFromStartEl, minGapEl, maxGapEl].forEach((el) => {
-                if (el) el.addEventListener('input', updateMwProbeWarning);
-            });
-
-            updateMwProbeWarning();
-        }
-
         // Survey instructions rich text editor (same Quill pattern as Instructions component editor).
         try {
-            this._surveyInstructionsEditorState = { mode: 'wysiwyg', quill: null, useQuillForSave: false };
+            this._surveyInstructionsEditorState = { mode: 'wysiwyg', quill: null };
 
             const toolbar = modalBody.querySelector('#surveyInstructionsEditorToolbar');
             const editor = modalBody.querySelector('#surveyInstructionsEditor');
@@ -1576,9 +1282,6 @@ class TimelineBuilder {
             const wysWrap = modalBody.querySelector('#surveyInstructionsEditorWrap');
 
             if (window.Quill && toolbar && editor && htmlArea) {
-                const initialInstructionsHtml = coerceToHtml(instructions);
-                htmlArea.value = initialInstructionsHtml;
-
                 toolbar.innerHTML = `
                     <span class="ql-formats">
                         <select class="ql-header">
@@ -1613,7 +1316,7 @@ class TimelineBuilder {
                     modules: { toolbar }
                 });
 
-                quill.clipboard.dangerouslyPasteHTML(initialInstructionsHtml);
+                quill.clipboard.dangerouslyPasteHTML(coerceToHtml(instructions));
                 this._surveyInstructionsEditorState.quill = quill;
 
                 const syncHtmlAreaFromQuill = () => {
@@ -1625,9 +1328,7 @@ class TimelineBuilder {
                     htmlBtn.addEventListener('click', () => {
                         const mode = this._surveyInstructionsEditorState?.mode || 'wysiwyg';
                         if (mode === 'wysiwyg') {
-                            if (this._surveyInstructionsEditorState?.useQuillForSave) {
-                                syncHtmlAreaFromQuill();
-                            }
+                            syncHtmlAreaFromQuill();
                             this._surveyInstructionsEditorState.mode = 'html';
                             wysWrap.classList.add('d-none');
                             htmlArea.classList.remove('d-none');
@@ -1636,7 +1337,6 @@ class TimelineBuilder {
                             const html = htmlArea.value || '';
                             try { quill.clipboard.dangerouslyPasteHTML(html); } catch { /* ignore */ }
                             this._surveyInstructionsEditorState.mode = 'wysiwyg';
-                            this._surveyInstructionsEditorState.useQuillForSave = true;
                             htmlArea.classList.add('d-none');
                             wysWrap.classList.remove('d-none');
                             htmlBtn.textContent = 'Edit HTML';
@@ -1646,10 +1346,11 @@ class TimelineBuilder {
 
                 quill.on('text-change', () => {
                     if ((this._surveyInstructionsEditorState?.mode || 'wysiwyg') === 'wysiwyg') {
-                        this._surveyInstructionsEditorState.useQuillForSave = true;
                         syncHtmlAreaFromQuill();
                     }
                 });
+
+                syncHtmlAreaFromQuill();
             } else {
                 if (wysWrap) wysWrap.classList.add('d-none');
                 if (htmlBtn) htmlBtn.classList.add('d-none');
@@ -1949,18 +1650,13 @@ class TimelineBuilder {
         const maxIntervalRaw = modalBody.querySelector('#mw_max_interval_ms')?.value;
         const min_interval_ms = (minIntervalRaw !== undefined && minIntervalRaw !== null && minIntervalRaw !== '') ? Number(minIntervalRaw) : null;
         const max_interval_ms = (maxIntervalRaw !== undefined && maxIntervalRaw !== null && maxIntervalRaw !== '') ? Number(maxIntervalRaw) : null;
+
         const globalProbeCountRaw = modalBody.querySelector('#mw_global_probe_count_per_block')?.value;
         const globalIntervalMinRaw = modalBody.querySelector('#mw_global_interval_min_ms')?.value;
         const globalIntervalMaxRaw = modalBody.querySelector('#mw_global_interval_max_ms')?.value;
-        const global_probe_count_per_block = (globalProbeCountRaw !== undefined && globalProbeCountRaw !== null && globalProbeCountRaw !== '')
-            ? Number(globalProbeCountRaw)
-            : null;
-        const global_interval_min_ms = (globalIntervalMinRaw !== undefined && globalIntervalMinRaw !== null && globalIntervalMinRaw !== '')
-            ? Number(globalIntervalMinRaw)
-            : null;
-        const global_interval_max_ms = (globalIntervalMaxRaw !== undefined && globalIntervalMaxRaw !== null && globalIntervalMaxRaw !== '')
-            ? Number(globalIntervalMaxRaw)
-            : null;
+        const global_probe_count_per_block = (globalProbeCountRaw !== undefined && globalProbeCountRaw !== null && globalProbeCountRaw !== '') ? Number.parseInt(globalProbeCountRaw, 10) : null;
+        const global_interval_min_ms = (globalIntervalMinRaw !== undefined && globalIntervalMinRaw !== null && globalIntervalMinRaw !== '') ? Number(globalIntervalMinRaw) : null;
+        const global_interval_max_ms = (globalIntervalMaxRaw !== undefined && globalIntervalMaxRaw !== null && globalIntervalMaxRaw !== '') ? Number(globalIntervalMaxRaw) : null;
 
         return {
             title,
@@ -1971,9 +1667,9 @@ class TimelineBuilder {
             questions,
             min_interval_ms,
             max_interval_ms,
-            global_probe_count_per_block,
-            global_interval_min_ms,
-            global_interval_max_ms
+            ...(Number.isFinite(global_probe_count_per_block) ? { global_probe_count_per_block } : {}),
+            ...(Number.isFinite(global_interval_min_ms) ? { global_interval_min_ms } : {}),
+            ...(Number.isFinite(global_interval_max_ms) ? { global_interval_max_ms } : {})
         };
     }
 
@@ -2135,25 +1831,7 @@ class TimelineBuilder {
         }
 
         let formHtml = '';
-        const isSocSubtaskComponent = (
-            type === 'soc-subtask-sart-like'
-            || type === 'soc-subtask-nback-like'
-            || type === 'soc-subtask-flanker-like'
-            || type === 'soc-subtask-wcst-like'
-            || type === 'soc-subtask-pvt-like'
-        );
-        const orderedEntries = Object.entries(parameters).sort(([a], [b]) => {
-            if (!isSocSubtaskComponent) return 0;
-            const rank = (name) => {
-                if (name === 'subtask_duration_mode') return 10;
-                if (name === 'start_at_ms') return 20;
-                if (name === 'duration_ms') return 21;
-                if (name === 'subtask_duration_entries') return 30;
-                return 50;
-            };
-            return rank(a) - rank(b);
-        });
-        for (const [paramName, paramDef] of orderedEntries) {
+        for (const [paramName, paramDef] of Object.entries(parameters)) {
             if (paramDef && typeof paramDef === 'object' && paramDef.blockTarget && type !== 'block') {
                 continue;
             }
@@ -2212,24 +1890,42 @@ class TimelineBuilder {
                                 : ''))));
             const dynamicTargetSubGroup = (paramName === 'dynamic_target_group_every_n_frames') ? 'dynamicTargetRange' : '';
             const dependentDirectionSubGroup = (paramName === 'dependent_group_1_direction_options' || paramName === 'dependent_group_direction_difference_options') ? 'dependentDirectionFields' : '';
-            const socDurationModeGroup = (isSocSubtaskComponent && (paramName === 'subtask_duration_mode')) ? 'mode' : '';
-            const socDurationModeDep = (isSocSubtaskComponent && (paramName === 'start_at_ms' || paramName === 'duration_ms'))
-                ? 'time_ms'
-                : ((isSocSubtaskComponent && paramName === 'subtask_duration_entries') ? 'entries' : '');
-            const socDurationOrder = (isSocSubtaskComponent)
-                ? ((paramName === 'subtask_duration_mode')
-                    ? '10'
-                    : ((paramName === 'start_at_ms' || paramName === 'duration_ms')
-                        ? '20'
-                        : ((paramName === 'subtask_duration_entries') ? '30' : '50')))
-                : '';
 
             const blockTargetAttr = (type === 'block' && blockTargetByParam[paramName])
                 ? ` data-block-target="${this.escapeHtmlAttr(String(blockTargetByParam[paramName]))}"`
                 : '';
 
+            let cipResponseParadigmAttr = '';
+            if (type === 'block') {
+                if (paramName === 'cip_category_count' || paramName === 'cip_show_category_buttons' || /^cip_category_[1-7]_(label|key)$/.test(paramName)) {
+                    cipResponseParadigmAttr = ' data-cip-response-paradigm="categorization"';
+                }
+                if (
+                    paramName === 'nback_n'
+                    || paramName === 'nback_target_probability'
+                    || paramName === 'nback_stimulus_mode'
+                    || paramName === 'nback_stimulus_pool'
+                    || paramName === 'nback_render_mode'
+                    || paramName === 'nback_stimulus_template_html'
+                    || paramName === 'nback_stimulus_duration_ms'
+                    || paramName === 'nback_isi_duration_ms'
+                    || paramName === 'nback_trial_duration_ms'
+                    || paramName === 'nback_show_fixation_cross_between_trials'
+                    || paramName === 'nback_response_paradigm'
+                    || paramName === 'nback_response_device'
+                    || paramName === 'nback_go_key'
+                    || paramName === 'nback_match_key'
+                    || paramName === 'nback_nonmatch_key'
+                    || paramName === 'nback_show_buttons'
+                    || paramName === 'nback_show_feedback'
+                    || paramName === 'nback_feedback_duration_ms'
+                ) {
+                    cipResponseParadigmAttr = ' data-cip-response-paradigm="nback"';
+                }
+            }
+
             formHtml += `
-                <div class="mb-3" data-param-name="${this.escapeHtmlAttr(paramName)}"${responseGroup ? ` data-response-group="${this.escapeHtmlAttr(responseGroup)}"` : ''}${cueSubGroup ? ` data-cue-subgroup="${this.escapeHtmlAttr(cueSubGroup)}"` : ''}${feedbackSubGroup ? ` data-feedback-subgroup="${this.escapeHtmlAttr(feedbackSubGroup)}"` : ''}${dynamicTargetSubGroup ? ` data-dynamic-target-subgroup="${this.escapeHtmlAttr(dynamicTargetSubGroup)}"` : ''}${dependentDirectionSubGroup ? ` data-dependent-direction-subgroup="${this.escapeHtmlAttr(dependentDirectionSubGroup)}"` : ''}${socDurationModeGroup ? ` data-soc-duration-mode-group="${this.escapeHtmlAttr(socDurationModeGroup)}"` : ''}${socDurationModeDep ? ` data-soc-duration-mode="${this.escapeHtmlAttr(socDurationModeDep)}"` : ''}${socDurationOrder ? ` data-soc-duration-order="${this.escapeHtmlAttr(socDurationOrder)}"` : ''}${blockTargetAttr}>
+                <div class="mb-3" data-param-name="${this.escapeHtmlAttr(paramName)}"${responseGroup ? ` data-response-group="${this.escapeHtmlAttr(responseGroup)}"` : ''}${cueSubGroup ? ` data-cue-subgroup="${this.escapeHtmlAttr(cueSubGroup)}"` : ''}${feedbackSubGroup ? ` data-feedback-subgroup="${this.escapeHtmlAttr(feedbackSubGroup)}"` : ''}${dynamicTargetSubGroup ? ` data-dynamic-target-subgroup="${this.escapeHtmlAttr(dynamicTargetSubGroup)}"` : ''}${dependentDirectionSubGroup ? ` data-dependent-direction-subgroup="${this.escapeHtmlAttr(dependentDirectionSubGroup)}"` : ''}${blockTargetAttr}${cipResponseParadigmAttr}>
                     <label for="param_${this.escapeHtmlAttr(paramName)}" class="form-label">${label}</label>
                     ${this.generateParameterInputFromComponentDef(paramName, paramDef, currentValue, shouldDisable)}
                     ${helpText}
@@ -2243,9 +1939,7 @@ class TimelineBuilder {
     generateParameterInputFromComponentDef(paramName, paramDef, currentValue, shouldDisable = false) {
         const inputId = `param_${paramName}`;
         const def = (paramDef && typeof paramDef === 'object') ? paramDef : {};
-        const tRaw = (def.type ?? 'string').toString();
-        const tUpper = tRaw.trim().toUpperCase();
-        const tLower = tRaw.trim().toLowerCase();
+        const t = (def.type ?? 'string').toString();
 
         const disabledAttr = shouldDisable ? 'disabled' : '';
 
@@ -2253,7 +1947,7 @@ class TimelineBuilder {
             ? (def.default ?? '')
             : currentValue;
 
-        if (tLower === 'boolean' || tUpper === 'BOOL') {
+        if (t === 'boolean') {
             return `
                 <div class="form-check form-switch">
                     <input class="form-check-input" type="checkbox" id="${this.escapeHtmlAttr(inputId)}" ${safeVal ? 'checked' : ''} ${disabledAttr}>
@@ -2261,7 +1955,7 @@ class TimelineBuilder {
             `;
         }
 
-        if (tLower === 'select' || tUpper === 'SELECT') {
+        if (t === 'select') {
             const options = Array.isArray(def.options) ? def.options : [];
             const v = (safeVal ?? '').toString();
             const optionsHtml = options
@@ -2273,19 +1967,19 @@ class TimelineBuilder {
             return `<select class="form-select" id="${this.escapeHtmlAttr(inputId)}" ${disabledAttr}>${optionsHtml}</select>`;
         }
 
-        if (tLower === 'number' || tUpper === 'INT' || tUpper === 'FLOAT') {
+        if (t === 'number') {
             const minAttr = (def.min !== undefined && def.min !== null) ? ` min="${this.escapeHtmlAttr(String(def.min))}"` : '';
             const maxAttr = (def.max !== undefined && def.max !== null) ? ` max="${this.escapeHtmlAttr(String(def.max))}"` : '';
             const stepAttr = (def.step !== undefined && def.step !== null) ? ` step="${this.escapeHtmlAttr(String(def.step))}"` : '';
             return `<input type="number" class="form-control" id="${this.escapeHtmlAttr(inputId)}" value="${this.escapeHtmlAttr(String(safeVal))}"${minAttr}${maxAttr}${stepAttr} ${disabledAttr}>`;
         }
 
-        if (tLower === 'textarea' || tUpper === 'HTML_STRING') {
-            const rows = Number.isFinite(Number(def.rows)) ? Math.max(2, Math.min(40, Number(def.rows))) : 4;
+        if (t === 'textarea') {
+            const rows = Number.isFinite(Number(def.rows)) ? Math.max(2, Math.min(40, Number(def.rows))) : 6;
             return `<textarea class="form-control" id="${this.escapeHtmlAttr(inputId)}" rows="${this.escapeHtmlAttr(String(rows))}" ${disabledAttr}>${this.escapeHtml(String(safeVal))}</textarea>`;
         }
 
-        if (tUpper === 'COLOR') {
+        if (t === 'COLOR') {
             const v = (safeVal ?? '').toString() || (def.default ?? '#ff3b3b');
             return `
                 <div class="d-flex gap-2">
@@ -2320,28 +2014,10 @@ class TimelineBuilder {
         let formHtml = '';
         const componentType = (component?.type ?? '').toString();
         const isSocNbackLikeSubtask = (componentType === 'soc-subtask-nback-like' || componentType === 'nback-like');
-        const isSocDurationModeSubtask = (
-            componentType === 'soc-subtask-sart-like'
-            || componentType === 'soc-subtask-nback-like'
-            || componentType === 'soc-subtask-flanker-like'
-            || componentType === 'soc-subtask-wcst-like'
-            || componentType === 'soc-subtask-pvt-like'
-        );
+        const isBlockEditor = (componentType === 'block');
         const parameters = schema.parameters;
 
-        const orderedEntries = Object.entries(parameters).sort(([a], [b]) => {
-            if (!isSocDurationModeSubtask) return 0;
-            const rank = (name) => {
-                if (name === 'subtask_duration_mode') return 10;
-                if (name === 'start_at_ms') return 20;
-                if (name === 'duration_ms') return 21;
-                if (name === 'subtask_duration_entries') return 30;
-                return 50;
-            };
-            return rank(a) - rank(b);
-        });
-
-        for (const [paramName, paramDef] of orderedEntries) {
+        for (const [paramName, paramDef] of Object.entries(parameters)) {
             if (paramDef.blockTarget && componentType !== 'block') {
                 continue;
             }
@@ -2427,16 +2103,37 @@ class TimelineBuilder {
                 if (paramName === 'match_key' || paramName === 'nonmatch_key') nbackParadigmAttr = 'data-nback-paradigm="2afc"';
             }
 
-            let socDurationModeGroupAttr = '';
-            let socDurationModeAttr = '';
-            if (isSocDurationModeSubtask) {
-                if (paramName === 'subtask_duration_mode') socDurationModeGroupAttr = 'data-soc-duration-mode-group="mode"';
-                if (paramName === 'start_at_ms' || paramName === 'duration_ms') socDurationModeAttr = 'data-soc-duration-mode="time_ms"';
-                if (paramName === 'subtask_duration_entries') socDurationModeAttr = 'data-soc-duration-mode="entries"';
+            let cipResponseParadigmAttr = '';
+            if (isBlockEditor) {
+                if (paramName === 'cip_category_count' || paramName === 'cip_show_category_buttons' || /^cip_category_[1-7]_(label|key)$/.test(paramName)) {
+                    cipResponseParadigmAttr = 'data-cip-response-paradigm="categorization"';
+                }
+                if (
+                    paramName === 'nback_n'
+                    || paramName === 'nback_target_probability'
+                    || paramName === 'nback_stimulus_mode'
+                    || paramName === 'nback_stimulus_pool'
+                    || paramName === 'nback_render_mode'
+                    || paramName === 'nback_stimulus_template_html'
+                    || paramName === 'nback_stimulus_duration_ms'
+                    || paramName === 'nback_isi_duration_ms'
+                    || paramName === 'nback_trial_duration_ms'
+                    || paramName === 'nback_show_fixation_cross_between_trials'
+                    || paramName === 'nback_response_paradigm'
+                    || paramName === 'nback_response_device'
+                    || paramName === 'nback_go_key'
+                    || paramName === 'nback_match_key'
+                    || paramName === 'nback_nonmatch_key'
+                    || paramName === 'nback_show_buttons'
+                    || paramName === 'nback_show_feedback'
+                    || paramName === 'nback_feedback_duration_ms'
+                ) {
+                    cipResponseParadigmAttr = 'data-cip-response-paradigm="nback"';
+                }
             }
 
             formHtml += `
-                <div class="mb-3 ${shouldDisable ? 'parameter-disabled' : ''}" data-param-name="${paramName}" ${responseGroup ? `data-response-group="${responseGroup}"` : ''} ${cueSubGroup ? `data-cue-subgroup="${cueSubGroup}"` : ''} ${feedbackSubGroup ? `data-feedback-subgroup="${feedbackSubGroup}"` : ''} ${dynamicTargetSubGroup ? `data-dynamic-target-subgroup="${dynamicTargetSubGroup}"` : ''} ${dependentDirectionSubGroup ? `data-dependent-direction-subgroup="${dependentDirectionSubGroup}"` : ''} ${blockTargetAttr} ${nbackParadigmAttr} ${socDurationModeGroupAttr} ${socDurationModeAttr}>
+                <div class="mb-3 ${shouldDisable ? 'parameter-disabled' : ''}" data-param-name="${paramName}" ${responseGroup ? `data-response-group="${responseGroup}"` : ''} ${cueSubGroup ? `data-cue-subgroup="${cueSubGroup}"` : ''} ${feedbackSubGroup ? `data-feedback-subgroup="${feedbackSubGroup}"` : ''} ${dynamicTargetSubGroup ? `data-dynamic-target-subgroup="${dynamicTargetSubGroup}"` : ''} ${dependentDirectionSubGroup ? `data-dependent-direction-subgroup="${dependentDirectionSubGroup}"` : ''} ${blockTargetAttr} ${nbackParadigmAttr} ${cipResponseParadigmAttr}>
                     <label for="param_${paramName}" class="form-label ${shouldDisable ? 'text-muted' : ''}">
                         ${this.formatParameterNameForComponent(componentType, paramName)}
                         ${paramDef.required ? '<span class="text-danger">*</span>' : ''}
@@ -2882,30 +2579,6 @@ class TimelineBuilder {
         if (nbackParadigmEl) {
             nbackParadigmEl.addEventListener('change', updateNbackKeyVisibility);
             updateNbackKeyVisibility();
-        }
-
-        // SOC subtask duration controls:
-        // - subtask_duration_mode = time_ms => show start_at_ms + duration_ms
-        // - subtask_duration_mode = entries => show subtask_duration_entries
-        const socDurationModeEl = formContainer.querySelector('#param_subtask_duration_mode');
-        const updateSocDurationModeVisibility = () => {
-            if (!socDurationModeEl) return;
-            const modeRaw = (socDurationModeEl.value || 'time_ms').toString().trim().toLowerCase();
-            const mode = (modeRaw === 'entries') ? 'entries' : 'time_ms';
-
-            formContainer.querySelectorAll('[data-soc-duration-mode]').forEach(el => {
-                const want = (el.getAttribute('data-soc-duration-mode') || '').toString().trim().toLowerCase();
-                const show = (want === mode);
-                el.style.display = show ? '' : 'none';
-                el.querySelectorAll('input, select, textarea').forEach(i => {
-                    i.disabled = !show;
-                });
-            });
-        };
-
-        if (socDurationModeEl) {
-            socDurationModeEl.addEventListener('change', updateSocDurationModeVisibility);
-            updateSocDurationModeVisibility();
         }
 
         // Feedback conditional fields (per-component / per-block)
@@ -3396,8 +3069,6 @@ class TimelineBuilder {
                 [
                     'gabor_use_stored_thresholds',
                     'gabor_target_left_probability',
-                    'gabor_counterbalance_scope',
-                    'gabor_counterbalance_group_id',
                     'gabor_spatial_cue_options',
                     'gabor_spatial_cue_probability',
                     'gabor_spatial_cue_validity_probability',
@@ -3416,10 +3087,6 @@ class TimelineBuilder {
 
             setParamVisible('gabor_use_stored_thresholds', selected === 'gabor-trial' || selected === 'gabor-learning');
             setParamVisible('gabor_target_left_probability', true);
-            setParamVisible('gabor_counterbalance_scope', true);
-            const cbScopeEl = formContainer.querySelector('#param_gabor_counterbalance_scope');
-            const cbScope = cbScopeEl ? (cbScopeEl.value || 'per_block') : 'per_block';
-            setParamVisible('gabor_counterbalance_group_id', cbScope === 'group');
 
             const spatialEnabledEl = formContainer.querySelector('#param_gabor_spatial_cue_enabled');
             const spatialEnabled = spatialEnabledEl ? !!spatialEnabledEl.checked : true;
@@ -3686,10 +3353,6 @@ class TimelineBuilder {
             if (valueCueEnabledEl) {
                 valueCueEnabledEl.addEventListener('change', updateGaborCueVisibility);
             }
-            const gaborCounterbalanceScopeEl = formContainer.querySelector('#param_gabor_counterbalance_scope');
-            if (gaborCounterbalanceScopeEl) {
-                gaborCounterbalanceScopeEl.addEventListener('change', updateGaborCueVisibility);
-            }
             updateGaborCueVisibility();
 
             // Stroop block: response device/mode should update keyboard field visibility.
@@ -3702,6 +3365,55 @@ class TimelineBuilder {
                 stroopModeEl.addEventListener('change', updateStroopBlockResponseVisibility);
             }
             updateStroopBlockResponseVisibility();
+        }
+
+        // CIP Block: response paradigm conditional fields.
+        const cipResponseParadigmEl = formContainer.querySelector('#param_cip_response_paradigm');
+        const cipCategoryCountEl = formContainer.querySelector('#param_cip_category_count');
+        const updateCipResponseParadigmVisibility = () => {
+            if (!blockTypeEl) return;
+            const selected = (blockTypeEl.value || '').toString().trim();
+            if (selected !== 'continuous-image-presentation') return;
+
+            const paradigmRaw = (cipResponseParadigmEl ? cipResponseParadigmEl.value : 'categorization').toString().trim().toLowerCase();
+            const paradigm = (paradigmRaw === 'nback') ? 'nback' : 'categorization';
+
+            formContainer.querySelectorAll('[data-cip-response-paradigm]').forEach((el) => {
+                const want = (el.getAttribute('data-cip-response-paradigm') || '').toString().trim().toLowerCase();
+                const show = (want === paradigm);
+                el.style.display = show ? '' : 'none';
+                el.querySelectorAll('input, select, textarea').forEach((input) => {
+                    input.disabled = !show;
+                });
+            });
+
+            const countRaw = Number.parseInt((cipCategoryCountEl ? cipCategoryCountEl.value : '2').toString(), 10);
+            const count = Number.isFinite(countRaw) ? Math.max(2, Math.min(7, countRaw)) : 2;
+            for (let i = 1; i <= 7; i++) {
+                const showRow = (paradigm === 'categorization') && (i <= count);
+                ['label', 'key'].forEach((suffix) => {
+                    const row = formContainer.querySelector(`[data-param-name="cip_category_${i}_${suffix}"]`);
+                    if (!row) return;
+                    row.style.display = showRow ? '' : 'none';
+                    row.querySelectorAll('input, select, textarea').forEach((input) => {
+                        input.disabled = !showRow;
+                    });
+                });
+            }
+        };
+
+        if (cipResponseParadigmEl) {
+            cipResponseParadigmEl.addEventListener('change', updateCipResponseParadigmVisibility);
+            updateCipResponseParadigmVisibility();
+        }
+        if (cipCategoryCountEl) {
+            cipCategoryCountEl.addEventListener('change', updateCipResponseParadigmVisibility);
+            cipCategoryCountEl.addEventListener('input', updateCipResponseParadigmVisibility);
+            updateCipResponseParadigmVisibility();
+        }
+        if (blockTypeEl && (cipResponseParadigmEl || cipCategoryCountEl)) {
+            blockTypeEl.addEventListener('change', updateCipResponseParadigmVisibility);
+            updateCipResponseParadigmVisibility();
         }
 
         // Continuous Image Presentation (Block helper UI)
@@ -6315,6 +6027,64 @@ class TimelineBuilder {
                             }
                         }
                     }
+
+                    if (blockType === 'continuous-image-presentation') {
+                        const containers = [];
+                        if (updatedData && typeof updatedData === 'object') containers.push(updatedData);
+                        if (updatedData.parameters && typeof updatedData.parameters === 'object') containers.push(updatedData.parameters);
+
+                        const paradigmRaw = (updatedData.cip_response_paradigm ?? updatedData.parameters?.cip_response_paradigm ?? 'categorization').toString().trim().toLowerCase();
+                        const paradigm = (paradigmRaw === 'nback') ? 'nback' : 'categorization';
+
+                        const countRaw = Number.parseInt((updatedData.cip_category_count ?? updatedData.parameters?.cip_category_count ?? '2').toString(), 10);
+                        const count = Number.isFinite(countRaw) ? Math.max(2, Math.min(7, countRaw)) : 2;
+
+                        for (const c of containers) {
+                            if (!c || typeof c !== 'object') continue;
+
+                            if (paradigm === 'nback') {
+                                if (Object.prototype.hasOwnProperty.call(c, 'cip_category_count')) delete c.cip_category_count;
+                                if (Object.prototype.hasOwnProperty.call(c, 'cip_show_category_buttons')) delete c.cip_show_category_buttons;
+                                for (let i = 1; i <= 7; i++) {
+                                    const labelKey = `cip_category_${i}_label`;
+                                    const keyKey = `cip_category_${i}_key`;
+                                    if (Object.prototype.hasOwnProperty.call(c, labelKey)) delete c[labelKey];
+                                    if (Object.prototype.hasOwnProperty.call(c, keyKey)) delete c[keyKey];
+                                }
+                            } else {
+                                const nbackKeys = [
+                                    'nback_n',
+                                    'nback_target_probability',
+                                    'nback_stimulus_mode',
+                                    'nback_stimulus_pool',
+                                    'nback_render_mode',
+                                    'nback_stimulus_template_html',
+                                    'nback_stimulus_duration_ms',
+                                    'nback_isi_duration_ms',
+                                    'nback_trial_duration_ms',
+                                    'nback_show_fixation_cross_between_trials',
+                                    'nback_response_paradigm',
+                                    'nback_response_device',
+                                    'nback_go_key',
+                                    'nback_match_key',
+                                    'nback_nonmatch_key',
+                                    'nback_show_buttons',
+                                    'nback_show_feedback',
+                                    'nback_feedback_duration_ms'
+                                ];
+                                nbackKeys.forEach((k) => {
+                                    if (Object.prototype.hasOwnProperty.call(c, k)) delete c[k];
+                                });
+
+                                for (let i = count + 1; i <= 7; i++) {
+                                    const labelKey = `cip_category_${i}_label`;
+                                    const keyKey = `cip_category_${i}_key`;
+                                    if (Object.prototype.hasOwnProperty.call(c, labelKey)) delete c[labelKey];
+                                    if (Object.prototype.hasOwnProperty.call(c, keyKey)) delete c[keyKey];
+                                }
+                            }
+                        }
+                    }
                 }
             } catch {
                 // ignore
@@ -6349,22 +6119,44 @@ class TimelineBuilder {
     }
 
     getExperimentDefault(paramName) {
+        const taskType = (document.getElementById('taskType')?.value || '').toString().trim().toLowerCase();
+
+        if (taskType === 'continuous-image' && this.jsonBuilder && typeof this.jsonBuilder.getCurrentContinuousImageDefaults === 'function') {
+            const cipDefaults = this.jsonBuilder.getCurrentContinuousImageDefaults() || {};
+            const cipMapping = {
+                cip_mask_type: 'mask_type',
+                cip_mask_noise_amp: 'mask_noise_amp',
+                cip_mask_block_size: 'mask_block_size',
+                cip_image_duration_ms: 'image_duration_ms',
+                cip_transition_duration_ms: 'transition_duration_ms',
+                cip_transition_frames: 'transition_frames',
+                cip_choice_keys: 'choice_keys',
+                cip_response_paradigm: 'cip_response_paradigm',
+                cip_category_count: 'cip_category_count',
+                cip_show_category_buttons: 'cip_show_category_buttons'
+            };
+            const cipKey = cipMapping[paramName];
+            if (cipKey && Object.prototype.hasOwnProperty.call(cipDefaults, cipKey)) {
+                return cipDefaults[cipKey];
+            }
+        }
+
         const experimentDefaults = this.jsonBuilder.getCurrentRDMParameters();
         const parameterMappings = {
             'coherence': 'rdm_coherence',
-            'direction': 'rdm_direction', 
+            'direction': 'rdm_direction',
             'speed': 'rdm_speed',
             'stimulus_duration': 'rdm_stimulus_duration',
             'total_dots': 'rdm_total_dots',
             'dot_size': 'rdm_dot_size',
             'aperture_diameter': 'rdm_aperture_diameter'
         };
-        
+
         const formFieldName = parameterMappings[paramName];
         if (formFieldName && experimentDefaults.hasOwnProperty(formFieldName)) {
             return experimentDefaults[formFieldName];
         }
-        
+
         return undefined;
     }
 
@@ -6436,8 +6228,6 @@ class TimelineBuilder {
         const breakEscapeKeys    = mb.break_escape_keys ?? 'space';
         const forceWait          = mb.force_wait_for_break ?? false;
         const breakDurationSec   = mb.break_duration_sec ?? '';
-        const showTotalPoints    = mb.show_total_points_at_break ?? false;
-        const showBlockPoints    = mb.show_current_block_points_at_break ?? false;
 
         const modal = document.getElementById('miniblockModal');
         if (!modal) {
@@ -6455,8 +6245,6 @@ class TimelineBuilder {
         modal.querySelector('#mb_break_escape_keys').value      = breakEscapeKeys;
         modal.querySelector('#mb_force_wait').checked           = !!forceWait;
         modal.querySelector('#mb_break_duration_sec').value     = breakDurationSec;
-        modal.querySelector('#mb_show_total_points').checked    = !!showTotalPoints;
-        modal.querySelector('#mb_show_current_block_points').checked = !!showBlockPoints;
 
         this._miniblockTargetElement = componentElement;
 
@@ -6522,24 +6310,6 @@ class TimelineBuilder {
         const breakEscapeKeys  = modal.querySelector('#mb_break_escape_keys').value.trim();
         const forceWait        = modal.querySelector('#mb_force_wait').checked;
         const breakDurationSec = safeFloat('#mb_break_duration_sec');
-        const showTotalPoints = modal.querySelector('#mb_show_total_points').checked;
-        const showCurrentBlockPoints = modal.querySelector('#mb_show_current_block_points').checked;
-
-        if (
-            enabled
-            && Number.isFinite(trialsPerBlock)
-            && Number.isFinite(breakEveryN)
-            && trialsPerBlock > 0
-            && breakEveryN > 0
-            && trialsPerBlock !== breakEveryN
-        ) {
-            const proceed = window.confirm(
-                `You set Trials per mini-block = ${trialsPerBlock} and Break every N trials = ${breakEveryN}.\n\n` +
-                'Break every N overrides mini-block boundary cadence.\n\n' +
-                'Use this only if you intentionally want a different break interval. Continue?'
-            );
-            if (!proceed) return;
-        }
 
         const miniblockStructure = {
             enabled,
@@ -6550,8 +6320,6 @@ class TimelineBuilder {
             break_message:    breakMessage || 'Take a short break.\n\nPress the key below when you are ready to continue.',
             break_escape_keys: breakEscapeKeys || 'space',
             force_wait_for_break: forceWait,
-            show_total_points_at_break: showTotalPoints,
-            show_current_block_points_at_break: showCurrentBlockPoints,
             ...(forceWait && breakDurationSec !== null && { break_duration_sec: breakDurationSec })
         };
 
