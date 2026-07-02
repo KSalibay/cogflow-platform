@@ -126,16 +126,12 @@
     });
   }
 
-  let _trialUid = 0;
-
   class JsPsychContinuousImagePresentationPlugin {
     constructor(jsPsych) {
       this.jsPsych = jsPsych;
     }
 
     trial(display_element, trial) {
-      const uid = (++_trialUid);
-
       const imageUrl = (trial.image_url ?? '').toString();
       const filename = (trial.asset_filename ?? '').toString();
       const m2iUrl = (trial.mask_to_image_sprite_url ?? '') ? String(trial.mask_to_image_sprite_url) : '';
@@ -281,36 +277,49 @@
         });
       };
 
-      const wrapId = `cip-wrap-${uid}`;
-      const stageId = `cip-stage-${uid}`;
-      const spriteId = `cip-sprite-${uid}`;
-      const imgId = `cip-img-${uid}`;
-      const promptId = `cip-prompt-${uid}`;
-      const controlsId = `cip-controls-${uid}`;
+      const wrapId = 'cip-wrap-persistent';
+      const stageId = 'cip-stage-persistent';
+      const spriteId = 'cip-sprite-persistent';
+      const imgId = 'cip-img-persistent';
+      const promptId = 'cip-prompt-persistent';
+      const controlsId = 'cip-controls-persistent';
 
-      display_element.innerHTML = `
-        <div id="${wrapId}" style="width:100%; min-height:100vh; min-height:100svh; min-height:100dvh; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; box-sizing:border-box; padding:24px 12px;">
-          <div id="${stageId}" style="position:relative; display:flex; align-items:center; justify-content:center; width:100%;">
-            <canvas id="${spriteId}" style="display:none; image-rendering: pixelated;"></canvas>
-            <img id="${imgId}" alt="" style="display:none; max-width:90vw; max-height:70vh; object-fit:contain;" />
+      let wrapEl = display_element.querySelector(`#${wrapId}`);
+      let stageEl = display_element.querySelector(`#${stageId}`);
+      let spriteEl = display_element.querySelector(`#${spriteId}`);
+      let imgEl = display_element.querySelector(`#${imgId}`);
+      let promptEl = display_element.querySelector(`#${promptId}`);
+      let controlsEl = display_element.querySelector(`#${controlsId}`);
+
+      if (!wrapEl || !stageEl || !spriteEl || !imgEl || !promptEl || !controlsEl) {
+        display_element.innerHTML = `
+          <div id="${wrapId}" style="width:100%; min-height:100vh; min-height:100svh; min-height:100dvh; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; box-sizing:border-box; padding:24px 12px;">
+            <div id="${stageId}" style="position:relative; display:flex; align-items:center; justify-content:center; width:100%;">
+              <canvas id="${spriteId}" style="display:none; image-rendering: pixelated;"></canvas>
+              <img id="${imgId}" alt="" style="display:none; max-width:90vw; max-height:70vh; object-fit:contain;" />
+            </div>
+            <div id="${promptId}" style="opacity:0.7; font-size:12px; text-align:center;"></div>
+            <div id="${controlsId}" style="display:flex; flex-wrap:wrap; gap:8px; justify-content:center;"></div>
           </div>
-          <div id="${promptId}" style="opacity:0.7; font-size:12px; text-align:center;"></div>
-          <div id="${controlsId}" style="display:flex; flex-wrap:wrap; gap:8px; justify-content:center;"></div>
-        </div>
-      `;
+        `;
 
-      const wrapEl = display_element.querySelector(`#${wrapId}`);
-      const stageEl = display_element.querySelector(`#${stageId}`);
-      const spriteEl = display_element.querySelector(`#${spriteId}`);
-      const imgEl = display_element.querySelector(`#${imgId}`);
-      const promptEl = display_element.querySelector(`#${promptId}`);
-      const controlsEl = display_element.querySelector(`#${controlsId}`);
+        wrapEl = display_element.querySelector(`#${wrapId}`);
+        stageEl = display_element.querySelector(`#${stageId}`);
+        spriteEl = display_element.querySelector(`#${spriteId}`);
+        imgEl = display_element.querySelector(`#${imgId}`);
+        promptEl = display_element.querySelector(`#${promptId}`);
+        controlsEl = display_element.querySelector(`#${controlsId}`);
+      }
 
       if (!wrapEl || !stageEl || !spriteEl || !imgEl || !promptEl || !controlsEl) {
         endedReason = 'render_error';
         endTrial();
         return;
       }
+
+      // Reset per-trial UI state while keeping the previous final frame visible.
+      controlsEl.innerHTML = '';
+      promptEl.textContent = '';
 
       const spriteCanvas = spriteEl;
       const spriteCtx = (spriteCanvas && spriteCanvas.getContext) ? spriteCanvas.getContext('2d') : null;
