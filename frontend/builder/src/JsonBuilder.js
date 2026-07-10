@@ -2203,6 +2203,7 @@ class JsonBuilder {
             throw new Error(`Import validation failed${detail ? `: ${detail}` : ''}`);
         }
 
+        this.backfillLegacyGaborFixationFields(config);
         this.applyImportedConfigState(config);
 
         const taskType = (config?.task_type || config?.taskType || this.currentTaskType || 'rdm').toString();
@@ -2212,6 +2213,49 @@ class JsonBuilder {
 
         this.updateJSON();
         this.showValidationResult('success', `Loaded ${sourceLabel}. Rebuilt ${rebuiltCount} timeline component(s).`);
+    }
+
+    backfillLegacyGaborFixationFields(config) {
+        const fixationDefaults = {
+            fixation_offset_x_px: 0,
+            fixation_offset_y_px: 0,
+            show_fixation_in_fixation_phase: true,
+            show_fixation_in_placeholders_phase: true,
+            show_fixation_in_cue_phase: true,
+            show_fixation_in_cue_delay_phase: true,
+            show_fixation_in_stimulus_phase: false,
+            show_fixation_in_mask_phase: false,
+            show_fixation_in_response_phase: false
+        };
+
+        const isGaborType = (rawType) => {
+            const type = (rawType ?? '').toString().trim();
+            return type === 'gabor-trial' || type === 'gabor-quest' || type === 'gabor-learning';
+        };
+
+        const visit = (node) => {
+            if (!node || typeof node !== 'object' || Array.isArray(node)) return;
+
+            const nodeType = (node.type ?? node.component_type ?? '').toString().trim();
+            const blockType = (node.block_component_type ?? node.parameters?.block_component_type ?? '').toString().trim();
+            const isGaborNode = isGaborType(nodeType) || isGaborType(blockType);
+            if (isGaborNode) {
+                const target = (node.parameters && typeof node.parameters === 'object') ? node.parameters : node;
+                for (const [key, value] of Object.entries(fixationDefaults)) {
+                    if (target[key] === undefined) target[key] = value;
+                    if (node[key] === undefined) node[key] = target[key];
+                }
+            }
+
+            if (Array.isArray(node.timeline)) {
+                node.timeline.forEach(visit);
+            }
+            if (node.parameters && typeof node.parameters === 'object' && Array.isArray(node.parameters.timeline)) {
+                node.parameters.timeline.forEach(visit);
+            }
+        };
+
+        visit(config);
     }
 
     async loadStudyIntoBuilder(studySlug, options = {}) {
