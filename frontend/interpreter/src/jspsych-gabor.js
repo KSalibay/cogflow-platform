@@ -63,6 +63,15 @@
       fixation_line_width_deg: { type: PT.FLOAT, default: 1 },
       fixation_size_px: { type: PT.FLOAT, default: null },
       fixation_line_width_px: { type: PT.FLOAT, default: null },
+      fixation_offset_x_px: { type: PT.FLOAT, default: 0 },
+      fixation_offset_y_px: { type: PT.FLOAT, default: 0 },
+      show_fixation_in_fixation_phase: { type: PT.BOOL, default: true },
+      show_fixation_in_placeholders_phase: { type: PT.BOOL, default: true },
+      show_fixation_in_cue_phase: { type: PT.BOOL, default: true },
+      show_fixation_in_cue_delay_phase: { type: PT.BOOL, default: true },
+      show_fixation_in_stimulus_phase: { type: PT.BOOL, default: false },
+      show_fixation_in_mask_phase: { type: PT.BOOL, default: false },
+      show_fixation_in_response_phase: { type: PT.BOOL, default: false },
 
       // Patch border (circle around stimulus/mask + placeholders)
       patch_border_enabled: { type: PT.BOOL, default: true },
@@ -587,6 +596,8 @@
     fixationHalfSizePx,
     fixationLineWidthPx,
     fixationColor,
+    fixationOffsetXPx,
+    fixationOffsetYPx,
     debug
   }) {
     const ctx = canvas.getContext('2d');
@@ -613,6 +624,8 @@
     const cy = Math.floor(h / 2);
     const leftCx = Math.floor(w * 0.30);
     const rightCx = Math.floor(w * 0.70);
+    const fixationX = Math.floor(w / 2) + Math.round(Number(fixationOffsetXPx) || 0);
+    const fixationY = cy + Math.round(Number(fixationOffsetYPx) || 0);
 
     // Circular value outlines directly around each patch (no padded square frame).
     // Draw as filled annulus rings to guarantee fully solid cue color at onset.
@@ -641,16 +654,16 @@
 
     const resolvedCueMode = (cueMode || (showCue ? 'cue' : 'none')).toString().trim().toLowerCase();
     if (resolvedCueMode === 'fixation' || resolvedCueMode === 'cue') {
-      drawCueDiamond(ctx, Math.floor(w / 2), cy, {
+      drawCueDiamond(ctx, fixationX, fixationY, {
         spatialCue: resolvedCueMode === 'cue' ? spatialCue : 'none',
         backgroundColor: cueBackgroundColor,
         indicatorColor: cueIndicatorColor,
         fixationColor: fixationColor ?? cueFixationColor,
         showBackground: true,
-        showFixation: true
+        showFixation: showFixation === true
       });
     } else if (showFixation) {
-      drawFixation(ctx, Math.floor(w / 2), cy, {
+      drawFixation(ctx, fixationX, fixationY, {
         color: fixationColor ?? initialFixationColor,
         halfSizePx: fixationHalfSizePx,
         lineWidthPx: fixationLineWidthPx
@@ -772,6 +785,16 @@
       const fixationLineWidthPx = Number.isFinite(fixationLineWidthPxDirect)
         ? fixationLineWidthPxDirect
         : (Number.isFinite(fixationLineWidthDeg) ? degToPx(fixationLineWidthDeg) : null);
+      const fixationOffsetXPx = Number.isFinite(Number(trial.fixation_offset_x_px)) ? Number(trial.fixation_offset_x_px) : 0;
+      const fixationOffsetYPx = Number.isFinite(Number(trial.fixation_offset_y_px)) ? Number(trial.fixation_offset_y_px) : 0;
+      const phaseFixationFlag = (value, fallback) => (value === undefined ? fallback : value === true);
+      const showFixationInFixationPhase = phaseFixationFlag(trial.show_fixation_in_fixation_phase, true);
+      const showFixationInPlaceholdersPhase = phaseFixationFlag(trial.show_fixation_in_placeholders_phase, true);
+      const showFixationInCuePhase = phaseFixationFlag(trial.show_fixation_in_cue_phase, true);
+      const showFixationInCueDelayPhase = phaseFixationFlag(trial.show_fixation_in_cue_delay_phase, true);
+      const showFixationInStimulusPhase = phaseFixationFlag(trial.show_fixation_in_stimulus_phase, false);
+      const showFixationInMaskPhase = phaseFixationFlag(trial.show_fixation_in_mask_phase, false);
+      const showFixationInResponsePhase = phaseFixationFlag(trial.show_fixation_in_response_phase, false);
       const fixationHalfSizePx = clamp(Math.round((Number.isFinite(fixationSizePx) ? fixationSizePx : 20) / 2), 1, 180);
       const fixationStrokeWidthPx = clamp(Number.isFinite(fixationLineWidthPx) ? fixationLineWidthPx : 2, 0.5, 80);
       const isQuestAdaptive = (
@@ -1182,6 +1205,8 @@
             fixationHalfSizePx,
             fixationLineWidthPx: fixationStrokeWidthPx,
             fixationColor: opts?.fixationColor,
+            fixationOffsetXPx,
+            fixationOffsetYPx,
             debug: debugGabor
           });
         } catch (err) {
@@ -1245,7 +1270,7 @@
       if (useAdaptivePracticePrime && initialPrimeMs > 0) {
         render('fixation-prime', {
           showCue: false,
-          showFixation: true,
+          showFixation: showFixationInFixationPhase,
           showStimulus: false,
           showMask: false,
           ringMode: 'none',
@@ -1257,7 +1282,7 @@
           try {
             render('fixation', {
               showCue: false,
-              showFixation: true,
+              showFixation: showFixationInFixationPhase,
               showStimulus: false,
               showMask: false,
               ringMode: 'neutral',
@@ -1272,7 +1297,7 @@
       } else {
         render('fixation', {
           showCue: false,
-          showFixation: true,
+          showFixation: showFixationInFixationPhase,
           showStimulus: false,
           showMask: false,
           ringMode: preStimulusRingMode,
@@ -1311,7 +1336,7 @@
         try {
           render('placeholders', {
             showCue: false,
-            showFixation: !showCenterDiamondFlow,
+            showFixation: showFixationInPlaceholdersPhase,
             showStimulus: false,
             showMask: false,
             ringMode: preStimulusRingMode,
@@ -1329,7 +1354,7 @@
         try {
           render('cue', {
             showCue: true,
-            showFixation: !showCenterDiamondFlow,
+            showFixation: showFixationInCuePhase,
             showStimulus: false,
             showMask: false,
             ringMode: preStimulusRingMode,
@@ -1347,7 +1372,7 @@
         try {
           render('cue-delay', {
             showCue: isRewardMainTask,
-            showFixation: !showCenterDiamondFlow,
+            showFixation: showFixationInCueDelayPhase,
             showStimulus: false,
             showMask: false,
             ringMode: preStimulusRingMode,
@@ -1366,7 +1391,7 @@
           stimulusOnsetTs = nowMs();
           render('stimulus', {
             showCue: false,
-            showFixation: false,
+            showFixation: showFixationInStimulusPhase,
             showStimulus: true,
             showMask: false,
             ringMode: isRewardMainTask ? 'value' : (useNeutralTrainingRings ? 'neutral' : 'none'),
@@ -1386,7 +1411,7 @@
           try {
             render('mask', {
               showCue: false,
-              showFixation: false,
+              showFixation: showFixationInMaskPhase,
               showStimulus: false,
               showMask: true,
               ringMode: isRewardMainTask ? 'value' : (useNeutralTrainingRings ? 'neutral' : 'none'),
@@ -1405,7 +1430,7 @@
         try {
           render('response', {
             showCue: false,
-            showFixation: false,
+            showFixation: showFixationInResponsePhase,
             showStimulus: false,
             showMask: false,
             ringMode: isRewardMainTask ? 'value' : (useNeutralTrainingRings ? 'neutral' : 'none'),

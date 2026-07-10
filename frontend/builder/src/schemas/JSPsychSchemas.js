@@ -1681,6 +1681,51 @@ class JSPsychSchemas {
                         default: 67,
                         description: 'Mask duration after stimulus (ms)'
                     },
+                    fixation_offset_x_px: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 0,
+                        description: 'Horizontal fixation/cue-diamond offset in pixels (+right)'
+                    },
+                    fixation_offset_y_px: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 0,
+                        description: 'Vertical fixation/cue-diamond offset in pixels (+down)'
+                    },
+                    show_fixation_in_fixation_phase: {
+                        type: this.parameterTypes.BOOL,
+                        default: true,
+                        description: 'Show fixation in the fixation phase'
+                    },
+                    show_fixation_in_placeholders_phase: {
+                        type: this.parameterTypes.BOOL,
+                        default: true,
+                        description: 'Show fixation in the placeholders phase'
+                    },
+                    show_fixation_in_cue_phase: {
+                        type: this.parameterTypes.BOOL,
+                        default: true,
+                        description: 'Show fixation in the cue phase'
+                    },
+                    show_fixation_in_cue_delay_phase: {
+                        type: this.parameterTypes.BOOL,
+                        default: true,
+                        description: 'Show fixation in the cue-delay phase'
+                    },
+                    show_fixation_in_stimulus_phase: {
+                        type: this.parameterTypes.BOOL,
+                        default: false,
+                        description: 'Show fixation while stimulus is presented'
+                    },
+                    show_fixation_in_mask_phase: {
+                        type: this.parameterTypes.BOOL,
+                        default: false,
+                        description: 'Show fixation while mask is presented'
+                    },
+                    show_fixation_in_response_phase: {
+                        type: this.parameterTypes.BOOL,
+                        default: false,
+                        description: 'Show fixation during response window'
+                    },
                     patch_border_enabled: {
                         type: this.parameterTypes.BOOL,
                         default: true,

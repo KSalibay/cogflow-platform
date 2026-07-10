@@ -2948,6 +2948,15 @@ class JsonBuilder {
             setFrom('gaborCueDelayMaxMs', s.cue_delay_max_ms);
             setFrom('gaborStimulusDurationMs', s.stimulus_duration_ms);
             setFrom('gaborMaskDurationMs', s.mask_duration_ms);
+            setFrom('gaborFixationOffsetXPx', s.fixation_offset_x_px);
+            setFrom('gaborFixationOffsetYPx', s.fixation_offset_y_px);
+            if (s.show_fixation_in_fixation_phase !== undefined) setFrom('gaborShowFixationInFixationPhase', s.show_fixation_in_fixation_phase, 'checked');
+            if (s.show_fixation_in_placeholders_phase !== undefined) setFrom('gaborShowFixationInPlaceholdersPhase', s.show_fixation_in_placeholders_phase, 'checked');
+            if (s.show_fixation_in_cue_phase !== undefined) setFrom('gaborShowFixationInCuePhase', s.show_fixation_in_cue_phase, 'checked');
+            if (s.show_fixation_in_cue_delay_phase !== undefined) setFrom('gaborShowFixationInCueDelayPhase', s.show_fixation_in_cue_delay_phase, 'checked');
+            if (s.show_fixation_in_stimulus_phase !== undefined) setFrom('gaborShowFixationInStimulusPhase', s.show_fixation_in_stimulus_phase, 'checked');
+            if (s.show_fixation_in_mask_phase !== undefined) setFrom('gaborShowFixationInMaskPhase', s.show_fixation_in_mask_phase, 'checked');
+            if (s.show_fixation_in_response_phase !== undefined) setFrom('gaborShowFixationInResponsePhase', s.show_fixation_in_response_phase, 'checked');
 
             this.applyGaborResponseTaskVisibility();
             this.applyGaborPatchBorderVisibility();
@@ -5036,6 +5045,45 @@ class JsonBuilder {
                     <label class="parameter-label">Mask Duration (ms):</label>
                     <input type="number" class="form-control parameter-input" id="gaborMaskDurationMs" value="67" min="0" max="10000">
                 </div>
+                <div class="parameter-row">
+                    <label class="parameter-label">Fixation X Offset (px):</label>
+                    <input type="number" class="form-control parameter-input" id="gaborFixationOffsetXPx" value="0" min="-1000" max="1000" step="1">
+                    <div class="parameter-help">Horizontal offset for fixation/cue diamond center (pixels, +right).</div>
+                </div>
+                <div class="parameter-row">
+                    <label class="parameter-label">Fixation Y Offset (px):</label>
+                    <input type="number" class="form-control parameter-input" id="gaborFixationOffsetYPx" value="0" min="-1000" max="1000" step="1">
+                    <div class="parameter-help">Vertical offset for fixation/cue diamond center (pixels, +down).</div>
+                </div>
+
+                <div class="parameter-row">
+                    <label class="parameter-label">Fixation in Fixation Phase:</label>
+                    <div class="parameter-input"><input type="checkbox" class="form-check-input" id="gaborShowFixationInFixationPhase" checked></div>
+                </div>
+                <div class="parameter-row">
+                    <label class="parameter-label">Fixation in Placeholders Phase:</label>
+                    <div class="parameter-input"><input type="checkbox" class="form-check-input" id="gaborShowFixationInPlaceholdersPhase" checked></div>
+                </div>
+                <div class="parameter-row">
+                    <label class="parameter-label">Fixation in Cue Phase:</label>
+                    <div class="parameter-input"><input type="checkbox" class="form-check-input" id="gaborShowFixationInCuePhase" checked></div>
+                </div>
+                <div class="parameter-row">
+                    <label class="parameter-label">Fixation in Cue-Delay Phase:</label>
+                    <div class="parameter-input"><input type="checkbox" class="form-check-input" id="gaborShowFixationInCueDelayPhase" checked></div>
+                </div>
+                <div class="parameter-row">
+                    <label class="parameter-label">Fixation in Stimulus Phase:</label>
+                    <div class="parameter-input"><input type="checkbox" class="form-check-input" id="gaborShowFixationInStimulusPhase"></div>
+                </div>
+                <div class="parameter-row">
+                    <label class="parameter-label">Fixation in Mask Phase:</label>
+                    <div class="parameter-input"><input type="checkbox" class="form-check-input" id="gaborShowFixationInMaskPhase"></div>
+                </div>
+                <div class="parameter-row">
+                    <label class="parameter-label">Fixation in Response Phase:</label>
+                    <div class="parameter-input"><input type="checkbox" class="form-check-input" id="gaborShowFixationInResponsePhase"></div>
+                </div>
             </div>
             `
             : (taskType === 'stroop')
@@ -6327,6 +6375,45 @@ class JsonBuilder {
                 <div class="parameter-row">
                     <label class="parameter-label">Mask Duration (ms):</label>
                     <input type="number" class="form-control parameter-input" id="gaborMaskDurationMs" value="67" min="0" max="10000">
+                </div>
+                <div class="parameter-row">
+                    <label class="parameter-label">Fixation X Offset (px):</label>
+                    <input type="number" class="form-control parameter-input" id="gaborFixationOffsetXPx" value="0" min="-1000" max="1000" step="1">
+                    <div class="parameter-help">Horizontal offset for fixation/cue diamond center (pixels, +right).</div>
+                </div>
+                <div class="parameter-row">
+                    <label class="parameter-label">Fixation Y Offset (px):</label>
+                    <input type="number" class="form-control parameter-input" id="gaborFixationOffsetYPx" value="0" min="-1000" max="1000" step="1">
+                    <div class="parameter-help">Vertical offset for fixation/cue diamond center (pixels, +down).</div>
+                </div>
+
+                <div class="parameter-row">
+                    <label class="parameter-label">Fixation in Fixation Phase:</label>
+                    <div class="parameter-input"><input type="checkbox" class="form-check-input" id="gaborShowFixationInFixationPhase" checked></div>
+                </div>
+                <div class="parameter-row">
+                    <label class="parameter-label">Fixation in Placeholders Phase:</label>
+                    <div class="parameter-input"><input type="checkbox" class="form-check-input" id="gaborShowFixationInPlaceholdersPhase" checked></div>
+                </div>
+                <div class="parameter-row">
+                    <label class="parameter-label">Fixation in Cue Phase:</label>
+                    <div class="parameter-input"><input type="checkbox" class="form-check-input" id="gaborShowFixationInCuePhase" checked></div>
+                </div>
+                <div class="parameter-row">
+                    <label class="parameter-label">Fixation in Cue-Delay Phase:</label>
+                    <div class="parameter-input"><input type="checkbox" class="form-check-input" id="gaborShowFixationInCueDelayPhase" checked></div>
+                </div>
+                <div class="parameter-row">
+                    <label class="parameter-label">Fixation in Stimulus Phase:</label>
+                    <div class="parameter-input"><input type="checkbox" class="form-check-input" id="gaborShowFixationInStimulusPhase"></div>
+                </div>
+                <div class="parameter-row">
+                    <label class="parameter-label">Fixation in Mask Phase:</label>
+                    <div class="parameter-input"><input type="checkbox" class="form-check-input" id="gaborShowFixationInMaskPhase"></div>
+                </div>
+                <div class="parameter-row">
+                    <label class="parameter-label">Fixation in Response Phase:</label>
+                    <div class="parameter-input"><input type="checkbox" class="form-check-input" id="gaborShowFixationInResponsePhase"></div>
                 </div>
             </div>
             `
@@ -9024,6 +9111,16 @@ class JsonBuilder {
             const cueDelayMaxRaw = document.getElementById('gaborCueDelayMaxMs')?.value;
             const stimMsRaw = document.getElementById('gaborStimulusDurationMs')?.value;
             const maskMsRaw = document.getElementById('gaborMaskDurationMs')?.value;
+            const fixationOffsetXPxRaw = document.getElementById('gaborFixationOffsetXPx')?.value;
+            const fixationOffsetYPxRaw = document.getElementById('gaborFixationOffsetYPx')?.value;
+
+            const showFixationInFixationPhase = !!document.getElementById('gaborShowFixationInFixationPhase')?.checked;
+            const showFixationInPlaceholdersPhase = !!document.getElementById('gaborShowFixationInPlaceholdersPhase')?.checked;
+            const showFixationInCuePhase = !!document.getElementById('gaborShowFixationInCuePhase')?.checked;
+            const showFixationInCueDelayPhase = !!document.getElementById('gaborShowFixationInCueDelayPhase')?.checked;
+            const showFixationInStimulusPhase = !!document.getElementById('gaborShowFixationInStimulusPhase')?.checked;
+            const showFixationInMaskPhase = !!document.getElementById('gaborShowFixationInMaskPhase')?.checked;
+            const showFixationInResponsePhase = !!document.getElementById('gaborShowFixationInResponsePhase')?.checked;
 
             const spatialFreqRaw = document.getElementById('gaborSpatialFrequency')?.value;
             const spatialFreq = (spatialFreqRaw !== undefined && spatialFreqRaw !== null && `${spatialFreqRaw}` !== '')
@@ -9084,7 +9181,21 @@ class JsonBuilder {
                 cue_delay_min_ms: cueDelayMinRaw ? parseInt(cueDelayMinRaw) : 100,
                 cue_delay_max_ms: cueDelayMaxRaw ? parseInt(cueDelayMaxRaw) : 200,
                 stimulus_duration_ms: stimMsRaw ? parseInt(stimMsRaw) : 67,
-                mask_duration_ms: maskMsRaw ? parseInt(maskMsRaw) : 67
+                mask_duration_ms: maskMsRaw ? parseInt(maskMsRaw) : 67,
+
+                fixation_offset_x_px: (fixationOffsetXPxRaw !== undefined && fixationOffsetXPxRaw !== null && `${fixationOffsetXPxRaw}` !== '')
+                    ? Number.parseFloat(fixationOffsetXPxRaw)
+                    : 0,
+                fixation_offset_y_px: (fixationOffsetYPxRaw !== undefined && fixationOffsetYPxRaw !== null && `${fixationOffsetYPxRaw}` !== '')
+                    ? Number.parseFloat(fixationOffsetYPxRaw)
+                    : 0,
+                show_fixation_in_fixation_phase: showFixationInFixationPhase,
+                show_fixation_in_placeholders_phase: showFixationInPlaceholdersPhase,
+                show_fixation_in_cue_phase: showFixationInCuePhase,
+                show_fixation_in_cue_delay_phase: showFixationInCueDelayPhase,
+                show_fixation_in_stimulus_phase: showFixationInStimulusPhase,
+                show_fixation_in_mask_phase: showFixationInMaskPhase,
+                show_fixation_in_response_phase: showFixationInResponsePhase
             };
         }
 
