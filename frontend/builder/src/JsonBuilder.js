@@ -740,7 +740,6 @@ class JsonBuilder {
     applyRewardsEnabled(enabled) {
         const timelineContainer = document.getElementById('timelineComponents');
         if (!timelineContainer) return;
-
         const existing = this.findRewardSettingsTimelineElements();
 
         if (enabled) {
@@ -2548,6 +2547,15 @@ class JsonBuilder {
                 if (values.reward_base_points_low !== undefined) out.gabor_reward_base_points_low = values.reward_base_points_low;
                 if (values.reward_bonus_max_high !== undefined) out.gabor_reward_bonus_max_high = values.reward_bonus_max_high;
                 if (values.reward_bonus_max_low !== undefined) out.gabor_reward_bonus_max_low = values.reward_bonus_max_low;
+                if (values.fixation_offset_x_px !== undefined) out.gabor_fixation_offset_x_px = values.fixation_offset_x_px;
+                if (values.fixation_offset_y_px !== undefined) out.gabor_fixation_offset_y_px = values.fixation_offset_y_px;
+                if (values.show_fixation_in_fixation_phase !== undefined) out.gabor_show_fixation_in_fixation_phase = !!values.show_fixation_in_fixation_phase;
+                if (values.show_fixation_in_placeholders_phase !== undefined) out.gabor_show_fixation_in_placeholders_phase = !!values.show_fixation_in_placeholders_phase;
+                if (values.show_fixation_in_cue_phase !== undefined) out.gabor_show_fixation_in_cue_phase = !!values.show_fixation_in_cue_phase;
+                if (values.show_fixation_in_cue_delay_phase !== undefined) out.gabor_show_fixation_in_cue_delay_phase = !!values.show_fixation_in_cue_delay_phase;
+                if (values.show_fixation_in_stimulus_phase !== undefined) out.gabor_show_fixation_in_stimulus_phase = !!values.show_fixation_in_stimulus_phase;
+                if (values.show_fixation_in_mask_phase !== undefined) out.gabor_show_fixation_in_mask_phase = !!values.show_fixation_in_mask_phase;
+                if (values.show_fixation_in_response_phase !== undefined) out.gabor_show_fixation_in_response_phase = !!values.show_fixation_in_response_phase;
                 if (values.reward_feedback_text_template !== undefined) out.gabor_reward_feedback_text_template = values.reward_feedback_text_template;
                 if (values.adaptive && typeof values.adaptive === 'object' && (values.adaptive.mode || '').toString() === 'quest') {
                     const adaptive = values.adaptive;
@@ -7255,7 +7263,16 @@ class JsonBuilder {
                 gabor_stimulus_duration_min: { type: 'number', default: 67, min: 0, max: 10000 },
                 gabor_stimulus_duration_max: { type: 'number', default: 67, min: 0, max: 10000 },
                 gabor_mask_duration_min: { type: 'number', default: 67, min: 0, max: 10000 },
-                gabor_mask_duration_max: { type: 'number', default: 67, min: 0, max: 10000 }
+                gabor_mask_duration_max: { type: 'number', default: 67, min: 0, max: 10000 },
+                gabor_fixation_offset_x_px: { type: 'number', default: 0, min: -1000, max: 1000, step: 1 },
+                gabor_fixation_offset_y_px: { type: 'number', default: 0, min: -1000, max: 1000, step: 1 },
+                gabor_show_fixation_in_fixation_phase: { type: 'boolean', default: true },
+                gabor_show_fixation_in_placeholders_phase: { type: 'boolean', default: true },
+                gabor_show_fixation_in_cue_phase: { type: 'boolean', default: true },
+                gabor_show_fixation_in_cue_delay_phase: { type: 'boolean', default: true },
+                gabor_show_fixation_in_stimulus_phase: { type: 'boolean', default: false },
+                gabor_show_fixation_in_mask_phase: { type: 'boolean', default: false },
+                gabor_show_fixation_in_response_phase: { type: 'boolean', default: false }
             };
 
             const stroopOnlyParams = {
@@ -12104,6 +12121,31 @@ class JsonBuilder {
             if (Number.isFinite(bonusHigh)) values.reward_bonus_max_high = bonusHigh;
             const bonusLow = Number(blockComponent.gabor_reward_bonus_max_low);
             if (Number.isFinite(bonusLow)) values.reward_bonus_max_low = bonusLow;
+            const fixationOffsetX = Number(blockComponent.gabor_fixation_offset_x_px);
+            if (Number.isFinite(fixationOffsetX)) values.fixation_offset_x_px = fixationOffsetX;
+            const fixationOffsetY = Number(blockComponent.gabor_fixation_offset_y_px);
+            if (Number.isFinite(fixationOffsetY)) values.fixation_offset_y_px = fixationOffsetY;
+            if (blockComponent.gabor_show_fixation_in_fixation_phase !== undefined) {
+                values.show_fixation_in_fixation_phase = !!blockComponent.gabor_show_fixation_in_fixation_phase;
+            }
+            if (blockComponent.gabor_show_fixation_in_placeholders_phase !== undefined) {
+                values.show_fixation_in_placeholders_phase = !!blockComponent.gabor_show_fixation_in_placeholders_phase;
+            }
+            if (blockComponent.gabor_show_fixation_in_cue_phase !== undefined) {
+                values.show_fixation_in_cue_phase = !!blockComponent.gabor_show_fixation_in_cue_phase;
+            }
+            if (blockComponent.gabor_show_fixation_in_cue_delay_phase !== undefined) {
+                values.show_fixation_in_cue_delay_phase = !!blockComponent.gabor_show_fixation_in_cue_delay_phase;
+            }
+            if (blockComponent.gabor_show_fixation_in_stimulus_phase !== undefined) {
+                values.show_fixation_in_stimulus_phase = !!blockComponent.gabor_show_fixation_in_stimulus_phase;
+            }
+            if (blockComponent.gabor_show_fixation_in_mask_phase !== undefined) {
+                values.show_fixation_in_mask_phase = !!blockComponent.gabor_show_fixation_in_mask_phase;
+            }
+            if (blockComponent.gabor_show_fixation_in_response_phase !== undefined) {
+                values.show_fixation_in_response_phase = !!blockComponent.gabor_show_fixation_in_response_phase;
+            }
             if (blockComponent.gabor_reward_feedback_text_template !== undefined) {
                 values.reward_feedback_text_template = (blockComponent.gabor_reward_feedback_text_template ?? '').toString();
             }
