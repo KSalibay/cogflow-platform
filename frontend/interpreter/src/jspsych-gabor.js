@@ -781,8 +781,7 @@
       );
       const isLearningBlock = !!(trial && trial.data && trial.data.gabor_learning_block === true);
       const hasRewardCueContext = (
-        rewardFeedbackEnabled
-        || leftValue !== 'neutral'
+        leftValue !== 'neutral'
         || rightValue !== 'neutral'
         || (typeof trial.value_target_value === 'string' && trial.value_target_value.trim() !== '')
       );
@@ -790,6 +789,8 @@
       const isPracticeDiamondTask = !isQuestAdaptive && !isLearningBlock && !isRewardMainTask;
       const useNeutralTrainingRings = isQuestAdaptive || isLearningBlock || isPracticeDiamondTask;
       const showCenterDiamondFlow = isRewardMainTask;
+      const useNeutralFeedbackColor = isQuestAdaptive || isLearningBlock || isPracticeDiamondTask;
+      const preStimulusRingMode = isRewardMainTask ? 'neutral' : (useNeutralTrainingRings ? 'neutral' : 'none');
       const useAdaptivePracticePrime = trial.adaptive_practice_prime_enabled === true;
 
       // Optional researcher-controlled patch diameter.
@@ -1052,24 +1053,24 @@
 
             if (noResponse && tooSlowFeedbackEnabled && !isQuestAdaptive) {
               fbText = fbTextNoResponse;
-              fbColor = '#ffb74d';
+              fbColor = '#ffffff';
             } else if (rewardFeedbackEnabled && hasValueCueContext) {
               if (correctness === true) {
                 fbText = `${formatPointsLabel(accruedPointsBeforeTrial)}+${formatPointsLabel(rewardPointsForDisplay)}`;
-                fbColor = '#ffd54f';
+                fbColor = useNeutralFeedbackColor ? '#ffffff' : '#ffd54f';
               } else {
                 fbText = formatPointsLabel(accruedPointsBeforeTrial);
-                fbColor = 'rgb(114,114,114)';
+                fbColor = '#ffffff';
               }
             } else if (rewardRtTier !== null && rewardPointsAwarded !== null) {
               fbText = rewardTemplate
                 .replace(/\{\{\s*points\s*\}\}/gi, formatPointsLabel(rewardPointsAwarded))
                 .replace(/\{\{\s*base\s*\}\}/gi, formatPointsLabel(rewardBasePoints ?? 0))
                 .replace(/\{\{\s*bonus\s*\}\}/gi, formatPointsLabel(rewardBonusPoints ?? 0));
-              fbColor = '#ffd54f';
+              fbColor = useNeutralFeedbackColor ? '#ffffff' : '#ffd54f';
             } else if (showFeedback) {
               fbText = (correctness === true) ? fbTextCorrect : (correctness === false) ? fbTextIncorrect : '';
-              fbColor = (correctness === true) ? '#4caf50' : '#f44336';
+              fbColor = (correctness === true) ? '#4caf50' : '#ffffff';
             }
 
             if (fbText) {
@@ -1274,9 +1275,9 @@
           showFixation: true,
           showStimulus: false,
           showMask: false,
-          ringMode: isRewardMainTask ? 'neutral' : (useNeutralTrainingRings ? 'neutral' : 'none'),
+          ringMode: preStimulusRingMode,
           cueMode: showCenterDiamondFlow ? 'fixation' : 'none',
-          fixationColor: cueFixationColor
+          fixationColor: showCenterDiamondFlow ? cueFixationColor : initialFixationColor
         });
       }
 
@@ -1313,7 +1314,7 @@
             showFixation: !showCenterDiamondFlow,
             showStimulus: false,
             showMask: false,
-            ringMode: isRewardMainTask ? 'value' : (useNeutralTrainingRings ? 'neutral' : 'none'),
+            ringMode: preStimulusRingMode,
             cueMode: showCenterDiamondFlow ? 'fixation' : 'none',
             fixationColor: initialFixationColor
           });
@@ -1331,7 +1332,7 @@
             showFixation: !showCenterDiamondFlow,
             showStimulus: false,
             showMask: false,
-            ringMode: isRewardMainTask ? 'value' : (useNeutralTrainingRings ? 'neutral' : 'none'),
+            ringMode: preStimulusRingMode,
             cueMode: showCenterDiamondFlow ? 'cue' : 'none',
             fixationColor: initialFixationColor
           });
@@ -1349,7 +1350,7 @@
             showFixation: !showCenterDiamondFlow,
             showStimulus: false,
             showMask: false,
-            ringMode: isRewardMainTask ? 'value' : (useNeutralTrainingRings ? 'neutral' : 'none'),
+            ringMode: preStimulusRingMode,
             cueMode: showCenterDiamondFlow ? 'fixation' : 'none',
             fixationColor: initialFixationColor
           });

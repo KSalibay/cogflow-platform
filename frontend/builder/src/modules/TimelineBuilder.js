@@ -6226,6 +6226,8 @@ class TimelineBuilder {
         const breakEveryN        = mb.break_every_n_trials ?? '';
         const breakMessage       = mb.break_message ?? 'Take a short break.\n\nPress the key below when you are ready to continue.';
         const breakEscapeKeys    = mb.break_escape_keys ?? 'space';
+        const showTotalPointsAtBreak = mb.show_total_points_at_break ?? false;
+        const showCurrentBlockPointsAtBreak = mb.show_current_block_points_at_break ?? false;
         const forceWait          = mb.force_wait_for_break ?? false;
         const breakDurationSec   = mb.break_duration_sec ?? '';
 
@@ -6243,6 +6245,8 @@ class TimelineBuilder {
         modal.querySelector('#mb_break_every_n').value          = breakEveryN;
         modal.querySelector('#mb_break_message').value          = breakMessage;
         modal.querySelector('#mb_break_escape_keys').value      = breakEscapeKeys;
+        modal.querySelector('#mb_show_total_points').checked    = !!showTotalPointsAtBreak;
+        modal.querySelector('#mb_show_current_block_points').checked = !!showCurrentBlockPointsAtBreak;
         modal.querySelector('#mb_force_wait').checked           = !!forceWait;
         modal.querySelector('#mb_break_duration_sec').value     = breakDurationSec;
 
@@ -6308,6 +6312,8 @@ class TimelineBuilder {
         const breakEveryN      = safeInt('#mb_break_every_n');
         const breakMessage     = modal.querySelector('#mb_break_message').value.trim();
         const breakEscapeKeys  = modal.querySelector('#mb_break_escape_keys').value.trim();
+        const showTotalPointsAtBreak = modal.querySelector('#mb_show_total_points').checked;
+        const showCurrentBlockPointsAtBreak = modal.querySelector('#mb_show_current_block_points').checked;
         const forceWait        = modal.querySelector('#mb_force_wait').checked;
         const breakDurationSec = safeFloat('#mb_break_duration_sec');
 
@@ -6319,6 +6325,8 @@ class TimelineBuilder {
             ...(breakEveryN      !== null  && { break_every_n_trials: breakEveryN }),
             break_message:    breakMessage || 'Take a short break.\n\nPress the key below when you are ready to continue.',
             break_escape_keys: breakEscapeKeys || 'space',
+            show_total_points_at_break: showTotalPointsAtBreak,
+            show_current_block_points_at_break: showCurrentBlockPointsAtBreak,
             force_wait_for_break: forceWait,
             ...(forceWait && breakDurationSec !== null && { break_duration_sec: breakDurationSec })
         };

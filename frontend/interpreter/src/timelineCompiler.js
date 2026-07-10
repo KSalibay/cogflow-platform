@@ -2352,6 +2352,157 @@
       return items.some((it) => isInstructionLikeItem(it));
     };
 
+    const applyMiniblockStructureToExpandedTrials = (expandedTrials, blockItem) => {
+      const src = Array.isArray(expandedTrials) ? expandedTrials : [];
+      if (src.length < 2 || !isObject(blockItem)) return src;
+
+      const mb =
+        (isObject(blockItem.miniblock_structure) && blockItem.miniblock_structure)
+        || (isObject(blockItem.parameter_values?.miniblock_structure) && blockItem.parameter_values.miniblock_structure)
+        || (isObject(blockItem.parameters?.miniblock_structure) && blockItem.parameters.miniblock_structure)
+        || null;
+      if (!mb || mb.enabled !== true) return src;
+
+      const totalTrials = src.length;
+      const breakEveryNRaw = Number.parseInt(mb.break_every_n_trials, 10);
+      const trialsPerBlockRaw = Number.parseInt(mb.trials_per_block, 10);
+      const numBlocksRaw = Number.parseInt(mb.num_blocks, 10);
+      const forceWait = mb.force_wait_for_break === true;
+      const breakDurationSecRaw = Number(mb.break_duration_sec);
+      const breakDurationMs = (Number.isFinite(breakDurationSecRaw) && breakDurationSecRaw > 0)
+        ? Math.max(250, Math.round(breakDurationSecRaw * 1000))
+        : 30000;
+
+      const parseBreakKeys = (raw) => {
+        const s = (raw ?? '').toString().trim();
+        if (!s) return [' '];
+        const keys = s
+          .split(/[\n,]/g)
+          .map((k) => k.trim())
+          .filter(Boolean)
+          .map((k) => {
+            const lower = k.toLowerCase();
+            if (lower === 'space') return ' ';
+            if (lower === 'enter') return 'Enter';
+            if (lower === 'escape' || lower === 'esc') return 'Escape';
+            return k.length === 1 ? k.toLowerCase() : k;
+          });
+        return keys.length > 0 ? Array.from(new Set(keys)) : [' '];
+      };
+
+      const insertAfterSet = new Set();
+      if (Number.isFinite(breakEveryNRaw) && breakEveryNRaw > 0) {
+        for (let i = breakEveryNRaw; i < totalTrials; i += breakEveryNRaw) {
+          insertAfterSet.add(i);
+        }
+      } else if (Number.isFinite(trialsPerBlockRaw) && trialsPerBlockRaw > 0) {
+        for (let i = trialsPerBlockRaw; i < totalTrials; i += trialsPerBlockRaw) {
+          insertAfterSet.add(i);
+        }
+      } else if (Number.isFinite(numBlocksRaw) && numBlocksRaw > 1) {
+        for (let k = 1; k < numBlocksRaw; k++) {
+          const idx = Math.round((k * totalTrials) / numBlocksRaw);
+          if (idx > 0 && idx < totalTrials) insertAfterSet.add(idx);
+        }
+      }
+
+      const insertAfter = Array.from(insertAfterSet).sort((a, b) => a - b);
+      if (insertAfter.length === 0) return src;
+
+      const breakMessage = (
+        typeof mb.break_message === 'string' && mb.break_message.trim() !== ''
+          ? mb.break_message
+          : 'Take a short break.\n\nPress the key below when you are ready to continue.'
+      );
+      const showTotalPoints = mb.show_total_points_at_break === true;
+      const showCurrentBlockPoints = mb.show_current_block_points_at_break === true;
+      const breakKeys = parseBreakKeys(mb.break_escape_keys);
+
+      const escapeHtml = (str) => String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+      const formatPoints = (n) => {
+        const x = Number(n);
+        if (!Number.isFinite(x)) return '0';
+        return Number.isInteger(x)
+          ? String(x)
+          : x.toFixed(2).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+      };
+
+      const breakCount = insertAfter.length;
+      const makeBreakTrial = (breakIdx1Based) => ({
+        type: 'html-keyboard-response',
+        stimulus: () => {
+          let rows = [];
+          try {
+            rows = window.jsPsych?.data?.get?.().values?.() || [];
+          } catch {
+            rows = [];
+          }
+
+          let totalPoints = 0;
+          for (const row of rows) {
+            const pts = Number(row?.reward_points_awarded);
+            if (Number.isFinite(pts)) totalPoints += pts;
+          }
+
+          let currentBlockPoints = 0;
+          for (let i = rows.length - 1; i >= 0; i--) {
+            const row = rows[i] || {};
+            if ((row.plugin_type || '') === 'miniblock-break') break;
+            const pts = Number(row.reward_points_awarded);
+            if (Number.isFinite(pts)) currentBlockPoints += pts;
+          }
+
+          const statsLines = [];
+          if (showTotalPoints) statsLines.push(`Total points: ${formatPoints(totalPoints)}`);
+          if (showCurrentBlockPoints) statsLines.push(`Current block points: ${formatPoints(currentBlockPoints)}`);
+          const statsHtml = statsLines.length > 0
+            ? `<div style="margin-top:14px;opacity:0.9;">${statsLines.map((line) => `<div>${escapeHtml(line)}</div>`).join('')}</div>`
+            : '';
+
+          const waitHtml = forceWait
+            ? '<div style="margin-top:14px;opacity:0.9;">Break in progress...</div>'
+            : '';
+
+          return `
+            <div style="max-width:860px;margin:0 auto;padding:20px 28px;color:#ffffff;text-align:center;line-height:1.45;">
+              <div style="font-size:1.4rem;font-weight:700;margin-bottom:12px;">Mini-break ${breakIdx1Based} / ${breakCount}</div>
+              <div style="font-size:1.05rem;">${escapeHtml(breakMessage).replace(/\n/g, '<br>')}</div>
+              ${statsHtml}
+              ${waitHtml}
+            </div>
+          `;
+        },
+        choices: forceWait ? 'NO_KEYS' : breakKeys,
+        trial_duration: forceWait ? breakDurationMs : null,
+        response_ends_trial: forceWait ? false : true,
+        data: {
+          plugin_type: 'miniblock-break',
+          task_type: 'miniblock-break',
+          miniblock_break_index: breakIdx1Based,
+          miniblock_break_total: breakCount,
+          miniblock_forced_wait: forceWait
+        }
+      });
+
+      const out = [];
+      let nextBreakPointer = 0;
+      for (let i = 0; i < src.length; i++) {
+        out.push(src[i]);
+        while (nextBreakPointer < insertAfter.length && insertAfter[nextBreakPointer] === i + 1) {
+          out.push(makeBreakTrial(nextBreakPointer + 1));
+          nextBreakPointer += 1;
+        }
+      }
+
+      return out;
+    };
+
     const shuffleChunksPreservingInstructionLike = (chunks) => {
       const src = Array.isArray(chunks) ? chunks : [];
       const outChunks = [];
@@ -2443,7 +2594,8 @@
         if (preserveFor.has(baseType)) {
           out.push(item);
         } else {
-          out.push(...expandBlock(item, opts));
+          const expandedBlockTrials = expandBlock(item, opts);
+          out.push(...applyMiniblockStructureToExpandedTrials(expandedBlockTrials, item));
         }
         return;
       }
