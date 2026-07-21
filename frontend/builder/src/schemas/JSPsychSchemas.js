@@ -1010,6 +1010,48 @@ class JSPsychSchemas {
                         type: this.parameterTypes.INT,
                         default: 0,
                         description: 'Inter-trial interval (ms)'
+                    },
+                    sart_show_feedback: {
+                        type: this.parameterTypes.BOOL,
+                        default: false,
+                        blockTarget: 'sart-trial',
+                        description: 'Whether to show correctness feedback'
+                    },
+                    sart_feedback_duration_min: {
+                        type: this.parameterTypes.INT,
+                        default: 300,
+                        blockTarget: 'sart-trial',
+                        description: 'Feedback display duration in ms'
+                    },
+                    sart_feedback_duration_max: {
+                        type: this.parameterTypes.INT,
+                        default: 300,
+                        blockTarget: 'sart-trial',
+                        description: 'Feedback display duration in ms'
+                    },
+                    sart_feedback_text_correct: {
+                        type: this.parameterTypes.STRING,
+                        default: 'Correct',
+                        blockTarget: 'sart-trial',
+                        description: 'Feedback text shown after correct responses'
+                    },
+                    sart_feedback_text_incorrect: {
+                        type: this.parameterTypes.STRING,
+                        default: 'Incorrect',
+                        blockTarget: 'sart-trial',
+                        description: 'Feedback text shown after incorrect responses'
+                    },
+                    sart_feedback_color_correct: {
+                        type: this.parameterTypes.COLOR,
+                        default: '#86efac',
+                        blockTarget: 'sart-trial',
+                        description: 'Feedback color for correct responses'
+                    },
+                    sart_feedback_color_incorrect: {
+                        type: this.parameterTypes.COLOR,
+                        default: '#fca5a5',
+                        blockTarget: 'sart-trial',
+                        description: 'Feedback color for incorrect responses'
                     }
                 }
             },

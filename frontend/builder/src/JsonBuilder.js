@@ -9651,7 +9651,14 @@ class JsonBuilder {
             stimulus_duration_ms: parseInt(document.getElementById('sartStimulusDurationMs')?.value || '250', 10),
             mask_duration_ms: parseInt(document.getElementById('sartMaskDurationMs')?.value || '900', 10),
             trial_duration_ms: 1150,
-            iti_ms: parseInt(document.getElementById('sartItiMs')?.value || '0', 10)
+            iti_ms: parseInt(document.getElementById('sartItiMs')?.value || '0', 10),
+            show_feedback: false,
+            feedback_duration_min: 300,
+            feedback_duration_max: 300,
+            feedback_text_correct: 'Correct',
+            feedback_text_incorrect: 'Incorrect',
+            feedback_color_correct: '#86efac',
+            feedback_color_incorrect: '#fca5a5'
         };
     }
 
@@ -10177,7 +10184,14 @@ class JsonBuilder {
             sart_mask_duration_min: Number.isFinite(maskMs) ? maskMs : 900,
             sart_mask_duration_max: Number.isFinite(maskMs) ? maskMs : 900,
             sart_iti_min: Number.isFinite(itiMs) ? itiMs : 0,
-            sart_iti_max: Number.isFinite(itiMs) ? itiMs : 0
+            sart_iti_max: Number.isFinite(itiMs) ? itiMs : 0,
+            sart_show_feedback: false,
+            sart_feedback_duration_min: 300,
+            sart_feedback_duration_max: 300,
+            sart_feedback_text_correct: 'Correct',
+            sart_feedback_text_incorrect: 'Incorrect',
+            sart_feedback_color_correct: '#86efac',
+            sart_feedback_color_incorrect: '#fca5a5'
         };
     }
 
@@ -10443,7 +10457,13 @@ class JsonBuilder {
             seed: '',
 
             // New block-level task switching controls
-            ts_trial_type: 'switch',
+                iti_ms: parseInt(document.getElementById('sartItiMs')?.value || '0', 10),
+                show_feedback: false,
+                feedback_duration_ms: 300,
+                feedback_text_correct: 'Correct',
+                feedback_text_incorrect: 'Incorrect',
+                feedback_color_correct: '#86efac',
+                feedback_color_incorrect: '#fca5a5'
             ts_single_task_index: 1,
             ts_cue_type: (() => {
                 const raw = (document.getElementById('taskSwitchingCueType')?.value || 'explicit').toString().trim();
@@ -11900,6 +11920,27 @@ class JsonBuilder {
             addWindow('mask_duration_ms', blockComponent.sart_mask_duration_min, blockComponent.sart_mask_duration_max);
             addWindow('trial_duration_ms', blockComponent.sart_trial_duration_min, blockComponent.sart_trial_duration_max);
             addWindow('iti_ms', blockComponent.sart_iti_min, blockComponent.sart_iti_max);
+
+            if (blockComponent.sart_show_feedback !== undefined) {
+                values.show_feedback = !!blockComponent.sart_show_feedback;
+            }
+            addWindow('feedback_duration_ms', blockComponent.sart_feedback_duration_min, blockComponent.sart_feedback_duration_max);
+            if (blockComponent.sart_feedback_duration_ms !== undefined && blockComponent.sart_feedback_duration_ms !== null && blockComponent.sart_feedback_duration_ms !== '') {
+                const feedbackDurationMs = Number.parseInt(blockComponent.sart_feedback_duration_ms, 10);
+                if (Number.isFinite(feedbackDurationMs)) values.feedback_duration_ms = Math.max(0, feedbackDurationMs);
+            }
+            if (blockComponent.sart_feedback_text_correct !== undefined) {
+                values.feedback_text_correct = (blockComponent.sart_feedback_text_correct ?? '').toString();
+            }
+            if (blockComponent.sart_feedback_text_incorrect !== undefined) {
+                values.feedback_text_incorrect = (blockComponent.sart_feedback_text_incorrect ?? '').toString();
+            }
+            if (blockComponent.sart_feedback_color_correct !== undefined) {
+                values.feedback_color_correct = (blockComponent.sart_feedback_color_correct ?? '').toString();
+            }
+            if (blockComponent.sart_feedback_color_incorrect !== undefined) {
+                values.feedback_color_incorrect = (blockComponent.sart_feedback_color_incorrect ?? '').toString();
+            }
         } else if (resolvedComponentType === 'gabor-trial' || resolvedComponentType === 'gabor-quest' || resolvedComponentType === 'gabor-learning') {
             const parseStringList = (raw) => {
                 if (raw === undefined || raw === null) return [];

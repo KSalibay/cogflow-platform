@@ -901,7 +901,8 @@
           : sessionSubtaskDurationEntries;
         if (!(entries > 0)) continue;
 
-        const estMs = Math.max(1, Math.floor(entries * estimateEntryDurationMs(w?.subtask_type, s)));
+        const perEntryMs = Math.max(1, Math.floor(estimateEntryDurationMs(w?.subtask_type, s)));
+        const estMs = Math.max(1, Math.floor(entries * perEntryMs + (typeNorm === 'sart-like' ? perEntryMs : 0)));
 
         const sch = w?.schedule || { has_schedule: false, start_at_ms: 0, end_at_ms: null };
         const startAt = Math.max(0, Math.floor(Number(sch.start_at_ms) || 0));
