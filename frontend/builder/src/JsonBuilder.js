@@ -10457,13 +10457,6 @@ class JsonBuilder {
             seed: '',
 
             // New block-level task switching controls
-                iti_ms: parseInt(document.getElementById('sartItiMs')?.value || '0', 10),
-                show_feedback: false,
-                feedback_duration_ms: 300,
-                feedback_text_correct: 'Correct',
-                feedback_text_incorrect: 'Incorrect',
-                feedback_color_correct: '#86efac',
-                feedback_color_incorrect: '#fca5a5'
             ts_single_task_index: 1,
             ts_cue_type: (() => {
                 const raw = (document.getElementById('taskSwitchingCueType')?.value || 'explicit').toString().trim();
