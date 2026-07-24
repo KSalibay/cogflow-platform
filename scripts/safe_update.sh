@@ -18,6 +18,8 @@ BACKUP_FILE_DEFAULT="$ROOT_DIR/pre_deploy_backup_${TIMESTAMP}.sql"
 BACKUP_FILE="${BACKUP_FILE:-$BACKUP_FILE_DEFAULT}"
 PUBLIC_HEALTHCHECK_URL="${PUBLIC_HEALTHCHECK_URL:-https://portal.cogflow.app/api/v1/health}"
 DO_PULL=1
+ENV_FILE="$ROOT_DIR/.env"
+ENV_BACKUP=""
 
 for arg in "$@"; do
   case "$arg" in
@@ -50,10 +52,32 @@ fi
 echo "==> Starting safe update in $ROOT_DIR"
 
 if [[ $DO_PULL -eq 1 ]]; then
+  if [[ -f "$ENV_FILE" ]]; then
+    ENV_BACKUP="$(mktemp "$ROOT_DIR/.env.safe_update.XXXXXX")"
+    cp "$ENV_FILE" "$ENV_BACKUP"
+    chmod 600 "$ENV_BACKUP" || true
+    echo "==> Backed up local .env to temporary file"
+  fi
+
+  if git ls-files --error-unmatch .env >/dev/null 2>&1; then
+    echo "==> Marking tracked .env as skip-worktree for safe pull"
+    git update-index --skip-worktree .env || true
+  fi
+
   echo "==> Updating git working tree (branch: $BRANCH)"
   git fetch origin
   git checkout "$BRANCH"
   git pull --ff-only origin "$BRANCH"
+
+  if [[ -n "$ENV_BACKUP" && -f "$ENV_BACKUP" ]]; then
+    if [[ ! -f "$ENV_FILE" ]] || ! cmp -s "$ENV_BACKUP" "$ENV_FILE"; then
+      cp "$ENV_BACKUP" "$ENV_FILE"
+      chmod 600 "$ENV_FILE" || true
+      echo "==> Restored local .env after pull"
+    fi
+    rm -f "$ENV_BACKUP"
+    ENV_BACKUP=""
+  fi
 else
   echo "==> Skipping git pull as requested"
 fi
