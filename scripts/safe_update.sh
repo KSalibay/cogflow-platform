@@ -18,8 +18,8 @@ BACKUP_FILE_DEFAULT="$ROOT_DIR/pre_deploy_backup_${TIMESTAMP}.sql"
 BACKUP_FILE="${BACKUP_FILE:-$BACKUP_FILE_DEFAULT}"
 PUBLIC_HEALTHCHECK_URL="${PUBLIC_HEALTHCHECK_URL:-https://portal.cogflow.app/api/v1/health}"
 DO_PULL=1
-ENV_FILE="$ROOT_DIR/.env"
-ENV_BACKUP=""
+ENV_BACKUP_DIR=""
+ENV_PATHS=(".env" "backend/.env")
 
 for arg in "$@"; do
   case "$arg" in
@@ -52,31 +52,48 @@ fi
 echo "==> Starting safe update in $ROOT_DIR"
 
 if [[ $DO_PULL -eq 1 ]]; then
-  if [[ -f "$ENV_FILE" ]]; then
-    ENV_BACKUP="$(mktemp "$ROOT_DIR/.env.safe_update.XXXXXX")"
-    cp "$ENV_FILE" "$ENV_BACKUP"
-    chmod 600 "$ENV_BACKUP" || true
-    echo "==> Backed up local .env to temporary file"
-  fi
+  ENV_BACKUP_DIR="$(mktemp -d "$ROOT_DIR/.env.safe_update.XXXXXX")"
+  echo "==> Preparing local env files for safe pull"
+  for rel in "${ENV_PATHS[@]}"; do
+    abs="$ROOT_DIR/$rel"
+    bkp="$ENV_BACKUP_DIR/${rel//\//__}"
 
-  if git ls-files --error-unmatch .env >/dev/null 2>&1; then
-    echo "==> Marking tracked .env as skip-worktree for safe pull"
-    git update-index --skip-worktree .env || true
-  fi
+    if [[ -f "$abs" ]]; then
+      cp "$abs" "$bkp"
+      chmod 600 "$bkp" || true
+    fi
+
+    # If env file is tracked and locally modified, clear worktree/index drift before pull.
+    if git ls-files --error-unmatch "$rel" >/dev/null 2>&1; then
+      git restore --worktree --staged --source=HEAD -- "$rel" >/dev/null 2>&1 || true
+      git update-index --skip-worktree "$rel" >/dev/null 2>&1 || true
+    fi
+  done
 
   echo "==> Updating git working tree (branch: $BRANCH)"
   git fetch origin
   git checkout "$BRANCH"
   git pull --ff-only origin "$BRANCH"
 
-  if [[ -n "$ENV_BACKUP" && -f "$ENV_BACKUP" ]]; then
-    if [[ ! -f "$ENV_FILE" ]] || ! cmp -s "$ENV_BACKUP" "$ENV_FILE"; then
-      cp "$ENV_BACKUP" "$ENV_FILE"
-      chmod 600 "$ENV_FILE" || true
-      echo "==> Restored local .env after pull"
+  if [[ -n "$ENV_BACKUP_DIR" && -d "$ENV_BACKUP_DIR" ]]; then
+    restored_any=0
+    for rel in "${ENV_PATHS[@]}"; do
+      abs="$ROOT_DIR/$rel"
+      bkp="$ENV_BACKUP_DIR/${rel//\//__}"
+      if [[ -f "$bkp" ]]; then
+        mkdir -p "$(dirname "$abs")"
+        cp "$bkp" "$abs"
+        chmod 600 "$abs" || true
+        restored_any=1
+      fi
+    done
+
+    if [[ $restored_any -eq 1 ]]; then
+      echo "==> Restored local env files after pull"
     fi
-    rm -f "$ENV_BACKUP"
-    ENV_BACKUP=""
+
+    rm -rf "$ENV_BACKUP_DIR"
+    ENV_BACKUP_DIR=""
   fi
 else
   echo "==> Skipping git pull as requested"
