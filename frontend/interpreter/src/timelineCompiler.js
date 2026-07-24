@@ -2206,6 +2206,7 @@
           const randomNode = {
             type: 'randomize-group',
             randomizable_across_markers: item.randomizable_across_markers !== false,
+            pool_across_randomize_groups: item.pool_across_randomize_groups === true,
             ...(randomId ? { random_group_id: randomId } : {}),
             items: []
           };
@@ -2553,6 +2554,7 @@
       if (!isObject(node)) return false;
       const t = String(node.type || '');
       if (t !== 'randomize-group' && t !== 'randomize-across-markers') return false;
+      if (node.pool_across_randomize_groups !== true) return false;
       return node.randomizable_across_markers !== false;
     };
 
