@@ -12891,10 +12891,13 @@ class JsonBuilder {
      * Get RDM display parameters from UI - SIMPLIFIED
      */
     getRDMDisplayParameters() {
+        const backgroundColor = document.getElementById('backgroundColor')?.value;
         return {
             canvas_width: parseInt(document.getElementById('canvasWidth')?.value || 600),
             canvas_height: parseInt(document.getElementById('canvasHeight')?.value || 600),
-            background_color: "#404040"
+            background_color: (typeof backgroundColor === 'string' && backgroundColor.trim() !== '')
+                ? backgroundColor
+                : '#404040'
         };
     }
 
@@ -12964,10 +12967,11 @@ class JsonBuilder {
      * Get RDM motion parameters from UI
      */
     getRDMMotionParameters() {
+        const speedRaw = parseFloat(document.getElementById('motionSpeed')?.value || 6);
         return {
             coherence: parseFloat(document.getElementById('motionCoherence')?.value || 0.5),
             direction: parseInt(document.getElementById('motionDirection')?.value || 0),
-            speed: parseInt(document.getElementById('motionSpeed')?.value || 6),
+            speed: Number.isFinite(speedRaw) ? speedRaw : 6,
             noise_type: document.getElementById('noiseType')?.value || 'random_direction'
         };
     }
@@ -14057,9 +14061,9 @@ class JsonBuilder {
             total_dots: getValue('totalDots', 150, 'int'),
             coherence: getValue('motionCoherence', 0.5, 'number'),
             coherent_direction: getValue('motionDirection', 0, 'int'),
-            speed: getValue('motionSpeed', 5, 'int'),
+            speed: getValue('motionSpeed', 5, 'number'),
             lifetime_frames: getValue('dotLifetime', 60, 'int'),
-            noise_type: 'random_direction',
+            noise_type: getValue('noiseType', 'random_direction'),
 
             // Aperture outline defaults
             show_aperture_outline: (() => {
@@ -14102,9 +14106,9 @@ class JsonBuilder {
             total_dots: this.getModalValue('modalTotalDots', 150, 'int'),
             coherence: this.getModalValue('modalMotionCoherence', 0.5, 'number'),
             coherent_direction: this.getModalValue('modalMotionDirection', 0, 'int'),
-            speed: this.getModalValue('modalMotionSpeed', 5, 'int'),
+            speed: this.getModalValue('modalMotionSpeed', 5, 'number'),
             lifetime_frames: this.getModalValue('modalDotLifetime', 60, 'int'),
-            noise_type: 'random_direction'
+            noise_type: this.getModalValue('modalNoiseType', 'random_direction')
         };
 
         // Legacy fallback: merge into existing component data and preserve `type`.
