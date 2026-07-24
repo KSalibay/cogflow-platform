@@ -2395,14 +2395,14 @@
         for (let i = breakEveryNRaw; i < totalTrials; i += breakEveryNRaw) {
           insertAfterSet.add(i);
         }
-      } else if (Number.isFinite(trialsPerBlockRaw) && trialsPerBlockRaw > 0) {
-        for (let i = trialsPerBlockRaw; i < totalTrials; i += trialsPerBlockRaw) {
-          insertAfterSet.add(i);
-        }
       } else if (Number.isFinite(numBlocksRaw) && numBlocksRaw > 1) {
         for (let k = 1; k < numBlocksRaw; k++) {
           const idx = Math.round((k * totalTrials) / numBlocksRaw);
           if (idx > 0 && idx < totalTrials) insertAfterSet.add(idx);
+        }
+      } else if (Number.isFinite(trialsPerBlockRaw) && trialsPerBlockRaw > 0) {
+        for (let i = trialsPerBlockRaw; i < totalTrials; i += trialsPerBlockRaw) {
+          insertAfterSet.add(i);
         }
       }
 
@@ -2433,6 +2433,23 @@
           : x.toFixed(2).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
       };
 
+      const extractRewardPoints = (row) => {
+        if (!isObject(row)) return null;
+        const direct = Number(row.reward_points_awarded);
+        if (Number.isFinite(direct)) return direct;
+
+        const legacy = Number(row.reward_points);
+        if (Number.isFinite(legacy)) return legacy;
+
+        const totalAfter = Number(row.reward_total_points_after_trial);
+        const totalBefore = Number(row.reward_total_points_before_trial);
+        if (Number.isFinite(totalAfter) && Number.isFinite(totalBefore)) {
+          return totalAfter - totalBefore;
+        }
+
+        return null;
+      };
+
       const breakCount = insertAfter.length;
       const makeBreakTrial = (breakIdx1Based) => ({
         type: 'html-keyboard-response',
@@ -2446,7 +2463,7 @@
 
           let totalPoints = 0;
           for (const row of rows) {
-            const pts = Number(row?.reward_points_awarded);
+            const pts = extractRewardPoints(row);
             if (Number.isFinite(pts)) totalPoints += pts;
           }
 
@@ -2454,7 +2471,7 @@
           for (let i = rows.length - 1; i >= 0; i--) {
             const row = rows[i] || {};
             if ((row.plugin_type || '') === 'miniblock-break') break;
-            const pts = Number(row.reward_points_awarded);
+            const pts = extractRewardPoints(row);
             if (Number.isFinite(pts)) currentBlockPoints += pts;
           }
 

@@ -65,6 +65,11 @@
       fixation_line_width_px: { type: PT.FLOAT, default: null },
       fixation_offset_x_px: { type: PT.FLOAT, default: 0 },
       fixation_offset_y_px: { type: PT.FLOAT, default: 0 },
+      patch_left_x_ratio: { type: PT.FLOAT, default: 0.3 },
+      patch_right_x_ratio: { type: PT.FLOAT, default: 0.7 },
+      patch_center_y_ratio: { type: PT.FLOAT, default: 0.5 },
+      patch_center_offset_x_px: { type: PT.FLOAT, default: 0 },
+      patch_center_offset_y_px: { type: PT.FLOAT, default: 0 },
       show_fixation_in_fixation_phase: { type: PT.BOOL, default: true },
       show_fixation_in_placeholders_phase: { type: PT.BOOL, default: true },
       show_fixation_in_cue_phase: { type: PT.BOOL, default: true },
@@ -598,6 +603,11 @@
     fixationColor,
     fixationOffsetXPx,
     fixationOffsetYPx,
+    patchLeftXRatio,
+    patchRightXRatio,
+    patchCenterYRatio,
+    patchCenterOffsetXPx,
+    patchCenterOffsetYPx,
     debug
   }) {
     const ctx = canvas.getContext('2d');
@@ -620,10 +630,23 @@
     const patchSize = (provided && provided > 0)
       ? clamp(Math.round(provided), 40, Math.max(60, Math.floor(minDim * 0.85)))
       : defaultPatchSize;
+    const safeLeftRatioRaw = Number.isFinite(Number(patchLeftXRatio)) ? Number(patchLeftXRatio) : 0.30;
+    const safeRightRatioRaw = Number.isFinite(Number(patchRightXRatio)) ? Number(patchRightXRatio) : 0.70;
+    const safeYRatio = clamp(Number.isFinite(Number(patchCenterYRatio)) ? Number(patchCenterYRatio) : 0.50, 0.1, 0.9);
+    const centerOffsetX = Math.round(Number(patchCenterOffsetXPx) || 0);
+    const centerOffsetY = Math.round(Number(patchCenterOffsetYPx) || 0);
+
+    const spacingMinPx = Math.max(20, Math.round(patchSize * 0.6));
+    const halfWidth = Math.max(1, Math.floor(w / 2));
+    const leftMaxRatio = Math.max(0.1, (halfWidth - spacingMinPx / 2) / Math.max(1, w));
+    const rightMinRatio = Math.min(0.9, (halfWidth + spacingMinPx / 2) / Math.max(1, w));
+    const leftRatio = clamp(Math.min(safeLeftRatioRaw, safeRightRatioRaw), 0.1, leftMaxRatio);
+    const rightRatio = clamp(Math.max(safeLeftRatioRaw, safeRightRatioRaw), rightMinRatio, 0.9);
+
     // Center stimulus vertically within the canvas.
-    const cy = Math.floor(h / 2);
-    const leftCx = Math.floor(w * 0.30);
-    const rightCx = Math.floor(w * 0.70);
+    const cy = Math.floor(h * safeYRatio) + centerOffsetY;
+    const leftCx = Math.floor(w * leftRatio) + centerOffsetX;
+    const rightCx = Math.floor(w * rightRatio) + centerOffsetX;
     const fixationX = Math.floor(w / 2) + Math.round(Number(fixationOffsetXPx) || 0);
     const fixationY = cy + Math.round(Number(fixationOffsetYPx) || 0);
 
@@ -775,10 +798,18 @@
       const cueIndicatorColor = (trial.cue_indicator_color ?? 'rgb(114,114,114)').toString();
       const cueFixationColor = (trial.cue_fixation_color ?? 'rgb(114,114,114)').toString();
       const initialFixationColor = (trial.initial_fixation_color ?? '#ffffff').toString();
+      const isQuestAdaptive = (
+        (trial && trial.data && trial.data.adaptive_mode === 'quest')
+        || trial.adaptive_mode === 'quest'
+        || (trial.adaptive && trial.adaptive.mode === 'quest')
+      );
+      const isLearningBlock = !!(trial && trial.data && trial.data.gabor_learning_block === true);
       const fixationSizeDeg = Number(trial.fixation_size_deg);
       const fixationLineWidthDeg = Number(trial.fixation_line_width_deg);
       const fixationSizePxDirect = Number(trial.fixation_size_px);
       const fixationLineWidthPxDirect = Number(trial.fixation_line_width_px);
+      const fixationFallbackPx = (isQuestAdaptive || isLearningBlock) ? 30 : 24;
+      const fixationLineFallbackPx = (isQuestAdaptive || isLearningBlock) ? 3 : 2;
       const fixationSizePx = Number.isFinite(fixationSizePxDirect)
         ? fixationSizePxDirect
         : (Number.isFinite(fixationSizeDeg) ? degToPx(fixationSizeDeg) : null);
@@ -795,14 +826,23 @@
       const showFixationInStimulusPhase = phaseFixationFlag(trial.show_fixation_in_stimulus_phase, false);
       const showFixationInMaskPhase = phaseFixationFlag(trial.show_fixation_in_mask_phase, false);
       const showFixationInResponsePhase = phaseFixationFlag(trial.show_fixation_in_response_phase, false);
-      const fixationHalfSizePx = clamp(Math.round((Number.isFinite(fixationSizePx) ? fixationSizePx : 20) / 2), 1, 180);
-      const fixationStrokeWidthPx = clamp(Number.isFinite(fixationLineWidthPx) ? fixationLineWidthPx : 2, 0.5, 80);
-      const isQuestAdaptive = (
-        (trial && trial.data && trial.data.adaptive_mode === 'quest')
-        || trial.adaptive_mode === 'quest'
-        || (trial.adaptive && trial.adaptive.mode === 'quest')
-      );
-      const isLearningBlock = !!(trial && trial.data && trial.data.gabor_learning_block === true);
+      const fixationHalfSizePx = clamp(Math.round((Number.isFinite(fixationSizePx) ? fixationSizePx : fixationFallbackPx) / 2), 1, 180);
+      const fixationStrokeWidthPx = clamp(Number.isFinite(fixationLineWidthPx) ? fixationLineWidthPx : fixationLineFallbackPx, 0.5, 80);
+      const patchLeftXRatio = Number.isFinite(Number(trial.patch_left_x_ratio))
+        ? Number(trial.patch_left_x_ratio)
+        : (Number.isFinite(Number(trial.left_patch_x_ratio)) ? Number(trial.left_patch_x_ratio) : 0.30);
+      const patchRightXRatio = Number.isFinite(Number(trial.patch_right_x_ratio))
+        ? Number(trial.patch_right_x_ratio)
+        : (Number.isFinite(Number(trial.right_patch_x_ratio)) ? Number(trial.right_patch_x_ratio) : 0.70);
+      const patchCenterYRatio = Number.isFinite(Number(trial.patch_center_y_ratio))
+        ? Number(trial.patch_center_y_ratio)
+        : (Number.isFinite(Number(trial.patch_y_ratio)) ? Number(trial.patch_y_ratio) : 0.50);
+      const patchCenterOffsetXPx = Number.isFinite(Number(trial.patch_center_offset_x_px))
+        ? Number(trial.patch_center_offset_x_px)
+        : (Number.isFinite(Number(trial.patch_offset_x_px)) ? Number(trial.patch_offset_x_px) : 0);
+      const patchCenterOffsetYPx = Number.isFinite(Number(trial.patch_center_offset_y_px))
+        ? Number(trial.patch_center_offset_y_px)
+        : (Number.isFinite(Number(trial.patch_offset_y_px)) ? Number(trial.patch_offset_y_px) : 0);
       const hasRewardCueContext = (
         leftValue !== 'neutral'
         || rightValue !== 'neutral'
@@ -821,8 +861,9 @@
       // Fallback: pixel diameter via trial.patch_diameter_px.
       const patchDiameterDeg = Number(trial.patch_diameter_deg);
       const patchDiameterPxDirect = Number(trial.patch_diameter_px);
-      const patchDiameterPx = Number.isFinite(patchDiameterDeg)
-        ? degToPx(patchDiameterDeg)
+      const patchDiameterPxFromDeg = Number.isFinite(patchDiameterDeg) ? degToPx(patchDiameterDeg) : null;
+      const patchDiameterPx = Number.isFinite(patchDiameterPxFromDeg)
+        ? patchDiameterPxFromDeg
         : (Number.isFinite(patchDiameterPxDirect) ? patchDiameterPxDirect : null);
 
       const fixationMs = Math.max(0, Number(trial.fixation_ms ?? 1000) || 0);
@@ -1207,6 +1248,11 @@
             fixationColor: opts?.fixationColor,
             fixationOffsetXPx,
             fixationOffsetYPx,
+            patchLeftXRatio,
+            patchRightXRatio,
+            patchCenterYRatio,
+            patchCenterOffsetXPx,
+            patchCenterOffsetYPx,
             debug: debugGabor
           });
         } catch (err) {
