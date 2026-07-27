@@ -2396,14 +2396,14 @@
         for (let i = breakEveryNRaw; i < totalTrials; i += breakEveryNRaw) {
           insertAfterSet.add(i);
         }
+      } else if (Number.isFinite(trialsPerBlockRaw) && trialsPerBlockRaw > 0) {
+        for (let i = trialsPerBlockRaw; i < totalTrials; i += trialsPerBlockRaw) {
+          insertAfterSet.add(i);
+        }
       } else if (Number.isFinite(numBlocksRaw) && numBlocksRaw > 1) {
         for (let k = 1; k < numBlocksRaw; k++) {
           const idx = Math.round((k * totalTrials) / numBlocksRaw);
           if (idx > 0 && idx < totalTrials) insertAfterSet.add(idx);
-        }
-      } else if (Number.isFinite(trialsPerBlockRaw) && trialsPerBlockRaw > 0) {
-        for (let i = trialsPerBlockRaw; i < totalTrials; i += trialsPerBlockRaw) {
-          insertAfterSet.add(i);
         }
       }
 
@@ -2452,6 +2452,9 @@
       };
 
       const breakCount = insertAfter.length;
+      const totalBlocksDisplay = (Number.isFinite(numBlocksRaw) && numBlocksRaw > 0)
+        ? numBlocksRaw
+        : (breakCount + 1);
       const makeBreakTrial = (breakIdx1Based) => ({
         type: 'html-keyboard-response',
         stimulus: () => {
@@ -2476,7 +2479,10 @@
             if (Number.isFinite(pts)) currentBlockPoints += pts;
           }
 
+          const currentBlockDisplay = Math.max(1, Math.min(totalBlocksDisplay, breakIdx1Based + 1));
+
           const statsLines = [];
+          statsLines.push(`Current block: ${currentBlockDisplay} / ${totalBlocksDisplay}`);
           if (showTotalPoints) statsLines.push(`Total points: ${formatPoints(totalPoints)}`);
           if (showCurrentBlockPoints) statsLines.push(`Current block points: ${formatPoints(currentBlockPoints)}`);
           const statsHtml = statsLines.length > 0
@@ -2504,6 +2510,8 @@
           task_type: 'miniblock-break',
           miniblock_break_index: breakIdx1Based,
           miniblock_break_total: breakCount,
+          miniblock_block_index: Math.max(1, Math.min(totalBlocksDisplay, breakIdx1Based + 1)),
+          miniblock_block_total: totalBlocksDisplay,
           miniblock_forced_wait: forceWait
         }
       });

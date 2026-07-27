@@ -826,8 +826,15 @@
       const showFixationInStimulusPhase = phaseFixationFlag(trial.show_fixation_in_stimulus_phase, false);
       const showFixationInMaskPhase = phaseFixationFlag(trial.show_fixation_in_mask_phase, false);
       const showFixationInResponsePhase = phaseFixationFlag(trial.show_fixation_in_response_phase, false);
-      const fixationHalfSizePx = clamp(Math.round((Number.isFinite(fixationSizePx) ? fixationSizePx : fixationFallbackPx) / 2), 1, 180);
-      const fixationStrokeWidthPx = clamp(Number.isFinite(fixationLineWidthPx) ? fixationLineWidthPx : fixationLineFallbackPx, 0.5, 80);
+      const enforceFixationMinimums = isQuestAdaptive || isLearningBlock;
+      const fixationSizePxResolved = Number.isFinite(fixationSizePx)
+        ? (enforceFixationMinimums ? Math.max(fixationFallbackPx, fixationSizePx) : fixationSizePx)
+        : fixationFallbackPx;
+      const fixationLineWidthPxResolved = Number.isFinite(fixationLineWidthPx)
+        ? (enforceFixationMinimums ? Math.max(fixationLineFallbackPx, fixationLineWidthPx) : fixationLineWidthPx)
+        : fixationLineFallbackPx;
+      const fixationHalfSizePx = clamp(Math.round(fixationSizePxResolved / 2), 1, 180);
+      const fixationStrokeWidthPx = clamp(fixationLineWidthPxResolved, 0.5, 80);
       const patchLeftXRatio = Number.isFinite(Number(trial.patch_left_x_ratio))
         ? Number(trial.patch_left_x_ratio)
         : (Number.isFinite(Number(trial.left_patch_x_ratio)) ? Number(trial.left_patch_x_ratio) : 0.30);
