@@ -895,6 +895,13 @@
         const durationMode = normalizeSocSubtaskDurationMode(s.subtask_duration_mode ?? sessionSubtaskDurationMode);
         if (durationMode !== 'entries') continue;
 
+        const sch = w?.schedule || { has_schedule: false, start_at_ms: 0, end_at_ms: null };
+        const explicitEndRaw = Number(sch.end_at_ms);
+        const hasExplicitEnd = (sch._source === 'explicit') && Number.isFinite(explicitEndRaw) && explicitEndRaw > 0;
+        // Respect explicit start/end windows authored by the researcher.
+        // Entries mode should not silently re-time those windows.
+        if (hasExplicitEnd) continue;
+
         const entriesRaw = Number(s.subtask_duration_entries);
         const entries = (Number.isFinite(entriesRaw) && entriesRaw > 0)
           ? Math.floor(entriesRaw)
@@ -903,8 +910,6 @@
 
         const perEntryMs = Math.max(1, Math.floor(estimateEntryDurationMs(w?.subtask_type, s)));
         const estMs = Math.max(1, Math.floor(entries * perEntryMs + (typeNorm === 'sart-like' ? perEntryMs : 0)));
-
-        const sch = w?.schedule || { has_schedule: false, start_at_ms: 0, end_at_ms: null };
         const startAt = Math.max(0, Math.floor(Number(sch.start_at_ms) || 0));
         const endAt = startAt + estMs;
 
