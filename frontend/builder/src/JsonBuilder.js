@@ -2525,6 +2525,17 @@ class JsonBuilder {
                 if (values.patch_border_width_px !== undefined) out.gabor_patch_border_width_px = values.patch_border_width_px;
                 if (values.patch_border_color !== undefined) out.gabor_patch_border_color = values.patch_border_color;
                 if (values.patch_border_opacity !== undefined) out.gabor_patch_border_opacity = values.patch_border_opacity;
+                if (values.patch_left_x_ratio !== undefined) out.gabor_patch_left_x_ratio = values.patch_left_x_ratio;
+                if (values.patch_right_x_ratio !== undefined) out.gabor_patch_right_x_ratio = values.patch_right_x_ratio;
+                if (values.patch_center_y_ratio !== undefined) out.gabor_patch_center_y_ratio = values.patch_center_y_ratio;
+                if (values.patch_center_offset_x_px !== undefined) out.gabor_patch_center_offset_x_px = values.patch_center_offset_x_px;
+                if (values.patch_center_offset_y_px !== undefined) out.gabor_patch_center_offset_y_px = values.patch_center_offset_y_px;
+                if (values.placeholder_ring_color !== undefined) out.gabor_placeholder_ring_color = values.placeholder_ring_color;
+                if (values.fixation_ring_color_enabled !== undefined) out.gabor_fixation_ring_color_enabled = !!values.fixation_ring_color_enabled;
+                if (values.fixation_ring_color !== undefined) out.gabor_fixation_ring_color = values.fixation_ring_color;
+                if (values.value_ring_onset_phase !== undefined) out.gabor_value_ring_onset_phase = values.value_ring_onset_phase;
+                if (values.initial_fixation_color !== undefined) out.gabor_initial_fixation_color = values.initial_fixation_color;
+                if (values.cue_fixation_color !== undefined) out.gabor_cue_fixation_color = values.cue_fixation_color;
                 if (values.learning_streak_length !== undefined) out.gabor_learning_streak_length = values.learning_streak_length;
                 if (values.learning_target_accuracy !== undefined) out.gabor_learning_target_accuracy = values.learning_target_accuracy;
                 if (values.learning_max_trials !== undefined) out.gabor_learning_max_trials = values.learning_max_trials;
@@ -2532,8 +2543,11 @@ class JsonBuilder {
                 if (values.feedback_duration_ms !== undefined) out.gabor_feedback_duration_ms = values.feedback_duration_ms;
                 if (values.feedback_text_correct !== undefined) out.gabor_feedback_text_correct = values.feedback_text_correct;
                 if (values.feedback_text_incorrect !== undefined) out.gabor_feedback_text_incorrect = values.feedback_text_incorrect;
+                if (values.feedback_color_correct !== undefined) out.gabor_feedback_color_correct = values.feedback_color_correct;
+                if (values.feedback_color_incorrect !== undefined) out.gabor_feedback_color_incorrect = values.feedback_color_incorrect;
                 if (values.too_slow_feedback_enabled !== undefined) out.gabor_too_slow_feedback_enabled = !!values.too_slow_feedback_enabled;
                 if (values.feedback_text_no_response !== undefined) out.gabor_feedback_text_no_response = values.feedback_text_no_response;
+                if (values.feedback_color_no_response !== undefined) out.gabor_feedback_color_no_response = values.feedback_color_no_response;
                 if (values.reward_feedback_enabled !== undefined) out.gabor_reward_feedback_enabled = !!values.reward_feedback_enabled;
                 if (values.reward_scoring_mode !== undefined) out.gabor_reward_scoring_mode = values.reward_scoring_mode;
                 if (values.reward_fast_rt_threshold_ms !== undefined) out.gabor_reward_fast_rt_threshold_ms = values.reward_fast_rt_threshold_ms;
@@ -7216,6 +7230,17 @@ class JsonBuilder {
                 gabor_patch_border_width_px: { type: 'number', default: 2, min: 0, max: 50, step: 1 },
                 gabor_patch_border_color: { type: 'COLOR', default: '#ffffff' },
                 gabor_patch_border_opacity: { type: 'number', default: 0.22, min: 0, max: 1, step: 0.01 },
+                gabor_patch_left_x_ratio: { type: 'number', default: 0.3, min: 0.1, max: 0.9, step: 0.01, description: 'Horizontal centre of the left patch (canvas ratio).' },
+                gabor_patch_right_x_ratio: { type: 'number', default: 0.7, min: 0.1, max: 0.9, step: 0.01, description: 'Horizontal centre of the right patch (canvas ratio).' },
+                gabor_patch_center_y_ratio: { type: 'number', default: 0.5, min: 0.1, max: 0.9, step: 0.01, description: 'Vertical centre of both patches (canvas ratio).' },
+                gabor_patch_center_offset_x_px: { type: 'number', default: 0, min: -1000, max: 1000, step: 1 },
+                gabor_patch_center_offset_y_px: { type: 'number', default: 0, min: -1000, max: 1000, step: 1 },
+                gabor_placeholder_ring_color: { type: 'COLOR', default: '#bfbfbf', description: 'Neutral ring color after the fixation phase.' },
+                gabor_fixation_ring_color_enabled: { type: 'boolean', default: false, description: 'Use a separate ring color during fixation.' },
+                gabor_fixation_ring_color: { type: 'COLOR', default: '#ffffff', description: 'Ring color during fixation when enabled.' },
+                gabor_value_ring_onset_phase: { type: 'select', default: 'stimulus', options: ['stimulus', 'placeholders'], description: 'When value-colored rings replace neutral rings.' },
+                gabor_initial_fixation_color: { type: 'COLOR', default: '#ffffff', description: 'Fixation cross color outside the cue diamond.' },
+                gabor_cue_fixation_color: { type: 'COLOR', default: '#727272', description: 'Fixation cross color inside the cue diamond.' },
 
                 // Optional adaptive staircase per-block (stored in exported block.parameter_values.adaptive)
                 gabor_adaptive_mode: { type: 'select', default: 'none', options: ['none', 'quest'] },
@@ -7243,8 +7268,11 @@ class JsonBuilder {
                 gabor_feedback_duration_ms: { type: 'number', default: 800, min: 0, max: 30000, step: 1 },
                 gabor_feedback_text_correct: { type: 'string', default: 'Correct', description: 'Feedback text shown on correct responses.' },
                 gabor_feedback_text_incorrect: { type: 'string', default: 'Incorrect', description: 'Feedback text shown on incorrect responses.' },
+                gabor_feedback_color_correct: { type: 'COLOR', default: '#4caf50', description: 'Feedback color for correct responses.' },
+                gabor_feedback_color_incorrect: { type: 'COLOR', default: '#ffffff', description: 'Feedback color for incorrect responses.' },
                 gabor_too_slow_feedback_enabled: { type: 'boolean', default: false, description: 'Show no-response feedback when the response window expires (suppressed during QUEST-adaptive trials).' },
                 gabor_feedback_text_no_response: { type: 'string', default: 'Too slow', description: 'Feedback text shown when there is no response.' },
+                gabor_feedback_color_no_response: { type: 'COLOR', default: '#ffffff', description: 'Feedback color when there is no response.' },
                 gabor_reward_feedback_enabled: { type: 'boolean', default: false, description: 'Show reward feedback based on RT tiers.' },
                 gabor_reward_scoring_mode: { type: 'select', default: 'tiered', options: ['tiered', 'proportional_linear'], description: 'Reward scoring model: tiered or proportional linear bonus.' },
                 gabor_reward_fast_rt_threshold_ms: { type: 'number', default: 450, min: 0, max: 60000, step: 1, description: 'RT threshold (ms) for fast reward tier.' },
@@ -12121,11 +12149,20 @@ class JsonBuilder {
             if (blockComponent.gabor_feedback_text_incorrect !== undefined) {
                 values.feedback_text_incorrect = (blockComponent.gabor_feedback_text_incorrect ?? '').toString();
             }
+            if (blockComponent.gabor_feedback_color_correct !== undefined) {
+                values.feedback_color_correct = (blockComponent.gabor_feedback_color_correct ?? '#4caf50').toString();
+            }
+            if (blockComponent.gabor_feedback_color_incorrect !== undefined) {
+                values.feedback_color_incorrect = (blockComponent.gabor_feedback_color_incorrect ?? '#ffffff').toString();
+            }
             if (blockComponent.gabor_too_slow_feedback_enabled !== undefined) {
                 values.too_slow_feedback_enabled = !!blockComponent.gabor_too_slow_feedback_enabled;
             }
             if (blockComponent.gabor_feedback_text_no_response !== undefined) {
                 values.feedback_text_no_response = (blockComponent.gabor_feedback_text_no_response ?? '').toString();
+            }
+            if (blockComponent.gabor_feedback_color_no_response !== undefined) {
+                values.feedback_color_no_response = (blockComponent.gabor_feedback_color_no_response ?? '#ffffff').toString();
             }
             if (blockComponent.gabor_reward_feedback_enabled !== undefined) {
                 values.reward_feedback_enabled = !!blockComponent.gabor_reward_feedback_enabled;
@@ -12159,6 +12196,34 @@ class JsonBuilder {
             if (Number.isFinite(fixationOffsetX)) values.fixation_offset_x_px = fixationOffsetX;
             const fixationOffsetY = Number(blockComponent.gabor_fixation_offset_y_px);
             if (Number.isFinite(fixationOffsetY)) values.fixation_offset_y_px = fixationOffsetY;
+            const patchLeftXRatio = Number(blockComponent.gabor_patch_left_x_ratio);
+            if (Number.isFinite(patchLeftXRatio)) values.patch_left_x_ratio = patchLeftXRatio;
+            const patchRightXRatio = Number(blockComponent.gabor_patch_right_x_ratio);
+            if (Number.isFinite(patchRightXRatio)) values.patch_right_x_ratio = patchRightXRatio;
+            const patchCenterYRatio = Number(blockComponent.gabor_patch_center_y_ratio);
+            if (Number.isFinite(patchCenterYRatio)) values.patch_center_y_ratio = patchCenterYRatio;
+            const patchCenterOffsetX = Number(blockComponent.gabor_patch_center_offset_x_px);
+            if (Number.isFinite(patchCenterOffsetX)) values.patch_center_offset_x_px = patchCenterOffsetX;
+            const patchCenterOffsetY = Number(blockComponent.gabor_patch_center_offset_y_px);
+            if (Number.isFinite(patchCenterOffsetY)) values.patch_center_offset_y_px = patchCenterOffsetY;
+            if (blockComponent.gabor_placeholder_ring_color !== undefined) {
+                values.placeholder_ring_color = (blockComponent.gabor_placeholder_ring_color ?? '#bfbfbf').toString();
+            }
+            if (blockComponent.gabor_fixation_ring_color_enabled !== undefined) {
+                values.fixation_ring_color_enabled = !!blockComponent.gabor_fixation_ring_color_enabled;
+            }
+            if (blockComponent.gabor_fixation_ring_color !== undefined) {
+                values.fixation_ring_color = (blockComponent.gabor_fixation_ring_color ?? '#ffffff').toString();
+            }
+            if (blockComponent.gabor_value_ring_onset_phase !== undefined) {
+                values.value_ring_onset_phase = (blockComponent.gabor_value_ring_onset_phase ?? 'stimulus').toString();
+            }
+            if (blockComponent.gabor_initial_fixation_color !== undefined) {
+                values.initial_fixation_color = (blockComponent.gabor_initial_fixation_color ?? '#ffffff').toString();
+            }
+            if (blockComponent.gabor_cue_fixation_color !== undefined) {
+                values.cue_fixation_color = (blockComponent.gabor_cue_fixation_color ?? '#727272').toString();
+            }
             if (blockComponent.gabor_show_fixation_in_fixation_phase !== undefined) {
                 values.show_fixation_in_fixation_phase = !!blockComponent.gabor_show_fixation_in_fixation_phase;
             }

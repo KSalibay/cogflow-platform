@@ -1695,6 +1695,37 @@ class JSPsychSchemas {
                         default: 6,
                         description: 'Patch diameter in degrees of visual angle (requires Visual Angle Calibration for true deg-based sizing)'
                     },
+                    patch_left_x_ratio: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 0.3,
+                        min: 0.1,
+                        max: 0.9,
+                        description: 'Horizontal centre of the left patch (canvas ratio)'
+                    },
+                    patch_right_x_ratio: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 0.7,
+                        min: 0.1,
+                        max: 0.9,
+                        description: 'Horizontal centre of the right patch (canvas ratio)'
+                    },
+                    patch_center_y_ratio: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 0.5,
+                        min: 0.1,
+                        max: 0.9,
+                        description: 'Vertical centre of both patches (canvas ratio)'
+                    },
+                    patch_center_offset_x_px: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 0,
+                        description: 'Horizontal offset applied to both patches (px)'
+                    },
+                    patch_center_offset_y_px: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 0,
+                        description: 'Vertical offset applied to both patches (px)'
+                    },
                     spatial_cue: {
                         type: this.parameterTypes.SELECT,
                         default: 'none',
@@ -1712,6 +1743,37 @@ class JSPsychSchemas {
                         default: 'neutral',
                         options: ['neutral', 'high', 'low'],
                         description: 'Value cue for right location (frame color mapping via gabor_settings)'
+                    },
+                    placeholder_ring_color: {
+                        type: this.parameterTypes.COLOR,
+                        default: '#BFBFBF',
+                        description: 'Neutral ring color after the fixation phase'
+                    },
+                    fixation_ring_color_enabled: {
+                        type: this.parameterTypes.BOOL,
+                        default: false,
+                        description: 'Use a separate ring color during the fixation phase'
+                    },
+                    fixation_ring_color: {
+                        type: this.parameterTypes.COLOR,
+                        default: '#FFFFFF',
+                        description: 'Ring color during fixation when enabled'
+                    },
+                    value_ring_onset_phase: {
+                        type: this.parameterTypes.SELECT,
+                        default: 'stimulus',
+                        options: ['stimulus', 'placeholders'],
+                        description: 'When value-colored rings replace the neutral rings'
+                    },
+                    initial_fixation_color: {
+                        type: this.parameterTypes.COLOR,
+                        default: '#FFFFFF',
+                        description: 'Fixation cross color outside the cue diamond'
+                    },
+                    cue_fixation_color: {
+                        type: this.parameterTypes.COLOR,
+                        default: '#727272',
+                        description: 'Fixation cross color inside the cue diamond'
                     },
                     stimulus_duration_ms: {
                         type: this.parameterTypes.INT,
@@ -1813,6 +1875,16 @@ class JSPsychSchemas {
                         default: 'Incorrect',
                         description: 'Feedback text for incorrect responses'
                     },
+                    feedback_color_correct: {
+                        type: this.parameterTypes.COLOR,
+                        default: '#4CAF50',
+                        description: 'Feedback color for correct responses'
+                    },
+                    feedback_color_incorrect: {
+                        type: this.parameterTypes.COLOR,
+                        default: '#FFFFFF',
+                        description: 'Feedback color for incorrect responses'
+                    },
                     too_slow_feedback_enabled: {
                         type: this.parameterTypes.BOOL,
                         default: false,
@@ -1822,6 +1894,11 @@ class JSPsychSchemas {
                         type: this.parameterTypes.STRING,
                         default: 'Too slow',
                         description: 'Feedback text shown when no response is made in time (if enabled)'
+                    },
+                    feedback_color_no_response: {
+                        type: this.parameterTypes.COLOR,
+                        default: '#FFFFFF',
+                        description: 'Feedback color when no response is made in time'
                     },
                     reward_feedback_enabled: {
                         type: this.parameterTypes.BOOL,
@@ -3647,6 +3724,79 @@ class JSPsychSchemas {
                         blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
                         description: 'Gabor: patch diameter max (degrees of visual angle)'
                     },
+                    gabor_patch_left_x_ratio: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 0.3,
+                        min: 0.1,
+                        max: 0.9,
+                        blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
+                        description: 'Gabor: horizontal centre of the left patch (canvas ratio)'
+                    },
+                    gabor_patch_right_x_ratio: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 0.7,
+                        min: 0.1,
+                        max: 0.9,
+                        blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
+                        description: 'Gabor: horizontal centre of the right patch (canvas ratio)'
+                    },
+                    gabor_patch_center_y_ratio: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 0.5,
+                        min: 0.1,
+                        max: 0.9,
+                        blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
+                        description: 'Gabor: vertical centre of both patches (canvas ratio)'
+                    },
+                    gabor_patch_center_offset_x_px: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 0,
+                        blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
+                        description: 'Gabor: horizontal offset applied to both patches (px)'
+                    },
+                    gabor_patch_center_offset_y_px: {
+                        type: this.parameterTypes.FLOAT,
+                        default: 0,
+                        blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
+                        description: 'Gabor: vertical offset applied to both patches (px)'
+                    },
+                    gabor_placeholder_ring_color: {
+                        type: this.parameterTypes.COLOR,
+                        default: '#BFBFBF',
+                        blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
+                        description: 'Gabor: neutral ring color after the fixation phase'
+                    },
+                    gabor_fixation_ring_color_enabled: {
+                        type: this.parameterTypes.BOOL,
+                        default: false,
+                        blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
+                        description: 'Gabor: use a separate ring color during the fixation phase'
+                    },
+                    gabor_fixation_ring_color: {
+                        type: this.parameterTypes.COLOR,
+                        default: '#FFFFFF',
+                        blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
+                        description: 'Gabor: ring color during fixation when enabled'
+                    },
+                    gabor_value_ring_onset_phase: {
+                        type: this.parameterTypes.SELECT,
+                        default: 'stimulus',
+                        options: ['stimulus', 'placeholders'],
+                        blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
+                        description: 'Gabor: when value-colored rings replace the neutral rings'
+                    },
+                    gabor_initial_fixation_color: {
+                        type: this.parameterTypes.COLOR,
+                        default: '#FFFFFF',
+                        blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
+                        description: 'Gabor: fixation cross color outside the cue diamond'
+                    },
+                    gabor_cue_fixation_color: {
+                        type: this.parameterTypes.COLOR,
+                        default: '#727272',
+                        blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
+                        description: 'Gabor: fixation cross color inside the cue diamond'
+                    },
                     gabor_grating_waveform_options: {
                         type: this.parameterTypes.STRING,
                         default: 'sinusoidal',
@@ -3817,6 +3967,18 @@ class JSPsychSchemas {
                         blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
                         description: 'Gabor: feedback text for incorrect responses'
                     },
+                    gabor_feedback_color_correct: {
+                        type: this.parameterTypes.COLOR,
+                        default: '#4CAF50',
+                        blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
+                        description: 'Gabor: feedback color for correct responses'
+                    },
+                    gabor_feedback_color_incorrect: {
+                        type: this.parameterTypes.COLOR,
+                        default: '#FFFFFF',
+                        blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
+                        description: 'Gabor: feedback color for incorrect responses'
+                    },
                     gabor_too_slow_feedback_enabled: {
                         type: this.parameterTypes.BOOL,
                         default: false,
@@ -3828,6 +3990,12 @@ class JSPsychSchemas {
                         default: 'Too slow',
                         blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
                         description: 'Gabor: feedback text for no-response deadlines'
+                    },
+                    gabor_feedback_color_no_response: {
+                        type: this.parameterTypes.COLOR,
+                        default: '#FFFFFF',
+                        blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
+                        description: 'Gabor: feedback color for no-response deadlines'
                     },
                     gabor_reward_feedback_enabled: {
                         type: this.parameterTypes.BOOL,

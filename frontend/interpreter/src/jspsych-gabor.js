@@ -55,6 +55,9 @@
       low_value_color: { type: PT.STRING, default: '#0066ff' },
       neutral_value_color: { type: PT.STRING, default: '#666666' },
       placeholder_ring_color: { type: PT.STRING, default: 'rgb(191,191,191)' },
+      fixation_ring_color_enabled: { type: PT.BOOL, default: false },
+      fixation_ring_color: { type: PT.STRING, default: '#ffffff' },
+      value_ring_onset_phase: { type: PT.STRING, default: 'stimulus' },
       cue_background_color: { type: PT.STRING, default: 'rgb(191,191,191)' },
       cue_indicator_color: { type: PT.STRING, default: 'rgb(114,114,114)' },
       cue_fixation_color: { type: PT.STRING, default: 'rgb(114,114,114)' },
@@ -92,8 +95,11 @@
       feedback_duration_ms: { type: PT.INT, default: 800 },
       feedback_text_correct: { type: PT.STRING, default: 'Correct' },
       feedback_text_incorrect: { type: PT.STRING, default: 'Incorrect' },
+      feedback_color_correct: { type: PT.STRING, default: '#4caf50' },
+      feedback_color_incorrect: { type: PT.STRING, default: '#ffffff' },
       too_slow_feedback_enabled: { type: PT.BOOL, default: false },
       feedback_text_no_response: { type: PT.STRING, default: 'Too slow' },
+      feedback_color_no_response: { type: PT.STRING, default: '#ffffff' },
       reward_feedback_enabled: { type: PT.BOOL, default: false },
       reward_scoring_mode: { type: PT.STRING, default: 'tiered' },
       reward_fast_rt_threshold_ms: { type: PT.INT, default: 450 },
@@ -592,6 +598,7 @@
     showStimulus,
     showMask,
     ringMode,
+    ringColorOverride,
     cueMode,
     placeholderRingColor,
     cueBackgroundColor,
@@ -668,12 +675,12 @@
     };
 
     const resolvedRingMode = (ringMode || 'value').toString().trim().toLowerCase();
-    const ringLeftColor = resolvedRingMode === 'neutral'
+    const ringLeftColor = ringColorOverride || (resolvedRingMode === 'neutral'
       ? placeholderRingColor
-      : leftFrameColor;
-    const ringRightColor = resolvedRingMode === 'neutral'
+      : leftFrameColor);
+    const ringRightColor = ringColorOverride || (resolvedRingMode === 'neutral'
       ? placeholderRingColor
-      : rightFrameColor;
+      : rightFrameColor);
 
     const resolvedCueMode = (cueMode || (showCue ? 'cue' : 'none')).toString().trim().toLowerCase();
     if (resolvedCueMode === 'fixation' || resolvedCueMode === 'cue') {
@@ -776,8 +783,11 @@
       const feedbackDurationMs = Math.max(0, Number(trial.feedback_duration_ms ?? 800) || 0);
       const fbTextCorrect = (trial.feedback_text_correct ?? 'Correct').toString();
       const fbTextIncorrect = (trial.feedback_text_incorrect ?? 'Incorrect').toString();
+      const fbColorCorrect = (trial.feedback_color_correct ?? '#4caf50').toString();
+      const fbColorIncorrect = (trial.feedback_color_incorrect ?? '#ffffff').toString();
       const tooSlowFeedbackEnabled = trial.too_slow_feedback_enabled === true;
       const fbTextNoResponse = (trial.feedback_text_no_response ?? 'Too slow').toString();
+      const fbColorNoResponse = (trial.feedback_color_no_response ?? '#ffffff').toString();
       const rewardFeedbackEnabled = trial.reward_feedback_enabled === true;
       const rewardScoringMode = (trial.reward_scoring_mode ?? 'tiered').toString().trim().toLowerCase();
       const rewardFastThresholdMs = Math.max(0, Number(trial.reward_fast_rt_threshold_ms ?? 450) || 0);
@@ -794,6 +804,9 @@
       const rewardBonusMaxLow = Number.isFinite(Number(trial.reward_bonus_max_low)) ? Number(trial.reward_bonus_max_low) : 5;
       const rewardTemplate = (trial.reward_feedback_text_template ?? '+{{points}} points').toString();
       const placeholderRingColor = (trial.placeholder_ring_color ?? 'rgb(191,191,191)').toString();
+      const fixationRingColorEnabled = trial.fixation_ring_color_enabled === true;
+      const fixationRingColor = (trial.fixation_ring_color ?? '#ffffff').toString();
+      const valueRingOnsetPhase = (trial.value_ring_onset_phase ?? 'stimulus').toString().trim().toLowerCase();
       const cueBackgroundColor = (trial.cue_background_color ?? 'rgb(191,191,191)').toString();
       const cueIndicatorColor = (trial.cue_indicator_color ?? 'rgb(114,114,114)').toString();
       const cueFixationColor = (trial.cue_fixation_color ?? 'rgb(114,114,114)').toString();
@@ -860,7 +873,9 @@
       const useNeutralTrainingRings = isQuestAdaptive || isLearningBlock || isPracticeDiamondTask;
       const showCenterDiamondFlow = isRewardMainTask;
       const useNeutralFeedbackColor = isQuestAdaptive || isLearningBlock || isPracticeDiamondTask;
-      const preStimulusRingMode = isRewardMainTask ? 'neutral' : (useNeutralTrainingRings ? 'neutral' : 'none');
+      const preStimulusRingMode = isRewardMainTask
+        ? (valueRingOnsetPhase === 'placeholders' ? 'value' : 'neutral')
+        : (useNeutralTrainingRings ? 'neutral' : 'none');
       const useAdaptivePracticePrime = trial.adaptive_practice_prime_enabled === true;
 
       // Optional researcher-controlled patch diameter.
@@ -1120,11 +1135,11 @@
           const fbCtx = canvas.getContext('2d');
           if (fbCtx) {
             let fbText = '';
-            let fbColor = '#4caf50';
+            let fbColor = fbColorCorrect;
 
             if (noResponse && tooSlowFeedbackEnabled && !isQuestAdaptive) {
               fbText = fbTextNoResponse;
-              fbColor = '#ffffff';
+              fbColor = fbColorNoResponse;
             } else if (rewardFeedbackEnabled && hasValueCueContext) {
               if (correctness === true) {
                 fbText = `${formatPointsLabel(accruedPointsBeforeTrial)}+${formatPointsLabel(rewardPointsForDisplay)}`;
@@ -1141,7 +1156,7 @@
               fbColor = useNeutralFeedbackColor ? '#ffffff' : '#ffd54f';
             } else if (showFeedback) {
               fbText = (correctness === true) ? fbTextCorrect : (correctness === false) ? fbTextIncorrect : '';
-              fbColor = (correctness === true) ? '#4caf50' : '#ffffff';
+              fbColor = (correctness === true) ? fbColorCorrect : fbColorIncorrect;
             }
 
             if (fbText) {
@@ -1244,6 +1259,7 @@
             showStimulus: !!opts?.showStimulus,
             showMask: !!opts?.showMask,
             ringMode: opts?.ringMode,
+            ringColorOverride: opts?.ringColorOverride,
             cueMode: opts?.cueMode,
             placeholderRingColor,
             cueBackgroundColor,
@@ -1354,6 +1370,7 @@
           showStimulus: false,
           showMask: false,
           ringMode: preStimulusRingMode,
+          ringColorOverride: fixationRingColorEnabled ? fixationRingColor : null,
           cueMode: showCenterDiamondFlow ? 'fixation' : 'none',
           fixationColor: showCenterDiamondFlow ? cueFixationColor : initialFixationColor
         });
