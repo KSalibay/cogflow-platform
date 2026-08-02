@@ -2,6 +2,7 @@ import os
 import json
 import re
 import hashlib
+import secrets
 import math
 import mimetypes
 from datetime import timedelta
@@ -35,6 +36,8 @@ from apps.audit.models import AuditEvent
 from apps.configs.models import ConfigVersion, TaskCreditRow
 from apps.runs.models import RunSession
 from apps.studies.models import (
+    CourseMembership,
+    CourseSection,
     Study,
     StudyResearcherAccess,
     StudyAnalysisReportArtifact,
@@ -67,6 +70,8 @@ from project.api_serializers import (
     PasswordResetConfirmRequestSerializer,
     PasswordResetRequestSerializer,
     AuthRegisterRequestSerializer,
+    CourseEnrollRequestSerializer,
+    CourseSectionCreateRequestSerializer,
     FeedbackSubmitRequestSerializer,
     NewsletterSubscribeRequestSerializer,
     CreateParticipantLinkRequestSerializer,
@@ -169,7 +174,72 @@ def _record_auth_rejection(request, endpoint: str, reason: str, metadata: dict |
 def _can_manage_researcher_resources(request, profile) -> bool:
     if not request.user.is_authenticated:
         return False
-    return profile.role in {profile.ROLE_ADMIN, profile.ROLE_RESEARCHER}
+    return profile.role in {profile.ROLE_ADMIN, profile.ROLE_RESEARCHER, profile.ROLE_INSTRUCTOR}
+
+
+def _can_use_builder(request, profile) -> bool:
+    if not request.user.is_authenticated:
+        return False
+    return profile.role in {
+        profile.ROLE_ADMIN,
+        profile.ROLE_RESEARCHER,
+        profile.ROLE_INSTRUCTOR,
+        profile.ROLE_STUDENT,
+    }
+
+
+def _enrollment_code_digest(raw_code: str) -> str:
+    normalized = re.sub(r"[^A-Z0-9]", "", (raw_code or "").upper())
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
+def _generate_enrollment_code() -> tuple[str, str]:
+    while True:
+        raw = secrets.token_hex(5).upper()
+        display = f"{raw[:5]}-{raw[5:]}"
+        digest = _enrollment_code_digest(display)
+        if not CourseSection.objects.filter(enrollment_code_digest=digest).exists():
+            return display, digest
+
+
+def _course_for_enrollment_code(raw_code: str) -> CourseSection | None:
+    if not (raw_code or "").strip():
+        return None
+    course = CourseSection.objects.filter(
+        enrollment_code_digest=_enrollment_code_digest(raw_code),
+        is_active=True,
+    ).first()
+    if course and course.enrollment_closes_at and course.enrollment_closes_at <= timezone.now():
+        return None
+    return course
+
+
+def _course_instructor_permissions() -> dict:
+    return {
+        "can_run_analysis": True,
+        "can_download_aggregate": True,
+        "can_view_run_rows": True,
+        "can_view_pseudonyms": True,
+        "can_view_full_payload": True,
+        "can_manage_sharing": False,
+        "can_remove_users": False,
+    }
+
+
+def _ensure_course_instructor_access(study: Study, granted_by=None):
+    course = study.course_section
+    if not course or course.instructor_user_id == study.owner_user_id:
+        return None
+    defaults = {
+        "granted_by": granted_by or study.owner_user or course.instructor_user,
+        **_course_instructor_permissions(),
+    }
+    access, _created = StudyResearcherAccess.objects.update_or_create(
+        study=study,
+        user=course.instructor_user,
+        defaults=defaults,
+    )
+    return access
 
 
 def _owner_study_permissions() -> dict:
@@ -231,7 +301,13 @@ def _ensure_owner_access_record(study: Study | None, owner_user, granted_by=None
 def _can_access_analysis_resources(request, profile) -> bool:
     if not request.user.is_authenticated:
         return False
-    return profile.role in {profile.ROLE_ADMIN, profile.ROLE_RESEARCHER, profile.ROLE_ANALYST}
+    return profile.role in {
+        profile.ROLE_ADMIN,
+        profile.ROLE_RESEARCHER,
+        profile.ROLE_INSTRUCTOR,
+        profile.ROLE_STUDENT,
+        profile.ROLE_ANALYST,
+    }
 
 
 def _require_platform_admin(request):

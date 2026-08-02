@@ -2351,6 +2351,19 @@
       btn.addEventListener("click", () => activateView(btn.getAttribute("data-view")));
     });
 
+    document.getElementById("regRequestedRole")?.addEventListener("change", event => {
+      const group = document.getElementById("regEnrollmentCodeGroup");
+      if (group) group.style.display = event.target?.value === "student" ? "" : "none";
+    });
+    document.getElementById("createCourseBtn")?.addEventListener("click", createCourse);
+    document.getElementById("joinCourseBtn")?.addEventListener("click", joinCourse);
+    document.getElementById("courseList")?.addEventListener("click", event => {
+      const rosterButton = event.target.closest("[data-course-roster]");
+      const rotateButton = event.target.closest("[data-course-rotate]");
+      if (rosterButton) showCourseRoster(rosterButton.dataset.courseRoster);
+      if (rotateButton) rotateCourseCode(rotateButton.dataset.courseRotate);
+    });
+
     document.getElementById("portalThemeToggle")?.addEventListener("click", () => {
       applyPortalTheme(currentTheme === "dark" ? "light" : "dark", true);
       if (builderLoaded) {
@@ -2605,6 +2618,10 @@
       document.getElementById("sidebarAvatar").textContent   = (publicName || "?")[0].toUpperCase();
       document.getElementById("dbAdminBtn").style.display    = isAdmin ? "" : "none";
       document.getElementById("navAdmin").style.display      = isAdmin ? "" : "none";
+      const hasCourses = ["instructor", "student"].includes(u.role);
+      document.getElementById("coursesSection").style.display = hasCourses ? "" : "none";
+      document.getElementById("instructorCourseCreate").style.display = u.role === "instructor" ? "" : "none";
+      document.getElementById("studentCourseJoin").style.display = u.role === "student" ? "" : "none";
       applyRoleBasedUiLocks();
       const feedbackContact = document.getElementById("feedbackContact");
       if (feedbackContact) feedbackContact.value = (u.email || "").toString().trim();
@@ -2622,6 +2639,7 @@
       loadCredits(true);
       renderMfaStatusBlock();
       loadStudies();
+      if (hasCourses) loadCourses();
       startStudiesAutoRefresh();
       if (isAdmin) {
         loadAdminUsers();
@@ -2702,6 +2720,7 @@
       const username = (document.getElementById("regUsername")?.value || "").trim();
       const email = (document.getElementById("regEmail")?.value || "").trim();
       const requestedRole = (document.getElementById("regRequestedRole")?.value || "researcher").trim().toLowerCase();
+      const enrollmentCode = (document.getElementById("regEnrollmentCode")?.value || "").trim();
       const password = document.getElementById("regPassword")?.value || "";
       const password2 = document.getElementById("regPassword2")?.value || "";
       if (!fullName || !username || !email || !password) {
@@ -2716,6 +2735,10 @@
         showRegister("Password must be at least 8 characters.");
         return;
       }
+      if (requestedRole === "student" && !enrollmentCode) {
+        showRegister("Enrollment code is required for student registration.");
+        return;
+      }
       if (!(await ensureCsrfReady())) {
         showRegister("Security cookie was not set. Reload and try again.");
         return;
@@ -2725,12 +2748,12 @@
       btn.disabled = true;
       btn.textContent = "Submitting…";
       try {
-        const r = await fetch(`${API}/api/v1/auth/register`, postOpts({ full_name: fullName, username, email, password, requested_role: requestedRole }));
+        const r = await fetch(`${API}/api/v1/auth/register`, postOpts({ full_name: fullName, username, email, password, requested_role: requestedRole, enrollment_code: enrollmentCode }));
         const d = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
 
         document.getElementById("authUsername").value = username;
-        ["regFullName", "regUsername", "regEmail", "regPassword", "regPassword2"].forEach(id => {
+        ["regFullName", "regUsername", "regEmail", "regEnrollmentCode", "regPassword", "regPassword2"].forEach(id => {
           const el = document.getElementById(id);
           if (el) el.value = "";
         });
@@ -2743,6 +2766,87 @@
         btn.disabled = false;
         btn.textContent = "Submit Registration";
       }
+    }
+
+    function setCoursesMessage(message, isError = false) {
+      const element = document.getElementById("coursesMsg");
+      if (!element) return;
+      element.textContent = message || "";
+      element.style.display = message ? "" : "none";
+      element.style.color = isError ? "var(--danger)" : "";
+    }
+
+    async function loadCourses() {
+      const list = document.getElementById("courseList");
+      if (!list || !currentUser || !["instructor", "student"].includes(currentUser.role)) return;
+      try {
+        const response = await fetch(`${API}/api/v1/courses`, { credentials: "include" });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+        const courses = Array.isArray(data.courses) ? data.courses : [];
+        list.innerHTML = courses.length ? courses.map(course => `
+          <div class="panel panel-pad" style="margin-bottom:10px;">
+            <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;">
+              <div>
+                <strong>${esc(course.course_name)}</strong>
+                <div class="inline-note">${esc(course.section_name)} · ${esc(course.membership_role || "member")}</div>
+                <div class="inline-note">${Number(course.student_count || 0)} students · ${Number(course.study_count || 0)} studies${course.enrollment_code_hint ? ` · code ends ${esc(course.enrollment_code_hint)}` : ""}</div>
+              </div>
+              ${currentUser.role === "instructor" ? `<div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn btn-ghost btn-sm" data-course-roster="${course.id}">Roster</button><button class="btn btn-ghost btn-sm" data-course-rotate="${course.id}">New Code</button></div>` : ""}
+            </div>
+            <div id="courseRoster${course.id}" style="margin-top:8px;"></div>
+          </div>`).join("") : `<div class="inline-note">No course sections yet.</div>`;
+      } catch (error) {
+        setCoursesMessage(error?.message || "Could not load courses.", true);
+      }
+    }
+
+    async function createCourse() {
+      const courseName = (document.getElementById("courseName")?.value || "").trim();
+      const sectionName = (document.getElementById("courseSectionName")?.value || "").trim();
+      if (!courseName || !sectionName) return setCoursesMessage("Course name and section are required.", true);
+      try {
+        const response = await fetch(`${API}/api/v1/courses`, postOpts({ course_name: courseName, section_name: sectionName }));
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+        setCoursesMessage(`Course created. Enrollment code: ${data.enrollment_code}`);
+        document.getElementById("courseName").value = "";
+        document.getElementById("courseSectionName").value = "";
+        await loadCourses();
+      } catch (error) { setCoursesMessage(error?.message || "Could not create course.", true); }
+    }
+
+    async function joinCourse() {
+      const enrollmentCode = (document.getElementById("courseEnrollmentCode")?.value || "").trim();
+      if (!enrollmentCode) return setCoursesMessage("Enter an enrollment code.", true);
+      try {
+        const response = await fetch(`${API}/api/v1/courses/enroll`, postOpts({ enrollment_code: enrollmentCode }));
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+        setCoursesMessage(`Joined ${data.course_name} · ${data.section_name}.`);
+        document.getElementById("courseEnrollmentCode").value = "";
+        await loadCourses();
+      } catch (error) { setCoursesMessage(error?.message || "Could not join course.", true); }
+    }
+
+    async function showCourseRoster(courseId) {
+      try {
+        const response = await fetch(`${API}/api/v1/courses/${courseId}/roster`, { credentials: "include" });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+        const target = document.getElementById(`courseRoster${courseId}`);
+        if (target) target.innerHTML = (data.roster || []).map(item => `<div class="inline-note">${esc(item.public_name || item.username)} · ${esc(item.role)} · ${Number(item.study_count || 0)} studies</div>`).join("");
+      } catch (error) { setCoursesMessage(error?.message || "Could not load roster.", true); }
+    }
+
+    async function rotateCourseCode(courseId) {
+      try {
+        const response = await fetch(`${API}/api/v1/courses/${courseId}/enrollment-code`, postOpts({}));
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+        setCoursesMessage(`New enrollment code: ${data.enrollment_code}`);
+        await loadCourses();
+      } catch (error) { setCoursesMessage(error?.message || "Could not rotate code.", true); }
     }
 
     async function doPasswordResetRequest() {

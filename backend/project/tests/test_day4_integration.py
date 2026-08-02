@@ -25,7 +25,7 @@ from apps.audit.models import AuditEvent
 from apps.configs.models import ConfigVersion
 from apps.results.models import ResultEnvelope, TrialResult
 from apps.runs.models import RunSession
-from apps.studies.models import Study
+from apps.studies.models import CourseMembership, CourseSection, Study, StudyResearcherAccess
 from apps.users.services import get_or_create_profile
 
 
@@ -76,6 +76,112 @@ class Day4PublishTransportTests(APITestCase):
         """Backward compat: runtime_mode values other than 'django' must still succeed."""
         resp = self._publish(slug="day4-jatos-mode", extra={"runtime_mode": "home_gear_lsl"})
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+
+
+class CourseWorkflowTests(APITestCase):
+    def setUp(self):
+        self.instructor = User.objects.create_user(username="instructor", password="pass-1234")
+        instructor_profile = get_or_create_profile(self.instructor)
+        instructor_profile.role = instructor_profile.ROLE_INSTRUCTOR
+        instructor_profile.save(update_fields=["role"])
+
+        self.client.force_authenticate(self.instructor)
+        response = self.client.post(
+            reverse("courses"),
+            data={"course_name": "Cognitive Science", "section_name": "Spring A"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.course = CourseSection.objects.get(id=response.data["id"])
+        self.enrollment_code = response.data["enrollment_code"]
+        self.client.force_authenticate(user=None)
+
+    def test_student_registration_enrolls_without_storing_plaintext_code(self):
+        response = self.client.post(
+            reverse("auth-register"),
+            data={
+                "username": "student",
+                "email": "student@example.test",
+                "full_name": "Test Student",
+                "password": "safe-pass-1234",
+                "requested_role": "student",
+                "enrollment_code": self.enrollment_code,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        student = User.objects.get(username="student")
+        self.assertFalse(student.is_active)
+        self.assertTrue(
+            CourseMembership.objects.filter(
+                course_section=self.course,
+                user=student,
+                role=CourseMembership.ROLE_STUDENT,
+            ).exists()
+        )
+        self.course.refresh_from_db()
+        self.assertNotEqual(self.course.enrollment_code_digest, self.enrollment_code)
+        self.assertNotIn(self.enrollment_code, str(self.client.get(reverse("courses")).data))
+
+    def test_code_rotation_revokes_previous_code(self):
+        self.client.force_authenticate(self.instructor)
+        response = self.client.post(reverse("courses-enrollment-code", args=[self.course.id]), format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        new_code = response.data["enrollment_code"]
+
+        student = User.objects.create_user(username="student", password="pass-1234")
+        student_profile = get_or_create_profile(student)
+        student_profile.role = student_profile.ROLE_STUDENT
+        student_profile.save(update_fields=["role"])
+        self.client.force_authenticate(student)
+        old_response = self.client.post(
+            reverse("courses-enroll"), data={"enrollment_code": self.enrollment_code}, format="json"
+        )
+        new_response = self.client.post(reverse("courses-enroll"), data={"enrollment_code": new_code}, format="json")
+        self.assertEqual(old_response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(new_response.status_code, status.HTTP_200_OK)
+
+    def test_course_publish_preserves_student_ownership_and_grants_instructor_access(self):
+        student = User.objects.create_user(username="student", password="pass-1234")
+        student_profile = get_or_create_profile(student)
+        student_profile.role = student_profile.ROLE_STUDENT
+        student_profile.save(update_fields=["role"])
+        CourseMembership.objects.create(
+            course_section=self.course,
+            user=student,
+            role=CourseMembership.ROLE_STUDENT,
+        )
+        self.client.force_authenticate(student)
+        response = self.client.post(
+            reverse("configs-publish"),
+            data={
+                "study_slug": "student-course-study",
+                "study_name": "Student Course Study",
+                "config_version_label": "v1",
+                "builder_version": "test",
+                "runtime_mode": "django",
+                "course_section_id": self.course.id,
+                "config": {"task_type": "rdm", "experiment_type": "trial-based"},
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        study = Study.objects.get(slug="student-course-study")
+        self.assertEqual(study.owner_user, student)
+        self.assertEqual(study.course_section, self.course)
+        access = StudyResearcherAccess.objects.get(study=study, user=self.instructor)
+        self.assertTrue(access.can_view_full_payload)
+        self.assertTrue(access.can_manage_sharing is False)
+
+    def test_student_cannot_view_course_roster(self):
+        student = User.objects.create_user(username="student", password="pass-1234")
+        student_profile = get_or_create_profile(student)
+        student_profile.role = student_profile.ROLE_STUDENT
+        student_profile.save(update_fields=["role"])
+        CourseMembership.objects.create(course_section=self.course, user=student, role=CourseMembership.ROLE_STUDENT)
+        self.client.force_authenticate(student)
+        response = self.client.get(reverse("courses-roster", args=[self.course.id]))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
 
 class Day4RuntimeBackendTests(APITestCase):
@@ -1217,24 +1323,25 @@ class Day8PlatformAdminUserManagementTests(APITestCase):
         self.client.force_authenticate(user=None)
         self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_admin_can_create_user_with_role(self):
+    def test_admin_can_create_users_with_education_roles(self):
         self.client.force_authenticate(user=self.admin)
-        resp = self.client.post(
-            reverse("admin-users"),
-            data={
-                "username": "analyst_new",
-                "password": "pass-1234",
-                "email": "analyst_new@example.com",
-                "role": "analyst",
-                "is_active": True,
-            },
-            format="json",
-        )
+        for role in ("instructor", "student"):
+            with self.subTest(role=role):
+                resp = self.client.post(
+                    reverse("admin-users"),
+                    data={
+                        "username": f"{role}_new",
+                        "password": "pass-1234",
+                        "email": f"{role}_new@example.com",
+                        "role": role,
+                        "is_active": True,
+                    },
+                    format="json",
+                )
+                self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+                created = User.objects.get(username=f"{role}_new")
+                self.assertEqual(created.profile.role, role)
         self.client.force_authenticate(user=None)
-
-        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
-        created = User.objects.get(username="analyst_new")
-        self.assertEqual(created.profile.role, "analyst")
 
     def test_admin_can_update_role_and_delete_user(self):
         target = User.objects.create_user(username="participant_to_manage", password="pass-1234")

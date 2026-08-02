@@ -1624,6 +1624,8 @@
           <td>
             <select class="admin-role-select" data-user-id="${Number(u.id)}" style="border:1.5px solid var(--line);border-radius:8px;padding:4px 8px;font-size:.8rem;font-family:inherit;outline:none;background:var(--bg);color:var(--ink);max-width:180px;">
               <option value="researcher" ${u.role === "researcher" ? "selected" : ""}>researcher</option>
+              <option value="instructor" ${u.role === "instructor" ? "selected" : ""}>instructor</option>
+              <option value="student" ${u.role === "student" ? "selected" : ""}>student</option>
               <option value="analyst" ${u.role === "analyst" ? "selected" : ""}>analyst</option>
               <option value="participant" ${u.role === "participant" ? "selected" : ""}>participant</option>
               <option value="platform_admin" ${u.role === "platform_admin" ? "selected" : ""}>platform_admin</option>

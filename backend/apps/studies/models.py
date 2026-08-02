@@ -13,6 +13,13 @@ class Study(models.Model):
         blank=True,
         related_name="owned_studies",
     )
+    course_section = models.ForeignKey(
+        "CourseSection",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="studies",
+    )
     runtime_mode = models.CharField(max_length=20, choices=RUNTIME_MODE_CHOICES, default=RUNTIME_MODE_DJANGO)
     launch_properties_json = models.JSONField(default=dict, blank=True)
     is_active = models.BooleanField(default=True)
@@ -24,6 +31,59 @@ class Study(models.Model):
 
     def __str__(self) -> str:
         return self.slug
+
+
+class CourseSection(models.Model):
+    course_name = models.CharField(max_length=255)
+    section_name = models.CharField(max_length=120)
+    instructor_user = models.ForeignKey(
+        "auth.User",
+        on_delete=models.PROTECT,
+        related_name="instructed_course_sections",
+    )
+    enrollment_code_digest = models.CharField(max_length=64, unique=True)
+    enrollment_code_hint = models.CharField(max_length=4, blank=True, default="")
+    is_active = models.BooleanField(default=True)
+    enrollment_closes_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["instructor_user", "course_name", "section_name"],
+                name="uniq_instructor_course_section",
+            ),
+        ]
+        ordering = ["course_name", "section_name"]
+
+    def __str__(self) -> str:
+        return f"{self.course_name} / {self.section_name}"
+
+
+class CourseMembership(models.Model):
+    ROLE_INSTRUCTOR = "instructor"
+    ROLE_TEACHING_ASSISTANT = "teaching_assistant"
+    ROLE_STUDENT = "student"
+    ROLE_CHOICES = [
+        (ROLE_INSTRUCTOR, "Instructor"),
+        (ROLE_TEACHING_ASSISTANT, "Teaching Assistant"),
+        (ROLE_STUDENT, "Student"),
+    ]
+
+    course_section = models.ForeignKey(CourseSection, on_delete=models.CASCADE, related_name="memberships")
+    user = models.ForeignKey("auth.User", on_delete=models.CASCADE, related_name="course_memberships")
+    role = models.CharField(max_length=30, choices=ROLE_CHOICES)
+    joined_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["course_section", "user"], name="uniq_course_section_user"),
+        ]
+        ordering = ["course_section_id", "role", "user_id"]
+
+    def __str__(self) -> str:
+        return f"{self.course_section_id}:{self.user_id}:{self.role}"
 
 
 class StudyResearcherAccess(models.Model):

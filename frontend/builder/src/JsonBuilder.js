@@ -14509,7 +14509,7 @@ class JsonBuilder {
             }
         };
 
-        const requestPublishMetadata = ({ initialName = '', initialSlug = '', initialTaskLabel = '' }) => {
+        const requestPublishMetadata = ({ initialName = '', initialSlug = '', initialTaskLabel = '', courses = [], initialCourseId = '' }) => {
             const modalEl = document.getElementById('publishMetadataModal');
             const bootstrapApi = window.bootstrap;
             if (!modalEl || !bootstrapApi?.Modal) {
@@ -14519,10 +14519,24 @@ class JsonBuilder {
             const nameInput = modalEl.querySelector('#publishStudyName');
             const slugInput = modalEl.querySelector('#publishStudySlug');
             const versionInput = modalEl.querySelector('#publishConfigVersion');
+            const courseGroup = modalEl.querySelector('#publishCourseGroup');
+            const courseSelect = modalEl.querySelector('#publishCourseSection');
             const confirmBtn = modalEl.querySelector('#publishMetaConfirmBtn');
             const errorEl = modalEl.querySelector('#publishMetaError');
             if (!nameInput || !slugInput || !versionInput || !confirmBtn || !errorEl) {
                 return Promise.resolve(null);
+            }
+
+            if (courseGroup && courseSelect) {
+                courseSelect.innerHTML = '<option value="">Personal study</option>';
+                courses.forEach((course) => {
+                    const option = document.createElement('option');
+                    option.value = String(course.id);
+                    option.textContent = `${course.course_name} · ${course.section_name}`;
+                    courseSelect.appendChild(option);
+                });
+                courseSelect.value = String(initialCourseId || '');
+                courseGroup.classList.toggle('d-none', courses.length === 0);
             }
 
             return new Promise((resolve) => {
@@ -14593,6 +14607,7 @@ class JsonBuilder {
                         study_name: studyName,
                         study_slug: studySlug,
                         task_label: taskLabel,
+                        course_section_id: courseSelect?.value ? Number(courseSelect.value) : null,
                     });
                     modal.hide();
                 };
@@ -14664,6 +14679,17 @@ class JsonBuilder {
             return `${taskType} ${stamp}`;
         })();
 
+        let courses = [];
+        try {
+            const courseResponse = await fetch(`${platformUrl}/api/v1/courses`, { credentials: 'include' });
+            if (courseResponse.ok) {
+                const courseData = await courseResponse.json();
+                courses = Array.isArray(courseData?.courses) ? courseData.courses : [];
+            }
+        } catch {
+            courses = [];
+        }
+
         let studyName = (
             (typeof window.COGFLOW_STUDY_NAME === 'string' && window.COGFLOW_STUDY_NAME.trim()) ||
             (typeof savedMeta.study_name === 'string' && savedMeta.study_name.trim()) ||
@@ -14692,12 +14718,17 @@ class JsonBuilder {
             initialName: studyName,
             initialSlug: studySlug,
             initialTaskLabel: taskLabel,
+            courses,
+            initialCourseId: savedMeta.course_section_id || '',
         });
+
+        let courseSectionId = null;
 
         if (modalMeta) {
             studyName = modalMeta.study_name;
             studySlug = modalMeta.study_slug;
             taskLabel = modalMeta.task_label;
+            courseSectionId = modalMeta.course_section_id;
         } else {
             const enteredName = safePrompt('Enter study name for Platform Publish:', studyName || defaultName);
             if (enteredName === null) {
@@ -14735,7 +14766,7 @@ class JsonBuilder {
         }
 
         try {
-            const meta = { study_name: studyName, study_slug: studySlug, config_version: taskLabel };
+            const meta = { study_name: studyName, study_slug: studySlug, config_version: taskLabel, course_section_id: courseSectionId };
             localStorage.setItem(publishMetaKey, JSON.stringify(meta));
             window.COGFLOW_STUDY_NAME = studyName;
             window.COGFLOW_STUDY_SLUG = studySlug;
@@ -14758,6 +14789,7 @@ class JsonBuilder {
             runtime_mode: 'django',
             config,
         };
+        if (courseSectionId) payload.course_section_id = courseSectionId;
 
         this.showValidationResult('success', `Publishing to ${platformUrl}…`);
 

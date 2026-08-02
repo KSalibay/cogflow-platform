@@ -15,6 +15,7 @@ class PublishConfigRequestSerializer(serializers.Serializer):
     config_version_label = serializers.CharField(max_length=50)
     builder_version = serializers.CharField(max_length=50, required=False, allow_blank=True)
     runtime_mode = serializers.ChoiceField(choices=RUNTIME_MODE_CHOICES, default=RUNTIME_MODE_DJANGO)
+    course_section_id = serializers.IntegerField(required=False, allow_null=True, min_value=1)
     config = serializers.JSONField()
 
 
@@ -76,10 +77,33 @@ class AuthRegisterRequestSerializer(serializers.Serializer):
     full_name = serializers.CharField(max_length=255)
     password = serializers.CharField(max_length=128)
     requested_role = serializers.ChoiceField(
-        choices=[UserProfile.ROLE_RESEARCHER, UserProfile.ROLE_ANALYST],
+        choices=[
+            UserProfile.ROLE_RESEARCHER,
+            UserProfile.ROLE_INSTRUCTOR,
+            UserProfile.ROLE_STUDENT,
+            UserProfile.ROLE_ANALYST,
+        ],
         required=False,
         default=UserProfile.ROLE_RESEARCHER,
     )
+    enrollment_code = serializers.CharField(max_length=64, required=False, allow_blank=True, default="")
+
+    def validate(self, attrs):
+        if attrs.get("requested_role") == UserProfile.ROLE_STUDENT and not attrs.get("enrollment_code", "").strip():
+            raise serializers.ValidationError({"enrollment_code": "An enrollment code is required for student registration."})
+        if attrs.get("requested_role") != UserProfile.ROLE_STUDENT and attrs.get("enrollment_code", "").strip():
+            raise serializers.ValidationError({"enrollment_code": "Enrollment codes are only used for student registration."})
+        return attrs
+
+
+class CourseSectionCreateRequestSerializer(serializers.Serializer):
+    course_name = serializers.CharField(max_length=255)
+    section_name = serializers.CharField(max_length=120)
+    enrollment_closes_at = serializers.DateTimeField(required=False, allow_null=True)
+
+
+class CourseEnrollRequestSerializer(serializers.Serializer):
+    enrollment_code = serializers.CharField(max_length=64)
 
 
 class TotpSetupRequestSerializer(serializers.Serializer):

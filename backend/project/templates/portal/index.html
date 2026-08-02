@@ -1363,8 +1363,14 @@
               <label for="regRequestedRole">Requested role</label>
               <select id="regRequestedRole" style="border:1.5px solid var(--line);border-radius:8px;padding:7px 11px;font-size:.88rem;font-family:inherit;outline:none;background:var(--bg);color:var(--ink);width:100%;">
                 <option value="researcher" selected>Researcher</option>
+                <option value="instructor">Instructor</option>
+                <option value="student">Student</option>
                 <option value="analyst">Analyst</option>
               </select>
+            </div>
+            <div id="regEnrollmentCodeGroup" style="display:none;">
+              <label for="regEnrollmentCode">Enrollment code</label>
+              <input type="text" id="regEnrollmentCode" autocomplete="off" placeholder="ABCDE-12345" />
             </div>
             <div>
               <label for="regPassword">Password</label>
@@ -2192,6 +2198,8 @@
                   <label for="adminNewRole">Role</label>
                   <select id="adminNewRole" style="border:1.5px solid var(--line);border-radius:8px;padding:7px 11px;font-size:.88rem;font-family:inherit;outline:none;background:var(--bg);color:var(--ink);max-width:260px;">
                     <option value="researcher">researcher</option>
+                    <option value="instructor">instructor</option>
+                    <option value="student">student</option>
                     <option value="analyst">analyst</option>
                     <option value="participant">participant</option>
                     <option value="platform_admin">platform_admin</option>
@@ -2251,6 +2259,34 @@
                   <button class="btn btn-primary btn-sm" id="changePwdBtn">Update Password</button>
                 </div>
               </form>
+
+              <div class="account-section" id="coursesSection" style="display:none;">
+                <h3>Courses</h3>
+                <div id="coursesMsg" class="inline-note" style="display:none;margin-bottom:12px;"></div>
+                <div id="instructorCourseCreate" style="display:none;">
+                  <div class="account-field">
+                    <label for="courseName">Course name</label>
+                    <input type="text" id="courseName" placeholder="Cognitive Psychology" />
+                  </div>
+                  <div class="account-field">
+                    <label for="courseSectionName">Section</label>
+                    <input type="text" id="courseSectionName" placeholder="Spring 2026 · Section A" />
+                  </div>
+                  <div class="account-actions">
+                    <button class="btn btn-primary btn-sm" id="createCourseBtn">Create Course Section</button>
+                  </div>
+                </div>
+                <div id="studentCourseJoin" style="display:none;">
+                  <div class="account-field">
+                    <label for="courseEnrollmentCode">Enrollment code</label>
+                    <input type="text" id="courseEnrollmentCode" autocomplete="off" placeholder="ABCDE-12345" />
+                  </div>
+                  <div class="account-actions">
+                    <button class="btn btn-primary btn-sm" id="joinCourseBtn">Join Course</button>
+                  </div>
+                </div>
+                <div id="courseList" style="margin-top:14px;"></div>
+              </div>
 
               <div class="account-section" id="mfaSection">
                 <h3>Two-Factor Authentication (TOTP)</h3>

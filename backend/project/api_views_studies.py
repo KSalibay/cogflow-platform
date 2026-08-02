@@ -1507,6 +1507,18 @@ class PublishConfigView(APIView):
         requested_study_slug = data["study_slug"]
         resolved_study_slug = requested_study_slug
         study_slug_adjusted = False
+        requested_course_id = data.get("course_section_id")
+        course_section = None
+        if requested_course_id is not None:
+            if not request.user.is_authenticated:
+                return Response({"error": "Authentication required for course studies"}, status=status.HTTP_401_UNAUTHORIZED)
+            membership = CourseMembership.objects.filter(
+                course_section_id=requested_course_id,
+                user=request.user,
+            ).select_related("course_section").first()
+            if not membership:
+                return Response({"error": "You are not a member of this course section"}, status=status.HTTP_403_FORBIDDEN)
+            course_section = membership.course_section
 
         existing_study = Study.objects.filter(slug=requested_study_slug).first()
         if existing_study and request.user.is_authenticated:
@@ -1543,12 +1555,15 @@ class PublishConfigView(APIView):
             study = existing_study
             study.name = data["study_name"]
             study.runtime_mode = data["runtime_mode"]
-            study.save(update_fields=["name", "runtime_mode"])
+            if requested_course_id is not None:
+                study.course_section = course_section
+            study.save(update_fields=["name", "runtime_mode", "course_section"])
         else:
             study = Study.objects.create(
                 slug=resolved_study_slug,
                 name=data["study_name"],
                 runtime_mode=data["runtime_mode"],
+                course_section=course_section,
             )
 
         if request.user.is_authenticated:
@@ -1569,6 +1584,8 @@ class PublishConfigView(APIView):
                     user=request.user,
                     defaults={"granted_by": request.user},
                 )
+
+            _ensure_course_instructor_access(study, granted_by=request.user)
 
         requested_version_label = data["config_version_label"]
         incoming_task_type = _extract_config_task_type(data.get("config"))
@@ -1644,6 +1661,7 @@ class PublishConfigView(APIView):
                 "study_slug": study.slug,
                 "owner_username": _get_study_owner_username(study),
                 "owner_usernames": _get_study_owner_usernames(study),
+                "course_section_id": study.course_section_id,
                 "dashboard_url": f"/portal/studies/{study.slug}",
             },
             status=status.HTTP_201_CREATED,
@@ -2028,11 +2046,12 @@ class ShareStudyView(APIView):
         target_profile = get_or_create_profile(target_user)
         if target_profile.role not in {
             target_profile.ROLE_RESEARCHER,
+            target_profile.ROLE_INSTRUCTOR,
             target_profile.ROLE_ADMIN,
             target_profile.ROLE_ANALYST,
         }:
             return Response(
-                {"error": "Only researcher/admin/analyst accounts can receive study shares"},
+                {"error": "Only researcher/instructor/admin/analyst accounts can receive study shares"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -2118,6 +2137,7 @@ class ShareStudyValidateUserView(APIView):
         target_profile = get_or_create_profile(target_user)
         eligible = target_profile.role in {
             target_profile.ROLE_RESEARCHER,
+            target_profile.ROLE_INSTRUCTOR,
             target_profile.ROLE_ANALYST,
             target_profile.ROLE_ADMIN,
         }

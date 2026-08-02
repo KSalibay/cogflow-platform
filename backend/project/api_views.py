@@ -1,4 +1,10 @@
 from .api_views_credits import CreditsView, CreditsPublicView
+from .api_views_courses import (
+    CourseEnrollView,
+    CourseEnrollmentCodeView,
+    CourseRosterView,
+    CourseSectionsView,
+)
 from .api_views_auth import (
     AuthLoginView,
     AuthCsrfView,

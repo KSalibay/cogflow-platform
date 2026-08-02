@@ -77,6 +77,11 @@ class AuthRegisterView(APIView):
         full_name = str(data.get("full_name") or "").strip()
         password = data["password"]
         requested_role = data.get("requested_role") or UserProfile.ROLE_RESEARCHER
+        enrollment_code = str(data.get("enrollment_code") or "").strip()
+        course_section = _course_for_enrollment_code(enrollment_code) if enrollment_code else None
+
+        if requested_role == UserProfile.ROLE_STUDENT and not course_section:
+            return Response({"error": "Enrollment code is invalid, closed, or expired"}, status=status.HTTP_400_BAD_REQUEST)
 
         if not username:
             return Response({"error": "Username is required"}, status=status.HTTP_400_BAD_REQUEST)
@@ -98,12 +103,24 @@ class AuthRegisterView(APIView):
         profile.public_name = full_name
         profile.save(update_fields=["role", "public_name"])
 
+        if course_section:
+            CourseMembership.objects.create(
+                course_section=course_section,
+                user=user,
+                role=CourseMembership.ROLE_STUDENT,
+            )
+
         record_audit(
             action="auth_register_requested",
             resource_type="user",
             resource_id=user.id,
             actor=username,
-            metadata={"email": email, "requested_role": requested_role, "default_role": profile.role},
+            metadata={
+                "email": email,
+                "requested_role": requested_role,
+                "default_role": profile.role,
+                "course_section_id": course_section.id if course_section else None,
+            },
         )
 
         # Registration mail should not block account creation if SMTP is temporarily unavailable.

@@ -11,12 +11,16 @@ class UserProfile(models.Model):
 
     ROLE_ADMIN = "platform_admin"
     ROLE_RESEARCHER = "researcher"
+    ROLE_INSTRUCTOR = "instructor"
+    ROLE_STUDENT = "student"
     ROLE_ANALYST = "analyst"
     ROLE_PARTICIPANT = "participant"
 
     ROLE_CHOICES = [
         (ROLE_ADMIN, "Platform Admin"),
         (ROLE_RESEARCHER, "Researcher"),
+        (ROLE_INSTRUCTOR, "Instructor"),
+        (ROLE_STUDENT, "Student"),
         (ROLE_ANALYST, "Analyst"),
         (ROLE_PARTICIPANT, "Participant"),
     ]
