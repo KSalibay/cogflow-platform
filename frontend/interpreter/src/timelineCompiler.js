@@ -2353,15 +2353,104 @@
       return items.some((it) => isInstructionLikeItem(it));
     };
 
+    const getMiniblockStructure = (blockItem) => {
+      if (!isObject(blockItem)) return null;
+      return (
+        (isObject(blockItem.miniblock_structure) && blockItem.miniblock_structure)
+        || (isObject(blockItem.parameter_values?.miniblock_structure) && blockItem.parameter_values.miniblock_structure)
+        || (isObject(blockItem.parameters?.miniblock_structure) && blockItem.parameters.miniblock_structure)
+        || null
+      );
+    };
+
+    const miniblockConditionKeys = (blockItem) => {
+      const sources = Array.isArray(blockItem?._miniblock_condition_sources)
+        ? blockItem._miniblock_condition_sources
+        : [blockItem];
+      const keys = new Set();
+      const constantsByKey = new Map();
+      const isPrimitive = (value) => value === null || ['string', 'number', 'boolean'].includes(typeof value);
+
+      for (const source of sources) {
+        const values = isObject(source?.parameter_values)
+          ? source.parameter_values
+          : (isObject(source?.parameters) ? source.parameters : {});
+        for (const [key, raw] of Object.entries(values)) {
+          if (key === 'miniblock_structure') continue;
+          if (Array.isArray(raw)) {
+            const options = raw.filter(isPrimitive);
+            if (new Set(options.map((value) => JSON.stringify(value))).size > 1) keys.add(key);
+            continue;
+          }
+          if (!isPrimitive(raw)) continue;
+          if (!constantsByKey.has(key)) constantsByKey.set(key, new Set());
+          constantsByKey.get(key).add(JSON.stringify(raw));
+        }
+      }
+
+      for (const [key, values] of constantsByKey.entries()) {
+        if (values.size > 1) keys.add(key);
+      }
+      return Array.from(keys).sort();
+    };
+
+    const stratifyTrialsAcrossMiniblocks = (trials, capacities, blockItem, mb) => {
+      const src = Array.isArray(trials) ? trials : [];
+      if (mb.counterbalance_conditions !== true || capacities.length < 2) return src;
+
+      const conditionKeys = miniblockConditionKeys(blockItem);
+      if (conditionKeys.length === 0) return src;
+
+      const seedRaw = mb.seed ?? blockItem.seed;
+      const seedText = (seedRaw ?? '').toString().trim();
+      const rng = seedText ? mulberry32(hashSeedToUint32(seedText)) : Math.random;
+      const shuffleWithRng = (items) => {
+        const out = items.slice();
+        for (let i = out.length - 1; i > 0; i--) {
+          const j = Math.floor(rng() * (i + 1));
+          [out[i], out[j]] = [out[j], out[i]];
+        }
+        return out;
+      };
+
+      const groups = new Map();
+      for (const trial of src) {
+        const signature = JSON.stringify(conditionKeys.map((key) => trial?.[key] ?? null));
+        if (!groups.has(signature)) groups.set(signature, []);
+        groups.get(signature).push(trial);
+      }
+
+      const buckets = capacities.map(() => []);
+      const remaining = capacities.slice();
+      const orderedGroups = shuffleWithRng(Array.from(groups.values()))
+        .sort((left, right) => right.length - left.length);
+      let cursor = Math.floor(rng() * buckets.length);
+
+      for (const group of orderedGroups) {
+        for (const trial of shuffleWithRng(group)) {
+          let selected = -1;
+          for (let offset = 0; offset < buckets.length; offset++) {
+            const candidate = (cursor + offset) % buckets.length;
+            if (remaining[candidate] > 0) {
+              selected = candidate;
+              break;
+            }
+          }
+          if (selected === -1) return src;
+          buckets[selected].push(trial);
+          remaining[selected] -= 1;
+          cursor = (selected + 1) % buckets.length;
+        }
+      }
+
+      return buckets.flatMap((bucket) => shuffleWithRng(bucket));
+    };
+
     const applyMiniblockStructureToExpandedTrials = (expandedTrials, blockItem) => {
       const src = Array.isArray(expandedTrials) ? expandedTrials : [];
       if (src.length < 2 || !isObject(blockItem)) return src;
 
-      const mb =
-        (isObject(blockItem.miniblock_structure) && blockItem.miniblock_structure)
-        || (isObject(blockItem.parameter_values?.miniblock_structure) && blockItem.parameter_values.miniblock_structure)
-        || (isObject(blockItem.parameters?.miniblock_structure) && blockItem.parameters.miniblock_structure)
-        || null;
+      const mb = getMiniblockStructure(blockItem);
       if (!mb || mb.enabled !== true) return src;
 
       const totalTrials = src.length;
@@ -2409,6 +2498,10 @@
 
       const insertAfter = Array.from(insertAfterSet).sort((a, b) => a - b);
       if (insertAfter.length === 0) return src;
+      const capacities = insertAfter
+        .concat(totalTrials)
+        .map((boundary, index, boundaries) => boundary - (index > 0 ? boundaries[index - 1] : 0));
+      const orderedTrials = stratifyTrialsAcrossMiniblocks(src, capacities, blockItem, mb);
 
       const breakMessage = (
         typeof mb.break_message === 'string' && mb.break_message.trim() !== ''
@@ -2436,15 +2529,22 @@
 
       const extractRewardPoints = (row) => {
         if (!isObject(row)) return null;
-        const direct = Number(row.reward_points_awarded);
-        if (Number.isFinite(direct)) return direct;
+        const toPresentFiniteNumber = (raw) => {
+          if (raw === undefined || raw === null) return null;
+          if (typeof raw === 'string' && raw.trim() === '') return null;
+          const value = Number(raw);
+          return Number.isFinite(value) ? value : null;
+        };
 
-        const legacy = Number(row.reward_points);
-        if (Number.isFinite(legacy)) return legacy;
+        const direct = toPresentFiniteNumber(row.reward_points_awarded);
+        if (direct !== null) return direct;
 
-        const totalAfter = Number(row.reward_total_points_after_trial);
-        const totalBefore = Number(row.reward_total_points_before_trial);
-        if (Number.isFinite(totalAfter) && Number.isFinite(totalBefore)) {
+        const legacy = toPresentFiniteNumber(row.reward_points);
+        if (legacy !== null) return legacy;
+
+        const totalAfter = toPresentFiniteNumber(row.reward_total_points_after_trial);
+        const totalBefore = toPresentFiniteNumber(row.reward_total_points_before_trial);
+        if (totalAfter !== null && totalBefore !== null) {
           return totalAfter - totalBefore;
         }
 
@@ -2479,7 +2579,7 @@
             if (Number.isFinite(pts)) currentBlockPoints += pts;
           }
 
-          const currentBlockDisplay = Math.max(1, Math.min(totalBlocksDisplay, breakIdx1Based + 1));
+          const currentBlockDisplay = Math.max(1, Math.min(totalBlocksDisplay, breakIdx1Based));
 
           const statsLines = [];
           statsLines.push(`Current block: ${currentBlockDisplay} / ${totalBlocksDisplay}`);
@@ -2510,7 +2610,7 @@
           task_type: 'miniblock-break',
           miniblock_break_index: breakIdx1Based,
           miniblock_break_total: breakCount,
-          miniblock_block_index: Math.max(1, Math.min(totalBlocksDisplay, breakIdx1Based + 1)),
+          miniblock_block_index: Math.max(1, Math.min(totalBlocksDisplay, breakIdx1Based)),
           miniblock_block_total: totalBlocksDisplay,
           miniblock_forced_wait: forceWait
         }
@@ -2518,8 +2618,8 @@
 
       const out = [];
       let nextBreakPointer = 0;
-      for (let i = 0; i < src.length; i++) {
-        out.push(src[i]);
+      for (let i = 0; i < orderedTrials.length; i++) {
+        out.push(orderedTrials[i]);
         while (nextBreakPointer < insertAfter.length && insertAfter[nextBreakPointer] === i + 1) {
           out.push(makeBreakTrial(nextBreakPointer + 1));
           nextBreakPointer += 1;
@@ -2590,13 +2690,30 @@
             ? item.timeline
             : (Array.isArray(item.components) ? item.components : []));
 
-        const childChunks = chunkItemsForShuffle(childItems).map((chunk) => expandTimeline(chunk, opts, level + 1));
+        const childBlocks = childItems.filter((child) => isObject(child) && child.type === 'block');
+        const sharedMiniblock = childBlocks.length === childItems.length && childBlocks.length > 1
+          ? getMiniblockStructure(childBlocks[0])
+          : null;
+        const hasSharedMiniblock = sharedMiniblock?.enabled === true && childBlocks.every((child) => {
+          const candidate = getMiniblockStructure(child);
+          return candidate?.enabled === true && JSON.stringify(candidate) === JSON.stringify(sharedMiniblock);
+        });
+        const childOpts = hasSharedMiniblock ? { ...(opts || {}), suppressMiniblockStructure: true } : opts;
+        const childChunks = chunkItemsForShuffle(childItems).map((chunk) => expandTimeline(chunk, childOpts, level + 1));
         const shouldShuffle = item.randomizable_across_markers !== false;
         const orderedChildChunks = shouldShuffle
           ? shuffleChunksPreservingInstructionLike(childChunks)
           : childChunks;
-        for (const expandedChunk of orderedChildChunks) {
-          out.push(...expandedChunk);
+        if (hasSharedMiniblock) {
+          const sharedBlock = {
+            ...childBlocks[0],
+            _miniblock_condition_sources: childBlocks
+          };
+          out.push(...applyMiniblockStructureToExpandedTrials(orderedChildChunks.flat(), sharedBlock));
+        } else {
+          for (const expandedChunk of orderedChildChunks) {
+            out.push(...expandedChunk);
+          }
         }
         return;
       }
@@ -2622,7 +2739,9 @@
           out.push(item);
         } else {
           const expandedBlockTrials = expandBlock(item, opts);
-          out.push(...applyMiniblockStructureToExpandedTrials(expandedBlockTrials, item));
+          out.push(...((opts && opts.suppressMiniblockStructure === true)
+            ? expandedBlockTrials
+            : applyMiniblockStructureToExpandedTrials(expandedBlockTrials, item)));
         }
         return;
       }
