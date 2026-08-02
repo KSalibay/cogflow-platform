@@ -2787,7 +2787,7 @@
     // mw-probe jitter scheduling:
     // Place probes inside surrounding generated block trials (before and/or after
     // the marker position), so each loop iteration can sample a fresh interruption point.
-    for (let i = 0; i < out.length; i++) {
+    for (let i = 0; i < out.length && opts?.taskType !== 'soc-dashboard'; i++) {
       const probe = out[i];
       if (!isObject(probe) || probe.type !== 'mw-probe') continue;
 
@@ -3179,6 +3179,7 @@
     };
 
     const expandedRaw = expandTimeline(config.timeline, {
+      taskType,
       preserveBlocksForComponentTypes: preserveBlocksFor,
       expandNbackSequences: experimentType === 'trial-based',
       defaultGeneratedTrialDurationMs,

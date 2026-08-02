@@ -5320,6 +5320,13 @@
 
     const endTrial = (reason) => {
       if (ended) return;
+
+      const subtaskEndReason = reason === 'timeout' ? 'session_timeout' : (reason || 'session_end');
+      for (let i = 0; i < subtaskForceEnd.length; i++) {
+        if (!windowHasStarted[i]) continue;
+        forceEndWindow(i, subtaskEndReason);
+      }
+
       ended = true;
 
       clearAllTimers();
@@ -5344,6 +5351,28 @@
         active_app: 'tasks',
         events,
         subtasks_summary: {
+          sart_like: sartStates
+            .map((st, idx) => {
+              if (!st) return null;
+              const presented = Number(st.presented || 0);
+              const finalized = st.finalized instanceof Set ? st.finalized.size : 0;
+              const correct = Number(st.hits || 0) + Number(st.correct_rejects || 0);
+
+              return {
+                subtask_index: idx,
+                subtask_title: st.title ?? null,
+                started: !!st.started,
+                ended: !!st.ended,
+                presented,
+                finalized,
+                hits: Number(st.hits || 0),
+                misses: Number(st.misses || 0),
+                false_alarms: Number(st.false_alarms || 0),
+                correct_rejects: Number(st.correct_rejects || 0),
+                accuracy: finalized > 0 ? (correct / finalized) : null
+              };
+            })
+            .filter(Boolean),
           flanker_like: flankerStates
             .map((st, idx) => {
               if (!st) return null;
