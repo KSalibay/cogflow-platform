@@ -6,7 +6,9 @@
   "scripts": {
     "bench:web-timing": "node web_timing_benchmark.js",
     "bench:study-runtime": "node study_runtime_benchmark.js",
-    "bench:portal-links-multirun": "node portal_link_multirun_benchmark.js"
+    "bench:portal-links-multirun": "node portal_link_multirun_benchmark.js",
+    "bench:jspsych-timing": "node jspsych_timing_probe.js",
+    "bench:jspsych-timing-headless": "node jspsych_timing_probe.js --headless"
   },
   "devDependencies": {
     "playwright": "^1.60.0"
