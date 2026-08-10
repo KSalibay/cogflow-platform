@@ -788,6 +788,7 @@
       sb.className = "status-bar"; sb.textContent = `Generating links for ${slug}…`;
       try {
         const opts = (options && typeof options === "object") ? options : {};
+        const expiresHours = Math.max(1, Math.min(720, parseInt(document.getElementById("generateLinksExpiresHours")?.value || "168", 10) || 168));
         const r = await fetch(`${API}/api/v1/studies/${encodeURIComponent(slug)}/participant-links`,
           postOpts({
             participant_external_id: pid || null,
@@ -795,7 +796,7 @@
             use_flow_variants: !!opts.use_flow_variants,
             task_order: Array.isArray(opts.task_order) ? opts.task_order : [],
             task_order_strict: !!opts.task_order_strict,
-            expires_in_hours: 72,
+            expires_in_hours: expiresHours,
             completion_redirect_url: completionRedirect || null,
             abort_redirect_url: abortRedirect || null,
           }));
@@ -921,6 +922,7 @@
       const completionUrl = (document.getElementById("integrationCompletionUrl")?.value || "").trim();
       const abortUrl = (document.getElementById("integrationAbortUrl")?.value || "").trim();
       const useFlowVariants = !!document.getElementById("integrationUseFlowVariants")?.checked;
+      const sonaExpiresHours = Math.max(1, Math.min(720, parseInt(document.getElementById("sonaExpiresHours")?.value || "168", 10) || 168));
 
       if (!slug) {
         statusEl.className = "status-bar error";
@@ -941,7 +943,7 @@
         const r = await fetch(`${API}/api/v1/studies/${encodeURIComponent(slug)}/participant-links`, postOpts({
           participant_external_id: pid || null,
           use_flow_variants: useFlowVariants,
-          expires_in_hours: 72,
+          expires_in_hours: sonaExpiresHours,
           completion_redirect_url: completionUrl,
           abort_redirect_url: abortUrl || null,
         }));
@@ -972,6 +974,7 @@
       const completionCode = (document.getElementById("prolificCompletionCode")?.value || "").trim();
       const completionMethod = (document.getElementById("prolificCompletionMethod")?.value || "redirect").trim().toLowerCase();
       const useFlowVariants = !!document.getElementById("integrationUseFlowVariants")?.checked;
+      const prolificExpiresHours = Math.max(1, Math.min(720, parseInt(document.getElementById("prolificExpiresHours")?.value || "168", 10) || 168));
 
       if (!slug) {
         statusEl.className = "status-bar error";
@@ -997,7 +1000,7 @@
         const r = await fetch(`${API}/api/v1/studies/${encodeURIComponent(slug)}/participant-links`, postOpts({
           participant_external_id: "{{%PROLIFIC_PID%}}",
           use_flow_variants: useFlowVariants,
-          expires_in_hours: 72,
+          expires_in_hours: prolificExpiresHours,
           completion_redirect_url: completionRedirect,
           abort_redirect_url: null,
           prolific_completion_mode: completionMethod,

@@ -1847,6 +1847,12 @@
                   <input type="text" id="integrationAbortUrl" placeholder="https://.../webstudy_credit.aspx?status=incomplete" />
                 </div>
 
+                <div class="account-field">
+                  <label for="sonaExpiresHours">Link expiration (hours)</label>
+                  <input type="number" id="sonaExpiresHours" value="168" min="1" max="720" style="max-width:120px;" />
+                  <div class="inline-note" style="margin-top:4px;">e.g. 168 = 1 week, 720 = 30 days</div>
+                </div>
+
                 <div class="inline-note" style="margin:2px 0 12px;">Supported placeholders: <span class="mono">{participant_external_id}</span>, <span class="mono">{participant_key}</span>, <span class="mono">{run_session_id}</span></div>
 
                 <div class="account-actions">
@@ -1869,6 +1875,12 @@
                     <option value="redirect" selected>Auto-redirect to Prolific (recommended)</option>
                     <option value="show_code">Show completion code screen inside CogFlow</option>
                   </select>
+                </div>
+
+                <div class="account-field">
+                  <label for="prolificExpiresHours">Link expiration (hours)</label>
+                  <input type="number" id="prolificExpiresHours" value="168" min="1" max="720" style="max-width:120px;" />
+                  <div class="inline-note" style="margin-top:4px;">e.g. 168 = 1 week, 720 = 30 days</div>
                 </div>
 
                 <div class="inline-note" style="margin:2px 0 12px;">The generated URL includes Prolific placeholders: <span class="mono">{% templatetag openvariable %}%PROLIFIC_PID%{% templatetag closevariable %}</span>, <span class="mono">{% templatetag openvariable %}%STUDY_ID%{% templatetag closevariable %}</span>, <span class="mono">{% templatetag openvariable %}%SESSION_ID%{% templatetag closevariable %}</span>.</div>

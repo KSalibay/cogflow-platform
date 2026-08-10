@@ -484,6 +484,11 @@
                   <label for="generateLinksParticipantId">Participant ID (optional)</label>
                   <input type="text" id="generateLinksParticipantId" placeholder="leave blank for anonymous/preview-style launch" />
                 </div>
+                <div class="account-field" style="margin-bottom:10px;">
+                  <label for="generateLinksExpiresHours">Link expiration (hours)</label>
+                  <input type="number" id="generateLinksExpiresHours" value="168" min="1" max="720" style="max-width:120px;" />
+                  <div class="form-text" style="margin-top:4px;">e.g. 168 = 1 week, 720 = 30 days</div>
+                </div>
                 <div class="form-check" style="margin-bottom:12px;">
                   <input class="form-check-input" type="checkbox" id="generateLinksCounterbalance" checked>
                   <label class="form-check-label" for="generateLinksCounterbalance">Enable automatic counterbalancing</label>
