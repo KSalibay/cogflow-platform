@@ -453,7 +453,8 @@
         'pool_mode',
         'repeat',
         'weight',
-        'seed'
+        'seed',
+        'component_label'
       ]);
 
       const out = {};
@@ -1549,9 +1550,18 @@
       }
     };
 
+    const sourceLabel = (typeof block.component_label === 'string' && block.component_label.trim())
+      ? block.component_label.trim()
+      : null;
+
     const trials = [];
     for (let i = 0; i < length; i++) {
-      const t = { type: canonicalBaseType, _generated_from_block: true, _block_index: i };
+      const t = {
+        type: canonicalBaseType,
+        _generated_from_block: true,
+        _block_index: i,
+        ...(sourceLabel !== null ? { _source_component_label: sourceLabel } : {})
+      };
 
       // Apply fixed values
       for (const [k, v] of Object.entries(values)) {

@@ -348,7 +348,9 @@ class TimelineBuilder {
         // NOTE: Blocks are *task-scoped* in the Builder and have many task-specific fields.
         // The generic plugin schema for `block` is intentionally minimal and can show the wrong
         // defaults/options (e.g., RDM). Always use Builder component definitions for Blocks.
-        const forceComponentDefs = this._isMiniblockEligible(component);
+        // Trial-subtype components (sart-trial, flanker-trial, etc.) should use their schema
+        // when one is available; the miniblock button is still shown via _isMiniblockEligible.
+        const forceComponentDefs = (component.type === 'block' || (component.builderComponentId || '').toString().trim().toLowerCase() === 'block');
         const schema = forceComponentDefs ? null : this.jsonBuilder.schemaValidator.getPluginSchema(component.type);
         console.log('Schema found:', schema);
 
@@ -1832,7 +1834,7 @@ class TimelineBuilder {
 
         let formHtml = '';
         for (const [paramName, paramDef] of Object.entries(parameters)) {
-            if (paramDef && typeof paramDef === 'object' && paramDef.blockTarget && type !== 'block') {
+            if (paramDef && typeof paramDef === 'object' && paramDef.blockTarget && type !== 'block' && type !== paramDef.blockTarget) {
                 continue;
             }
 
@@ -2018,7 +2020,7 @@ class TimelineBuilder {
         const parameters = schema.parameters;
 
         for (const [paramName, paramDef] of Object.entries(parameters)) {
-            if (paramDef.blockTarget && componentType !== 'block') {
+            if (paramDef.blockTarget && componentType !== 'block' && componentType !== paramDef.blockTarget) {
                 continue;
             }
 

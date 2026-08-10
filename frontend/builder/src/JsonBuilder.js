@@ -11200,6 +11200,21 @@ class JsonBuilder {
 
         const loopAwareComponents = this.buildNestedLoopsFromMarkers(components);
 
+        // Auto-assign sequential component labels for unlabelled blocks.
+        const typeCounters = {};
+        const assignMissingLabels = (items) => {
+            for (const item of items) {
+                if (!item || typeof item !== 'object') continue;
+                if (item.type === 'loop') { assignMissingLabels(item.items || []); continue; }
+                if (item.type === 'block' && !item.component_label) {
+                    const ct = (item.component_type || 'block').toString();
+                    typeCounters[ct] = (typeCounters[ct] || 0) + 1;
+                    item.component_label = `${ct} ${typeCounters[ct]}`;
+                }
+            }
+        };
+        assignMissingLabels(loopAwareComponents);
+
         const taskType = document.getElementById('taskType')?.value || 'rdm';
         if (taskType === 'soc-dashboard') {
             return this.composeSocDashboardTimeline(loopAwareComponents);
@@ -12685,6 +12700,12 @@ class JsonBuilder {
         // Carry forward miniblock_structure when set
         if (blockComponent.miniblock_structure && typeof blockComponent.miniblock_structure === 'object') {
             out.miniblock_structure = blockComponent.miniblock_structure;
+        }
+
+        // Export the component label so individual generated trials carry _source_component_label.
+        const exportedLabel = (blockComponent.label ?? blockComponent.component_label ?? '').toString().trim();
+        if (exportedLabel) {
+            out.component_label = exportedLabel;
         }
 
         return out;

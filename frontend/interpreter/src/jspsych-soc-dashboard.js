@@ -4983,8 +4983,10 @@
       subtaskAutoStart[i] = startSartSubtask;
       subtaskForceEnd[i] = (reason) => {
         if (state.ended) return;
-        const latest = state.entries.length ? state.entries[state.entries.length - 1] : null;
-        recordNonResponseIfNeeded(latest, 'forced_end');
+        // Drain the entire visible buffer so no buffered entry is lost at block/session end.
+        for (const entry of state.entries) {
+          recordNonResponseIfNeeded(entry, 'forced_end');
+        }
         state.ended = true;
         if (statusEl) statusEl.textContent = 'Complete';
         events.push({
