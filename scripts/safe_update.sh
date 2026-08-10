@@ -133,6 +133,22 @@ else
   docker compose run --rm api python manage.py migrate runs 0003_runsession_flow_variant_fields --noinput
 fi
 
+echo "==> Reconciling studies.0007 (course section tables)"
+if docker compose run --rm api python manage.py shell -c "from django.db import connection; c=connection.cursor(); c.execute(\"SELECT 1 FROM information_schema.tables WHERE table_name='studies_coursesection' LIMIT 1\"); raise SystemExit(0 if c.fetchone() else 1)"; then
+  echo "    Detected existing studies_coursesection; faking studies.0007"
+  docker compose run --rm api python manage.py migrate studies 0007_coursesection_coursemembership_study_course_section_and_more --fake
+else
+  echo "    Table not present; applying studies.0007 normally"
+  docker compose run --rm api python manage.py migrate studies 0007_coursesection_coursemembership_study_course_section_and_more --noinput
+fi
+
+echo "==> Reconciling users.0007 (instructor/student roles)"
+if docker compose run --rm api python manage.py shell -c "from django.db import connection; c=connection.cursor(); c.execute(\"SELECT 1 FROM django_migrations WHERE app='users' AND name='0007_alter_userprofile_role' LIMIT 1\"); raise SystemExit(0 if c.fetchone() else 1)"; then
+  echo "    users.0007 already recorded; skipping"
+else
+  docker compose run --rm api python manage.py migrate users 0007_alter_userprofile_role --noinput
+fi
+
 echo "==> Applying remaining migrations"
 docker compose run --rm api python manage.py migrate --noinput
 
