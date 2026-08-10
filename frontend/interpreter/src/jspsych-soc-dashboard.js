@@ -1184,9 +1184,10 @@
     const windowInstructionsOverlay = new Array(windowsSpec.length).fill(null);
     const windowInstructionsAcknowledged = new Array(windowsSpec.length).fill(false);
     const windowStartIsGated = new Array(windowsSpec.length).fill(false);
-    // Duration (ms) to wait from popup-dismissal before force-ending a gated window.
-    // null means no deferred end pending.
+    // Relative duration (ms) from popup-dismissal before force-ending (timeline-order mode).
     const windowEndDurationMs = new Array(windowsSpec.length).fill(null);
+    // Absolute logical end time for explicit-schedule windows; avoids drift from click timing.
+    const windowEndAtMs = new Array(windowsSpec.length).fill(null);
 
     const isWindowVisible = (idx) => {
       const el = windowEls[idx];
@@ -1402,9 +1403,18 @@
       windowHasStarted[idx] = true;
       try { subtaskAutoStart[idx]?.(); } catch { /* ignore */ }
       ensureActiveWindowVisible();
-      // If a forced-end duration was deferred until popup dismissal, schedule it now.
-      const pendingDuration = windowEndDurationMs[idx];
-      if (Number.isFinite(pendingDuration) && pendingDuration >= 0) {
+      // If a forced-end was deferred until popup dismissal, schedule it now.
+      const pendingEndAt = windowEndAtMs[idx];   // absolute target (explicit schedule)
+      const pendingDuration = windowEndDurationMs[idx]; // relative duration (timeline-order)
+      if (Number.isFinite(pendingEndAt) && pendingEndAt >= 0) {
+        windowEndAtMs[idx] = null;
+        const targetLogical = Math.max(pendingEndAt, logicalElapsedMs() + 1);
+        setLogicalTimeout(targetLogical, () => {
+          if (ended) return;
+          forceEndWindow(idx, 'scheduled_end');
+          hideWindow(idx);
+        });
+      } else if (Number.isFinite(pendingDuration) && pendingDuration >= 0) {
         windowEndDurationMs[idx] = null;
         const targetLogical = logicalElapsedMs() + Math.max(0, Math.floor(pendingDuration));
         setLogicalTimeout(targetLogical, () => {
@@ -5521,13 +5531,16 @@
       setLogicalTimeout(startAt, doStart);
 
       if (Number.isFinite(endAt) && sch._response_gated !== true) {
-        // If this window has an instructions popup, the participant must dismiss it first.
-        // Defer the forced-end by the window duration from popup-dismissal time rather
-        // than firing at an absolute trial timestamp (which would eat into task time).
         const hasInstructions = (windowInstructionsHtml[i] ?? '').toString().trim() !== '';
         if (hasInstructions) {
-          // Store duration from window-start; startWindowIfNeeded will set the timer.
-          windowEndDurationMs[i] = Math.max(0, endAt - startAt);
+          // For explicit/entries schedules, store the absolute target so the end fires at
+          // the fixed logical time regardless of when the instructions popup is dismissed.
+          // For timeline-order mode, keep the relative duration (end is relative to start).
+          if (sch._source === 'timeline_order') {
+            windowEndDurationMs[i] = Math.max(0, endAt - startAt);
+          } else {
+            windowEndAtMs[i] = endAt;
+          }
         } else {
           setLogicalTimeout(endAt, () => {
             if (ended) return;
