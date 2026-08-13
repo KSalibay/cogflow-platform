@@ -998,7 +998,7 @@
 
       try {
         const r = await fetch(`${API}/api/v1/studies/${encodeURIComponent(slug)}/participant-links`, postOpts({
-          participant_external_id: "{{%PROLIFIC_PID%}}",
+          participant_external_id: null,
           use_flow_variants: useFlowVariants,
           expires_in_hours: prolificExpiresHours,
           completion_redirect_url: completionRedirect,

@@ -16,6 +16,7 @@ import json
 
 import pyotp
 from django.contrib.auth.models import User
+from django.core import signing
 from django.core.management import call_command
 from django.urls import reverse
 from rest_framework import status
@@ -981,6 +982,30 @@ class Day7PortalMvpLinkPipelineTests(APITestCase):
             format="json",
         )
         self.assertEqual(second_start.status_code, status.HTTP_201_CREATED)
+
+    def test_prolific_runtime_placeholders_are_treated_as_blank_participant_ids(self):
+        self._publish_as(self.researcher, slug="prolific-placeholder-study")
+
+        self.client.force_authenticate(user=self.researcher)
+        link_resp = self.client.post(
+            reverse("studies-participant-links", kwargs={"study_slug": "prolific-placeholder-study"}),
+            data={"participant_external_id": "{{%PROLIFIC_PID%}}", "prolific_completion_mode": "redirect", "prolific_completion_code": "ABC123"},
+            format="json",
+        )
+        self.client.force_authenticate(user=None)
+        self.assertEqual(link_resp.status_code, status.HTTP_201_CREATED)
+
+        token = link_resp.data["launch_options"]["multi_use"]["launch_token"]
+        token_payload = signing.loads(token, salt="participant-launch-v1", max_age=60 * 60 * 24 * 30)
+        self.assertEqual(token_payload["participant_external_id"], "")
+
+        start_resp = self.client.post(
+            reverse("runs-start"),
+            data={"launch_token": token},
+            format="json",
+        )
+        self.assertEqual(start_resp.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(str(start_resp.data["participant_key"]).startswith("anonymous-"))
 
     def test_researcher_can_save_persisted_study_properties(self):
         self._publish_as(self.researcher, slug="study-properties")

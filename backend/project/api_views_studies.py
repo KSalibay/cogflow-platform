@@ -1837,7 +1837,7 @@ class CreateParticipantLinkView(APIView):
         known_ids = {str(cv.id) for cv in config_versions}
 
         expires_at = timezone.now() + timedelta(hours=data.get("expires_in_hours", 72))
-        participant_external_id = (data.get("participant_external_id") or "").strip()
+        participant_external_id = _normalize_runtime_placeholder_identifier(data.get("participant_external_id"))
         counterbalance_enabled = bool(data.get("counterbalance_enabled", True))
         use_flow_variants = bool(data.get("use_flow_variants", False))
         task_order_strict = bool(data.get("task_order_strict", False))

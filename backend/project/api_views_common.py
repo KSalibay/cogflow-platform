@@ -469,6 +469,17 @@ def _launch_token_digest(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
+def _normalize_runtime_placeholder_identifier(value) -> str:
+    if value is None:
+        return ""
+    s = str(value).strip()
+    if not s:
+        return ""
+    if re.search(r"%PROLIFIC_PID%|%STUDY_ID%|%SESSION_ID%|\{PARTICIPANT_EXTERNAL_ID\}", s, flags=re.IGNORECASE):
+        return ""
+    return s
+
+
 def _resolve_redirect_url(
     template: str | None,
     participant_external_id: str,

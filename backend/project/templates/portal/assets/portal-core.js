@@ -462,7 +462,15 @@
       const s = (raw || "").toString().trim();
       if (!s || s === "-") return s;
       if (/^https?:\/\//i.test(s)) return s;
-      try { return new URL(s, location.origin).toString(); } catch { return s; }
+      try {
+        const baseHref = new URL(window.location.href);
+        const currentDir = baseHref.pathname.endsWith("/")
+          ? baseHref.pathname
+          : baseHref.pathname.replace(/[^/]*$/, "");
+        const base = new URL(currentDir || "/", baseHref.origin).toString();
+        const clean = s.replace(/^\/+/, "");
+        return new URL(clean, base).toString();
+      } catch { return s; }
     }
 
     function ensureGenerateLinksModal() {
