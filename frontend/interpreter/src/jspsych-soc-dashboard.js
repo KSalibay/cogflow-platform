@@ -5503,6 +5503,12 @@
       const sch = windowsSpec[i]?.schedule || { has_schedule: false, start_at_ms: 0, end_at_ms: null };
       if (!sch.has_schedule) continue;
 
+      const subtask = windowsSpec[i]?.subtask || {};
+      const entryLimit = Number(subtask.subtask_duration_entries);
+      const hasEntryLimit = (windowsSpec[i]?.subtask_type ?? '').toString().toLowerCase() === 'sart-like'
+        && Number.isFinite(entryLimit)
+        && entryLimit > 0;
+
       // In timeline-order mode, only the first window is scheduled via setLogicalTimeout;
       // subsequent windows are shown by showNextSequentialWindow when the previous completes.
       const isTimelineOrderLater = (sch._source === 'timeline_order' && i > 0);
@@ -5530,7 +5536,7 @@
 
       setLogicalTimeout(startAt, doStart);
 
-      if (Number.isFinite(endAt) && sch._response_gated !== true) {
+      if (Number.isFinite(endAt) && sch._response_gated !== true && !hasEntryLimit) {
         const hasInstructions = (windowInstructionsHtml[i] ?? '').toString().trim() !== '';
         if (hasInstructions) {
           // For explicit/entries schedules, store the absolute target so the end fires at

@@ -6170,7 +6170,12 @@ class TimelineBuilder {
     _prependLabelFieldToModal(modalBody, component) {
         if (!modalBody) return;
         if (modalBody.querySelector('#cf-label-wrapper')) return; // already injected
-        const currentLabel = ((component?.label ?? component?.parameters?.label) ?? '').toString();
+        const currentLabel = ((
+            component?.label
+            ?? component?.component_label
+            ?? component?.parameters?.label
+            ?? component?.parameters?.component_label
+        ) ?? '').toString();
         const escaped = currentLabel.replace(/"/g, '&quot;');
         const wrapper = document.createElement('div');
         wrapper.className = 'mb-3 border-bottom pb-3';

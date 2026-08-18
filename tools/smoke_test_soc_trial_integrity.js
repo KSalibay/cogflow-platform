@@ -55,14 +55,14 @@ async function verifyRuntimeFinalization() {
     const result = await page.evaluate(() => new Promise((resolve) => {
       const plugin = new window.jsPsychSocDashboard({ finishTrial: resolve });
       plugin.trial(document.querySelector('#display'), {
-        trial_duration_ms: 250,
+        trial_duration_ms: 500,
         end_key: 'escape',
         title: 'SOC integrity smoke test',
         subtasks: [{
           type: 'sart-like',
           title: 'Compressed SART',
           start_at_ms: 0,
-          duration_ms: 300,
+          duration_ms: 100,
           min_run_ms: 300,
           max_run_ms: 300,
           subtask_duration_entries: 3,
@@ -87,8 +87,8 @@ async function verifyRuntimeFinalization() {
     assert(summary?.presented === 3, `Expected summary presented=3, got ${summary?.presented}`);
     assert(summary?.finalized === 3, `Expected summary finalized=3, got ${summary?.finalized}`);
     assert(
-      sartEvents.at(-1)?.ended_reason === 'forced_end',
-      `Expected final SART event to be force-finalized, got ${sartEvents.at(-1)?.ended_reason}`
+      sartEvents.at(-1)?.ended_reason === 'subtask_end',
+      `Expected final SART event to finish at the entry limit, got ${sartEvents.at(-1)?.ended_reason}`
     );
   } finally {
     await browser.close();

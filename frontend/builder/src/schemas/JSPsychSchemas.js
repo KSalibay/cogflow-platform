@@ -148,6 +148,13 @@ class JSPsychSchemas {
                         max: 3600000,
                         description: 'Scheduled duration (ms). If 0, scheduling is disabled unless end_at_ms is provided manually in JSON.'
                     },
+                    subtask_duration_entries: {
+                        type: this.parameterTypes.INT,
+                        default: 0,
+                        min: 0,
+                        max: 100000,
+                        description: 'Exact number of SART entries to present. When greater than 0, it takes precedence over scheduled duration.'
+                    },
                     instructions: {
                         type: this.parameterTypes.HTML_STRING,
                            default: '<p>Log entries will stream past. Your job is to triage each one:</p>\n<p>Press <b>{{GO_CONTROL}}</b> when the current entry matches the class configured for a response in this subtask.</p>\n<p><b>Withhold</b> your response for the other class.</p>\n<p><b>Harmful:</b> {{HARMFUL}}</p>\n<p><b>Benign:</b> {{BENIGN}}</p>\n<p><i>Click this popup to begin.</i></p>',

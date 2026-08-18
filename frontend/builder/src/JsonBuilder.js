@@ -7179,7 +7179,7 @@ class JsonBuilder {
             const sartOnlyParams = {
                 sart_digit_options: { type: 'string', default: '1,2,3,4,5,6,7,8,9' },
                 sart_nogo_digit: { type: 'number', default: 3, min: 0, max: 9 },
-                   sart_nogo_probability: { type: 'number', default: null, min: 0, max: 1, step: 0.01, description: 'Probability [0–1] of a no-go trial. Overrides digit-frequency weighting when set. Leave blank to use digit options directly.' },
+                sart_nogo_probability: { type: 'number', default: null, min: 0, max: 1, step: 0.01, description: 'Probability [0–1] of a no-go trial. Overrides digit-frequency weighting when set. Leave blank to use digit options directly.' },
                 sart_go_key: { type: 'string', default: 'space' },
                 sart_stimulus_duration_min: { type: 'number', default: 150, min: 0, max: 10000 },
                 sart_stimulus_duration_max: { type: 'number', default: 400, min: 0, max: 10000 },
@@ -7188,7 +7188,14 @@ class JsonBuilder {
                 sart_trial_duration_min: { type: 'number', default: 800, min: 0, max: 60000 },
                 sart_trial_duration_max: { type: 'number', default: 2000, min: 0, max: 60000 },
                 sart_iti_min: { type: 'number', default: 200, min: 0, max: 10000 },
-                sart_iti_max: { type: 'number', default: 800, min: 0, max: 10000 }
+                sart_iti_max: { type: 'number', default: 800, min: 0, max: 10000 },
+                sart_show_feedback: { type: 'boolean', default: false, description: 'Show correctness feedback after each response.' },
+                sart_feedback_duration_min: { type: 'number', default: 300, min: 0, max: 30000, description: 'Minimum feedback duration in ms.' },
+                sart_feedback_duration_max: { type: 'number', default: 300, min: 0, max: 30000, description: 'Maximum feedback duration in ms.' },
+                sart_feedback_text_correct: { type: 'string', default: 'Correct', description: 'Feedback text after a correct response.' },
+                sart_feedback_text_incorrect: { type: 'string', default: 'Incorrect', description: 'Feedback text after an incorrect response.' },
+                sart_feedback_color_correct: { type: 'COLOR', default: '#86efac', description: 'Feedback color after a correct response.' },
+                sart_feedback_color_incorrect: { type: 'COLOR', default: '#fca5a5', description: 'Feedback color after an incorrect response.' }
             };
 
             const gaborOnlyParams = {
