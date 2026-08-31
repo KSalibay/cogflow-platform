@@ -981,7 +981,9 @@
     delete values.direction_transition_count;
 
     const shouldScheduleDirectionTransitions =
-      directionTransitionMode === 'every_n_trials' || directionTransitionMode === 'exact_count';
+      directionTransitionMode === 'every_n_trials'
+      || directionTransitionMode === 'exact_count'
+      || directionTransitionMode === 'no_repeat_each_trial';
 
     const directionKeysForType = (type) => {
       if (type === 'rdm-trial' || type === 'rdm-practice') return ['direction'];
@@ -1002,6 +1004,13 @@
         for (let idx = Math.max(1, everyN); idx < totalTrials; idx += Math.max(1, everyN)) {
           out.add(idx);
         }
+        return out;
+      }
+
+      // Forces every trial to differ from the one before it, so a random direction
+      // is never sampled twice in a row (Sachi Lardner, CRDM pilot feedback).
+      if (mode === 'no_repeat_each_trial') {
+        for (let idx = 1; idx < totalTrials; idx++) out.add(idx);
         return out;
       }
 

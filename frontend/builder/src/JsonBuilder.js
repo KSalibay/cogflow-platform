@@ -7590,7 +7590,7 @@ class JsonBuilder {
                 coherence_min: { type: 'number', default: 0.2, min: 0, max: 1, step: 0.01 },
                 coherence_max: { type: 'number', default: 0.8, min: 0, max: 1, step: 0.01 },
                 direction_options: { type: 'string', default: '0,180' },
-                direction_transition_mode: { type: 'select', default: 'random_each_trial', options: ['random_each_trial', 'every_n_trials', 'exact_count'] },
+                direction_transition_mode: { type: 'select', default: 'random_each_trial', options: ['random_each_trial', 'no_repeat_each_trial', 'every_n_trials', 'exact_count'] },
                 direction_transition_every_n_trials: { type: 'number', default: 1, min: 1, max: 10000 },
                 direction_transition_count: { type: 'number', default: 0, min: 0, max: 10000 },
                 speed_min: { type: 'number', default: 4, min: 0, max: 50 },
@@ -11726,7 +11726,7 @@ class JsonBuilder {
 
         const addDirectionTransitionControls = () => {
             const rawMode = (blockComponent.direction_transition_mode ?? '').toString().trim();
-            if (rawMode === 'random_each_trial' || rawMode === 'every_n_trials' || rawMode === 'exact_count') {
+            if (rawMode === 'random_each_trial' || rawMode === 'no_repeat_each_trial' || rawMode === 'every_n_trials' || rawMode === 'exact_count') {
                 values.direction_transition_mode = rawMode;
             }
 

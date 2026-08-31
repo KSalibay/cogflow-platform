@@ -1,5 +1,11 @@
 # CogFlow Builder & Interpreter Changelog
 
+## August 18, 2026
+
+### RDM Direction No-Immediate-Repeat Sampling
+
+- Added `no_repeat_each_trial` to `direction_transition_mode` for `rdm-trial`, `rdm-practice`, and `rdm-dot-groups` Blocks: directions are still sampled randomly from the configured set/range, but the same direction is never sampled on two consecutive generated trials (requested by Sachi Lardner for CRDM pilot testing, where consecutive repeats produce no detectable direction change).
+
 ## April 2, 2026
 
 ### Builder Import Rehydration + SOC/DRT/MOT Alignment

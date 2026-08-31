@@ -222,6 +222,61 @@
       }
       if (prev) sel.value = prev;
       refreshIntegrationFlowVariantOptions(sel.value || "");
+      restoreIntegrationFormFields(sel.value || "");
+    }
+
+    // Integration form fields (SONA completion/abort URLs, Prolific code, etc.) are
+    // per-study but never sent to the backend until "Generate" is clicked, so they
+    // are remembered locally per browser and restored when the study is re-selected.
+    const INTEGRATION_FORM_FIELD_IDS = [
+      "integrationParticipantId",
+      "integrationCompletionUrl",
+      "integrationAbortUrl",
+      "sonaExpiresHours",
+      "prolificCompletionCode",
+      "prolificCompletionMethod",
+      "prolificExpiresHours",
+    ];
+
+    function integrationFormStorageKey(slug) {
+      return `cogflow.integrationForm.${slug}`;
+    }
+
+    function saveIntegrationFormFields(slug) {
+      const key = String(slug || "").trim();
+      if (!key) return;
+      const values = {};
+      for (const id of INTEGRATION_FORM_FIELD_IDS) {
+        const el = document.getElementById(id);
+        if (el) values[id] = el.value;
+      }
+      try {
+        window.localStorage?.setItem(integrationFormStorageKey(key), JSON.stringify(values));
+      } catch {
+        // Ignore storage failures (private browsing, quota, etc.).
+      }
+    }
+
+    function restoreIntegrationFormFields(slug) {
+      const key = String(slug || "").trim();
+      for (const id of INTEGRATION_FORM_FIELD_IDS) {
+        const el = document.getElementById(id);
+        if (el) el.value = el.defaultValue;
+      }
+      if (!key) return;
+      try {
+        const raw = window.localStorage?.getItem(integrationFormStorageKey(key));
+        if (!raw) return;
+        const values = JSON.parse(raw);
+        for (const id of INTEGRATION_FORM_FIELD_IDS) {
+          const el = document.getElementById(id);
+          if (el && Object.prototype.hasOwnProperty.call(values, id) && values[id]) {
+            el.value = values[id];
+          }
+        }
+      } catch {
+        // Ignore malformed/unavailable storage; fields keep their defaults.
+      }
     }
 
     async function refreshIntegrationFlowVariantOptions(slug) {
@@ -825,6 +880,20 @@
       }
     }
 
+    function buildSonaStudyUrl(baseLaunchUrl) {
+      const base = absUrl(baseLaunchUrl || "");
+      if (!base || base === "—") return "";
+
+      // SONA replaces %SURVEY_CODE% with a per-participant code before redirecting;
+      // the interpreter reads that back via the survey_code query param.
+      const hashIndex = base.indexOf("#");
+      const hash = hashIndex >= 0 ? base.slice(hashIndex) : "";
+      const noHash = hashIndex >= 0 ? base.slice(0, hashIndex) : base;
+      const sep = noHash.includes("?") ? "&" : "?";
+
+      return `${noHash}${sep}survey_code=%SURVEY_CODE%${hash}`;
+    }
+
     function renderIntegrationsRollout(rollout) {
       const out = document.getElementById("integrationsOutput");
       if (!out) return;
@@ -839,18 +908,22 @@
       const single = opts.single_use || {};
       const completionRedirect = rollout.completion_redirect_url || multi.completion_redirect_url || "";
       const abortRedirect = rollout.abort_redirect_url || multi.abort_redirect_url || "";
+      const multiLaunchUrl = absUrl(multi.launch_url || rollout.launch_url || "");
+      const singleLaunchUrl = absUrl(single.launch_url || "");
 
       out.innerHTML = `
         <div class="detail-grid">
           <article class="detail-card">
             <h3 style="margin:0 0 12px;">Multi-use launch</h3>
-            ${rfRow("Launch URL", absUrl(multi.launch_url || rollout.launch_url || ""))}
+            ${rfRow("Launch URL", multiLaunchUrl)}
             ${rfRow("Launch token", multi.launch_token || rollout.launch_token || "")}
+            ${rfRow("SONA Study URL (paste into SONA)", buildSonaStudyUrl(multiLaunchUrl))}
           </article>
           <article class="detail-card">
             <h3 style="margin:0 0 12px;">Single-use launch</h3>
-            ${rfRow("Launch URL", absUrl(single.launch_url || ""))}
+            ${rfRow("Launch URL", singleLaunchUrl)}
             ${rfRow("Launch token", single.launch_token || "")}
+            ${rfRow("SONA Study URL (paste into SONA)", buildSonaStudyUrl(singleLaunchUrl))}
           </article>
         </div>
         <article class="detail-card" style="margin-top:12px;">
@@ -956,6 +1029,7 @@
 
         const st = getStudyState(slug);
         st.rollout = d;
+        saveIntegrationFormFields(slug);
 
         statusEl.className = "status-bar ok";
         statusEl.textContent = `SONA links generated for ${slug}.`;
@@ -1023,6 +1097,8 @@
             ? "Show completion code screen inside CogFlow"
             : "Auto-redirect to Prolific",
         });
+
+        saveIntegrationFormFields(slug);
 
         statusEl.className = "status-bar ok";
         statusEl.textContent = `Prolific link generated for ${slug}.`;
@@ -2033,7 +2109,15 @@
     document.getElementById("integrationStudySelect")?.addEventListener("change", (e) => {
       const slug = (e.target?.value || "").toString().trim();
       refreshIntegrationFlowVariantOptions(slug);
+      restoreIntegrationFormFields(slug);
     });
+
+    for (const id of INTEGRATION_FORM_FIELD_IDS) {
+      document.getElementById(id)?.addEventListener("change", () => {
+        const slug = (document.getElementById("integrationStudySelect")?.value || "").toString().trim();
+        saveIntegrationFormFields(slug);
+      });
+    }
 
     document.getElementById("analysisStudySelect")?.addEventListener("change", async (e) => {
       const slug = (e.target?.value || '').toString().trim();

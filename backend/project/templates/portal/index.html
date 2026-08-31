@@ -1840,6 +1840,7 @@
                 <div class="account-field">
                   <label for="integrationCompletionUrl">SONA completion URL</label>
                   <input type="text" id="integrationCompletionUrl" placeholder="https://.../webstudy_credit.aspx?survey_code={participant_external_id}" />
+                  <div class="inline-note" style="margin-top:4px;">This is SONA's own credit-granting URL, copied from your SONA study's Timed Study / external-study settings — not something CogFlow generates. Replace SONA's own code placeholder (often <span class="mono">%SURVEY_CODE%</span>) with <span class="mono">{participant_external_id}</span> so CogFlow can fill it in.</div>
                 </div>
 
                 <div class="account-field">
@@ -1854,6 +1855,7 @@
                 </div>
 
                 <div class="inline-note" style="margin:2px 0 12px;">Supported placeholders: <span class="mono">{participant_external_id}</span>, <span class="mono">{participant_key}</span>, <span class="mono">{run_session_id}</span></div>
+                <div class="inline-note" style="margin:2px 0 12px;">After generating, paste the <b>SONA Study URL</b> shown below into SONA's own "Study URL" field for this study.</div>
 
                 <div class="account-actions">
                   <button class="btn btn-primary btn-sm" id="generateSonaLinksBtn">Generate SONA Links</button>

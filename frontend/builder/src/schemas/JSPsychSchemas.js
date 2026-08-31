@@ -3063,9 +3063,9 @@ class JSPsychSchemas {
                     direction_transition_mode: {
                         type: this.parameterTypes.SELECT,
                         default: 'random_each_trial',
-                        options: ['random_each_trial', 'every_n_trials', 'exact_count'],
+                        options: ['random_each_trial', 'no_repeat_each_trial', 'every_n_trials', 'exact_count'],
                         blockTarget: 'rdm-trial,rdm-practice,rdm-dot-groups',
-                        description: 'Direction transition schedule within the block'
+                        description: 'Direction transition schedule within the block. no_repeat_each_trial keeps random sampling but never repeats the previous trial\'s direction.'
                     },
                     direction_transition_every_n_trials: {
                         type: this.parameterTypes.INT,
