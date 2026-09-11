@@ -5208,6 +5208,32 @@ class JSPsychSchemas {
             }
         }
 
+        // Consent mode supplies its own button labels at runtime, so exported configs
+        // omit `choices`. Surface the effective labels for validation.
+        if (normalized.type === 'html-button-response'
+            && (normalized.consent_mode === true || normalized.consent_mode === 'true')
+            && normalized.choices === undefined) {
+            normalized.choices = ['Agree', "Don't agree"];
+        }
+
+        // Builder text inputs store list-valued parameters as comma/newline separated
+        // strings, which the interpreter also accepts. Expand them so array validation
+        // sees the same list the runtime will.
+        const schemaParams = (schema && typeof schema.parameters === 'object') ? schema.parameters : null;
+        if (schemaParams) {
+            for (const [paramName, paramDef] of Object.entries(schemaParams)) {
+                if (!paramDef || paramDef.array !== true) continue;
+                const raw = normalized[paramName];
+                if (typeof raw !== 'string') continue;
+
+                const parts = raw
+                    .split(/[\n,]+/)
+                    .map((s) => s.trim())
+                    .filter(Boolean);
+                if (parts.length > 0) normalized[paramName] = parts;
+            }
+        }
+
         return normalized;
     }
 
@@ -5217,6 +5243,12 @@ class JSPsychSchemas {
     validateParameter(value, paramDef, paramName, trialIndex) {
         const errors = [];
         const warnings = [];
+
+        // Schemas use null defaults to mean "not set" (jsPsych's own convention),
+        // so an explicit null is valid for any non-required parameter.
+        if ((value === null || value === undefined) && !paramDef.required) {
+            return { errors, warnings };
+        }
 
         // Check if array is required
         if (paramDef.array && !Array.isArray(value)) {
