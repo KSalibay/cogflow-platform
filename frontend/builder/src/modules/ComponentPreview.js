@@ -3160,17 +3160,27 @@ class ComponentPreview {
         const prompt = (componentData?.prompt ?? '').toString();
         const rawChoices = (componentData?.button_choices ?? componentData?.choices ?? 'Continue');
 
-        const labels = Array.isArray(rawChoices)
-            ? rawChoices.map(x => (x ?? '').toString()).filter(s => s.trim() !== '')
-            : rawChoices
-                .toString()
-                .split(/[\n,]+/)
-                .map(s => s.trim())
-                .filter(Boolean);
+        // Consent mode owns the labels at runtime; mirror that here so the preview
+        // matches what participants actually see.
+        const consentMode = (componentData?.consent_mode === true || componentData?.consent_mode === 'true');
+
+        const labels = consentMode
+            ? ['Agree', "Don't agree"]
+            : (Array.isArray(rawChoices)
+                ? rawChoices.map(x => (x ?? '').toString()).filter(s => s.trim() !== '')
+                : rawChoices
+                    .toString()
+                    .split(/[\n,]+/)
+                    .map(s => s.trim())
+                    .filter(Boolean));
 
         const btns = (labels.length > 0 ? labels : ['Continue']).slice(0, 8).map((label) => {
             return `<button type="button" class="btn btn-outline-light" disabled>${label}</button>`;
         }).join(' ');
+
+        const consentNote = consentMode
+            ? '<div style="margin-top:12px; font-size:0.85rem; opacity:0.75;">Informed consent form: choosing "Don\'t agree" skips to the Debriefing component, or ends the study if there isn\'t one.</div>'
+            : '';
 
         const body = `
             <h5 style="margin:0 0 10px 0;">HTML + Button Response</h5>
@@ -3178,6 +3188,7 @@ class ComponentPreview {
                 <div>${stimulus || '<span class="text-warning">No HTML stimulus provided.</span>'}</div>
                 ${prompt ? `<div style="margin-top:12px; opacity:0.9;">${prompt}</div>` : ''}
                 <div style="margin-top:16px; display:flex; gap:10px; flex-wrap:wrap; justify-content:center;">${btns}</div>
+                ${consentNote}
             </div>
         `;
 
@@ -4146,6 +4157,7 @@ class ComponentPreview {
             // Builder exports button labels as a single string in `choices`.
             sampled.choices = (src?.button_choices ?? src?.choices ?? 'Continue');
             if (src?.button_html !== undefined) sampled.button_html = src.button_html;
+            if (src?.consent_mode !== undefined) sampled.consent_mode = src.consent_mode;
         } else if (componentType === 'image-keyboard-response') {
             const listRaw = (src?.stimulus_images ?? '').toString();
             const list = listRaw

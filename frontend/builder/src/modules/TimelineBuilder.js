@@ -6341,7 +6341,21 @@ class TimelineBuilder {
         const sync = () => {
             const on = !!consentToggle.checked;
 
-            if (choicesInput) choicesInput.disabled = on;
+            if (choicesInput) {
+                // Show the labels consent mode will actually use, keeping the authored
+                // value so it comes back if consent mode is switched off again.
+                if (on) {
+                    if (choicesInput.dataset.cfAuthoredChoices === undefined) {
+                        choicesInput.dataset.cfAuthoredChoices = choicesInput.value;
+                    }
+                    choicesInput.value = "Agree, Don't agree";
+                } else if (choicesInput.dataset.cfAuthoredChoices !== undefined) {
+                    choicesInput.value = choicesInput.dataset.cfAuthoredChoices;
+                    delete choicesInput.dataset.cfAuthoredChoices;
+                }
+                choicesInput.disabled = on;
+            }
+
             if (choicesRow) choicesRow.classList.toggle('opacity-50', on);
             if (declineRow) declineRow.style.display = on ? '' : 'none';
             if (hint) {

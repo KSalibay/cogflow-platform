@@ -1,0 +1,518 @@
+{
+  "n_runs": 20,
+  "n_valid_runs": 20,
+  "n_trials_per_run": 200,
+  "warmup_trials": 5,
+  "target_rt_ms": 100,
+  "stim_duration_ms": 200,
+  "iti_ms": 300,
+  "jspsych_version": "8.2.3",
+  "plugin": "html-keyboard-response@2.1.0",
+  "mode": "headed",
+  "rt_precision": {
+    "mean_sd": 0.498,
+    "sd_sd": 0.069,
+    "min": 0.367,
+    "max": 0.653
+  },
+  "rt_lag": {
+    "mean": 2.058,
+    "sd": 0.098
+  },
+  "duration_precision": {
+    "mean_sd": 0.507,
+    "sd_sd": 0.082,
+    "min": 0.383,
+    "max": 0.695
+  },
+  "duration_lag": {
+    "mean": -97.721,
+    "sd": 0.117
+  },
+  "mean_precision": {
+    "mean": 0.502,
+    "sd": 0.072
+  },
+  "per_run": [
+    {
+      "run": 1,
+      "n_trials": 200,
+      "n_responded": 200,
+      "response_rate": 1,
+      "rt_error": {
+        "n": 200,
+        "mean": 2.285,
+        "sd": 0.653,
+        "p5": 2,
+        "p50": 2,
+        "p95": 4
+      },
+      "duration_error": {
+        "n": 200,
+        "mean": -97.453,
+        "sd": 0.658,
+        "p5": -98.2,
+        "p50": -97.6,
+        "p95": -96.1
+      },
+      "mean_precision": 0.655,
+      "wall_ms": 83585
+    },
+    {
+      "run": 2,
+      "n_trials": 200,
+      "n_responded": 200,
+      "response_rate": 1,
+      "rt_error": {
+        "n": 200,
+        "mean": 2.155,
+        "sd": 0.482,
+        "p5": 2,
+        "p50": 2,
+        "p95": 3
+      },
+      "duration_error": {
+        "n": 200,
+        "mean": -97.593,
+        "sd": 0.513,
+        "p5": -98.2,
+        "p50": -97.7,
+        "p95": -96.5
+      },
+      "mean_precision": 0.497,
+      "wall_ms": 83576
+    },
+    {
+      "run": 3,
+      "n_trials": 200,
+      "n_responded": 200,
+      "response_rate": 1,
+      "rt_error": {
+        "n": 200,
+        "mean": 2.15,
+        "sd": 0.519,
+        "p5": 2,
+        "p50": 2,
+        "p95": 3
+      },
+      "duration_error": {
+        "n": 200,
+        "mean": -97.552,
+        "sd": 0.56,
+        "p5": -98.2,
+        "p50": -97.7,
+        "p95": -96.5
+      },
+      "mean_precision": 0.54,
+      "wall_ms": 83611
+    },
+    {
+      "run": 4,
+      "n_trials": 200,
+      "n_responded": 200,
+      "response_rate": 1,
+      "rt_error": {
+        "n": 200,
+        "mean": 2.125,
+        "sd": 0.48,
+        "p5": 2,
+        "p50": 2,
+        "p95": 3
+      },
+      "duration_error": {
+        "n": 200,
+        "mean": -97.662,
+        "sd": 0.562,
+        "p5": -98.3,
+        "p50": -97.8,
+        "p95": -96.5
+      },
+      "mean_precision": 0.521,
+      "wall_ms": 83658
+    },
+    {
+      "run": 5,
+      "n_trials": 200,
+      "n_responded": 200,
+      "response_rate": 1,
+      "rt_error": {
+        "n": 200,
+        "mean": 2.025,
+        "sd": 0.367,
+        "p5": 1,
+        "p50": 2,
+        "p95": 3
+      },
+      "duration_error": {
+        "n": 200,
+        "mean": -97.711,
+        "sd": 0.465,
+        "p5": -98.3,
+        "p50": -97.8,
+        "p95": -96.8
+      },
+      "mean_precision": 0.416,
+      "wall_ms": 83599
+    },
+    {
+      "run": 6,
+      "n_trials": 200,
+      "n_responded": 200,
+      "response_rate": 1,
+      "rt_error": {
+        "n": 200,
+        "mean": 2.185,
+        "sd": 0.602,
+        "p5": 2,
+        "p50": 2,
+        "p95": 3
+      },
+      "duration_error": {
+        "n": 200,
+        "mean": -97.578,
+        "sd": 0.695,
+        "p5": -98.2,
+        "p50": -97.7,
+        "p95": -96.5
+      },
+      "mean_precision": 0.648,
+      "wall_ms": 83649
+    },
+    {
+      "run": 7,
+      "n_trials": 200,
+      "n_responded": 200,
+      "response_rate": 1,
+      "rt_error": {
+        "n": 200,
+        "mean": 2.085,
+        "sd": 0.468,
+        "p5": 1,
+        "p50": 2,
+        "p95": 3
+      },
+      "duration_error": {
+        "n": 200,
+        "mean": -97.703,
+        "sd": 0.474,
+        "p5": -98.3,
+        "p50": -97.8,
+        "p95": -96.7
+      },
+      "mean_precision": 0.471,
+      "wall_ms": 83549
+    },
+    {
+      "run": 8,
+      "n_trials": 200,
+      "n_responded": 200,
+      "response_rate": 1,
+      "rt_error": {
+        "n": 200,
+        "mean": 2.025,
+        "sd": 0.475,
+        "p5": 1,
+        "p50": 2,
+        "p95": 3
+      },
+      "duration_error": {
+        "n": 200,
+        "mean": -97.743,
+        "sd": 0.492,
+        "p5": -98.3,
+        "p50": -97.9,
+        "p95": -96.8
+      },
+      "mean_precision": 0.483,
+      "wall_ms": 83689
+    },
+    {
+      "run": 9,
+      "n_trials": 200,
+      "n_responded": 200,
+      "response_rate": 1,
+      "rt_error": {
+        "n": 200,
+        "mean": 1.99,
+        "sd": 0.47,
+        "p5": 1,
+        "p50": 2,
+        "p95": 3
+      },
+      "duration_error": {
+        "n": 200,
+        "mean": -97.803,
+        "sd": 0.482,
+        "p5": -98.3,
+        "p50": -97.9,
+        "p95": -96.8
+      },
+      "mean_precision": 0.476,
+      "wall_ms": 83660
+    },
+    {
+      "run": 10,
+      "n_trials": 200,
+      "n_responded": 200,
+      "response_rate": 1,
+      "rt_error": {
+        "n": 200,
+        "mean": 2.095,
+        "sd": 0.466,
+        "p5": 1,
+        "p50": 2,
+        "p95": 3
+      },
+      "duration_error": {
+        "n": 200,
+        "mean": -97.673,
+        "sd": 0.494,
+        "p5": -98.3,
+        "p50": -97.8,
+        "p95": -96.7
+      },
+      "mean_precision": 0.48,
+      "wall_ms": 83588
+    },
+    {
+      "run": 11,
+      "n_trials": 200,
+      "n_responded": 200,
+      "response_rate": 1,
+      "rt_error": {
+        "n": 200,
+        "mean": 2.01,
+        "sd": 0.521,
+        "p5": 1,
+        "p50": 2,
+        "p95": 3
+      },
+      "duration_error": {
+        "n": 200,
+        "mean": -97.77,
+        "sd": 0.519,
+        "p5": -98.3,
+        "p50": -97.9,
+        "p95": -96.8
+      },
+      "mean_precision": 0.52,
+      "wall_ms": 83543
+    },
+    {
+      "run": 12,
+      "n_trials": 200,
+      "n_responded": 200,
+      "response_rate": 1,
+      "rt_error": {
+        "n": 200,
+        "mean": 2.065,
+        "sd": 0.512,
+        "p5": 1,
+        "p50": 2,
+        "p95": 3
+      },
+      "duration_error": {
+        "n": 200,
+        "mean": -97.722,
+        "sd": 0.529,
+        "p5": -98.3,
+        "p50": -97.8,
+        "p95": -96.8
+      },
+      "mean_precision": 0.52,
+      "wall_ms": 83651
+    },
+    {
+      "run": 13,
+      "n_trials": 200,
+      "n_responded": 200,
+      "response_rate": 1,
+      "rt_error": {
+        "n": 200,
+        "mean": 2.095,
+        "sd": 0.606,
+        "p5": 1,
+        "p50": 2,
+        "p95": 3
+      },
+      "duration_error": {
+        "n": 200,
+        "mean": -97.725,
+        "sd": 0.612,
+        "p5": -98.3,
+        "p50": -97.8,
+        "p95": -96.9
+      },
+      "mean_precision": 0.609,
+      "wall_ms": 83659
+    },
+    {
+      "run": 14,
+      "n_trials": 200,
+      "n_responded": 200,
+      "response_rate": 1,
+      "rt_error": {
+        "n": 200,
+        "mean": 1.935,
+        "sd": 0.426,
+        "p5": 1,
+        "p50": 2,
+        "p95": 3
+      },
+      "duration_error": {
+        "n": 200,
+        "mean": -97.87,
+        "sd": 0.398,
+        "p5": -98.4,
+        "p50": -97.9,
+        "p95": -97.1
+      },
+      "mean_precision": 0.412,
+      "wall_ms": 83558
+    },
+    {
+      "run": 15,
+      "n_trials": 200,
+      "n_responded": 200,
+      "response_rate": 1,
+      "rt_error": {
+        "n": 200,
+        "mean": 2.005,
+        "sd": 0.431,
+        "p5": 1,
+        "p50": 2,
+        "p95": 3
+      },
+      "duration_error": {
+        "n": 200,
+        "mean": -97.763,
+        "sd": 0.442,
+        "p5": -98.3,
+        "p50": -97.9,
+        "p95": -96.9
+      },
+      "mean_precision": 0.436,
+      "wall_ms": 83560
+    },
+    {
+      "run": 16,
+      "n_trials": 200,
+      "n_responded": 200,
+      "response_rate": 1,
+      "rt_error": {
+        "n": 200,
+        "mean": 2.115,
+        "sd": 0.503,
+        "p5": 1,
+        "p50": 2,
+        "p95": 3
+      },
+      "duration_error": {
+        "n": 200,
+        "mean": -97.679,
+        "sd": 0.495,
+        "p5": -98.3,
+        "p50": -97.8,
+        "p95": -96.8
+      },
+      "mean_precision": 0.499,
+      "wall_ms": 83725
+    },
+    {
+      "run": 17,
+      "n_trials": 200,
+      "n_responded": 200,
+      "response_rate": 1,
+      "rt_error": {
+        "n": 200,
+        "mean": 2.035,
+        "sd": 0.553,
+        "p5": 1,
+        "p50": 2,
+        "p95": 3
+      },
+      "duration_error": {
+        "n": 200,
+        "mean": -97.792,
+        "sd": 0.501,
+        "p5": -98.3,
+        "p50": -97.9,
+        "p95": -96.8
+      },
+      "mean_precision": 0.527,
+      "wall_ms": 83670
+    },
+    {
+      "run": 18,
+      "n_trials": 200,
+      "n_responded": 200,
+      "response_rate": 1,
+      "rt_error": {
+        "n": 200,
+        "mean": 1.965,
+        "sd": 0.418,
+        "p5": 1,
+        "p50": 2,
+        "p95": 3
+      },
+      "duration_error": {
+        "n": 200,
+        "mean": -97.846,
+        "sd": 0.383,
+        "p5": -98.3,
+        "p50": -97.9,
+        "p95": -97.1
+      },
+      "mean_precision": 0.4,
+      "wall_ms": 83678
+    },
+    {
+      "run": 19,
+      "n_trials": 200,
+      "n_responded": 200,
+      "response_rate": 1,
+      "rt_error": {
+        "n": 200,
+        "mean": 1.935,
+        "sd": 0.541,
+        "p5": 1,
+        "p50": 2,
+        "p95": 3
+      },
+      "duration_error": {
+        "n": 200,
+        "mean": -97.879,
+        "sd": 0.472,
+        "p5": -98.3,
+        "p50": -97.9,
+        "p95": -97
+      },
+      "mean_precision": 0.506,
+      "wall_ms": 83520
+    },
+    {
+      "run": 20,
+      "n_trials": 200,
+      "n_responded": 200,
+      "response_rate": 1,
+      "rt_error": {
+        "n": 200,
+        "mean": 1.875,
+        "sd": 0.459,
+        "p5": 1,
+        "p50": 2,
+        "p95": 2
+      },
+      "duration_error": {
+        "n": 200,
+        "mean": -97.908,
+        "sd": 0.386,
+        "p5": -98.4,
+        "p50": -98,
+        "p95": -97.2
+      },
+      "mean_precision": 0.422,
+      "wall_ms": 83674
+    }
+  ]
+}
