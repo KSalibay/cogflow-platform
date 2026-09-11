@@ -4329,6 +4329,48 @@ class JSPsychSchemas {
                 },
                 data: {}
             },
+            'debriefing': {
+                name: 'debriefing',
+                description: 'Closing screen shown at the end of the study (also used when consent is declined)',
+                parameters: {
+                    stimulus: {
+                        type: this.parameterTypes.HTML_STRING,
+                        required: true,
+                        description: 'Debriefing text shown to the participant'
+                    },
+                    choices: {
+                        type: this.parameterTypes.STRING,
+                        default: 'ALL_KEYS',
+                        description: 'Keys that dismiss the screen'
+                    },
+                    prompt: {
+                        type: this.parameterTypes.HTML_STRING,
+                        default: null,
+                        description: 'Prompt text displayed below the debriefing text'
+                    },
+                    stimulus_duration: {
+                        type: this.parameterTypes.INT,
+                        default: null,
+                        description: 'How long to show the text (ms)'
+                    },
+                    trial_duration: {
+                        type: this.parameterTypes.INT,
+                        default: null,
+                        description: 'Maximum time before advancing automatically (ms)'
+                    },
+                    response_ends_trial: {
+                        type: this.parameterTypes.BOOL,
+                        default: true,
+                        description: 'End the screen as soon as a key is pressed'
+                    }
+                },
+                data: {
+                    stimulus: { type: this.parameterTypes.HTML_STRING },
+                    response: { type: this.parameterTypes.KEY },
+                    rt: { type: this.parameterTypes.INT }
+                }
+            },
+
             'instructions': {
                 name: 'instructions',
                 description: 'Display instructions to participants',
@@ -4577,6 +4619,16 @@ class JSPsychSchemas {
                         type: this.parameterTypes.BOOL, 
                         default: true,
                         description: 'End trial immediately after response'
+                    },
+                    consent_mode: {
+                        type: this.parameterTypes.BOOL,
+                        default: false,
+                        description: 'Informed consent form: show fixed Agree / Don\'t agree buttons and end the study if the participant declines'
+                    },
+                    consent_decline_message: {
+                        type: this.parameterTypes.HTML_STRING,
+                        default: '<p>You have chosen not to take part. You may now close this window.</p>',
+                        description: 'Message shown after the participant declines consent'
                     }
                 },
                 data: {

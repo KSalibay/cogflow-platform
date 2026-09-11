@@ -2770,6 +2770,12 @@
 
     // Expose checkpoint save hook for checkpoint-marker timeline items (multi-config path).
     try {
+      window.__psy_jsPsych = jsPsych;
+    } catch {
+      // ignore
+    }
+
+    try {
       window.CogFlowCheckpoint = {
         save: function (opts) {
           const options = (opts && typeof opts === 'object') ? opts : {};

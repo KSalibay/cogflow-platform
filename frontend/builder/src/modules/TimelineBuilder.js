@@ -212,6 +212,7 @@ class TimelineBuilder {
         const getCanonicalTitle = (c) => {
             const id = (c?.builderComponentId || '').toString().trim().toLowerCase();
             if (id === 'instructions') return 'Instructions';
+            if (id === 'debriefing') return 'Debriefing';
             if (id === 'eye-tracking-calibration-instructions') return 'Calibration Instructions';
             if (id === 'mw-probe') return 'Mind Wandering Probe';
             if (id === 'survey-response') return 'Survey Response';
@@ -362,6 +363,15 @@ class TimelineBuilder {
 
         // Setup form listeners
         this.setupParameterFormListeners(modalBody, component);
+
+        if (component.type === 'html-button-response') {
+            this._attachRichTextEditorToParam(modalBody, modal, 'stimulus');
+            this._setupConsentModeControls(modalBody);
+        }
+
+        if (component.type === 'debriefing') {
+            this._attachRichTextEditorToParam(modalBody, modal, 'stimulus');
+        }
 
         // Show modal
         const bootstrapModal = new bootstrap.Modal(modal);
@@ -6196,6 +6206,153 @@ class TimelineBuilder {
         if (!modalBody) return '';
         const input = modalBody.querySelector('#cf-label-input');
         return input ? input.value.trim() : '';
+    }
+
+    // Wraps a plain HTML textarea parameter in a Quill WYSIWYG editor so researchers
+    // can format stimulus text without writing HTML. The textarea stays the source of
+    // truth, so the existing save path is unchanged.
+    _attachRichTextEditorToParam(modalBody, modal, paramName) {
+        if (!modalBody) return;
+
+        const textarea = modalBody.querySelector(`#param_${paramName}`);
+        if (!textarea || textarea.dataset.cfRichTextAttached === '1') return;
+
+        const coerceToHtml = (raw) => {
+            const s = (raw === null || raw === undefined) ? '' : String(raw);
+            const trimmed = s.trim();
+            if (/[<][a-z!/]/i.test(trimmed)) return s;
+            const paras = s.split(/\n\s*\n/g).map(p => p.replace(/\n/g, '<br>'));
+            return paras.map(p => `<p>${this.escapeHtml(p)}</p>`).join('');
+        };
+
+        if (!window.Quill) {
+            // Without Quill the textarea remains fully usable.
+            return;
+        }
+
+        textarea.dataset.cfRichTextAttached = '1';
+
+        const wrap = document.createElement('div');
+        wrap.innerHTML = `
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <small class="text-muted">Formatting is saved as HTML.</small>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="cf-rte-toggle-${paramName}">Edit HTML</button>
+            </div>
+            <div id="cf-rte-wrap-${paramName}" class="border rounded" style="background:#fff;">
+                <div id="cf-rte-toolbar-${paramName}"></div>
+                <div id="cf-rte-editor-${paramName}" style="min-height:160px;"></div>
+            </div>
+        `;
+        textarea.parentNode.insertBefore(wrap, textarea);
+        textarea.classList.add('d-none');
+
+        const toolbar = wrap.querySelector(`#cf-rte-toolbar-${paramName}`);
+        const editorEl = wrap.querySelector(`#cf-rte-editor-${paramName}`);
+        const toggleBtn = wrap.querySelector(`#cf-rte-toggle-${paramName}`);
+        const wysWrap = wrap.querySelector(`#cf-rte-wrap-${paramName}`);
+
+        toolbar.innerHTML = `
+            <span class="ql-formats">
+                <select class="ql-header">
+                    <option selected></option>
+                    <option value="1"></option>
+                    <option value="2"></option>
+                </select>
+                <button class="ql-bold"></button>
+                <button class="ql-italic"></button>
+                <button class="ql-underline"></button>
+            </span>
+            <span class="ql-formats">
+                <select class="ql-align">
+                    <option selected></option>
+                    <option value="center"></option>
+                    <option value="right"></option>
+                </select>
+            </span>
+            <span class="ql-formats">
+                <button class="ql-list" value="ordered"></button>
+                <button class="ql-list" value="bullet"></button>
+                <button class="ql-blockquote"></button>
+            </span>
+            <span class="ql-formats">
+                <button class="ql-link"></button>
+                <button class="ql-clean"></button>
+            </span>
+        `;
+
+        const quill = new Quill(editorEl, { theme: 'snow', modules: { toolbar } });
+        quill.clipboard.dangerouslyPasteHTML(coerceToHtml(textarea.value));
+
+        let mode = 'wysiwyg';
+        const syncTextareaFromQuill = () => {
+            textarea.value = quill.root.innerHTML;
+        };
+
+        toggleBtn.addEventListener('click', () => {
+            if (mode === 'wysiwyg') {
+                syncTextareaFromQuill();
+                mode = 'html';
+                wysWrap.classList.add('d-none');
+                textarea.classList.remove('d-none');
+                toggleBtn.textContent = 'Edit visually';
+            } else {
+                try { quill.clipboard.dangerouslyPasteHTML(textarea.value || ''); } catch { /* ignore */ }
+                mode = 'wysiwyg';
+                textarea.classList.add('d-none');
+                wysWrap.classList.remove('d-none');
+                toggleBtn.textContent = 'Edit HTML';
+            }
+        });
+
+        quill.on('text-change', () => {
+            if (mode === 'wysiwyg') syncTextareaFromQuill();
+        });
+
+        syncTextareaFromQuill();
+
+        if (modal) {
+            const cleanup = () => {
+                try { modal.removeEventListener('hidden.bs.modal', cleanup); } catch { /* ignore */ }
+            };
+            modal.addEventListener('hidden.bs.modal', cleanup);
+        }
+    }
+
+    // Consent mode owns the button labels and early exit, so the manual choices
+    // field is disabled while it is active.
+    _setupConsentModeControls(modalBody) {
+        if (!modalBody) return;
+
+        const consentToggle = modalBody.querySelector('#param_consent_mode');
+        if (!consentToggle) return;
+
+        const choicesRow = modalBody.querySelector('[data-param-name="choices"]');
+        const choicesInput = modalBody.querySelector('#param_choices');
+        const declineRow = modalBody.querySelector('[data-param-name="consent_decline_message"]');
+
+        let hint = modalBody.querySelector('#cf-consent-hint');
+        if (!hint && choicesRow) {
+            hint = document.createElement('div');
+            hint.id = 'cf-consent-hint';
+            hint.className = 'form-text text-muted';
+            choicesRow.appendChild(hint);
+        }
+
+        const sync = () => {
+            const on = !!consentToggle.checked;
+
+            if (choicesInput) choicesInput.disabled = on;
+            if (choicesRow) choicesRow.classList.toggle('opacity-50', on);
+            if (declineRow) declineRow.style.display = on ? '' : 'none';
+            if (hint) {
+                hint.textContent = on
+                    ? 'Consent form is on: buttons are fixed to "Agree" and "Don\'t agree". Declining jumps to your Debriefing component, or ends the study if there isn\'t one.'
+                    : '';
+            }
+        };
+
+        consentToggle.addEventListener('change', sync);
+        sync();
     }
 
     _updateCardLabel(componentElement, label) {

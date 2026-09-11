@@ -1,5 +1,17 @@
 # CogFlow Builder & Interpreter Changelog
 
+## September 11, 2026
+
+### HTML + Button: Rich Text Editing and Informed Consent Mode
+
+- The HTML + Button component's stimulus field now uses the same WYSIWYG (Quill) editor as the Instructions/Survey editors, with an "Edit HTML" toggle for users who want raw markup. Authors no longer need to hand-write HTML.
+- Added `consent_mode` to HTML + Button. When enabled, the component renders as an informed consent form: buttons are fixed to "Agree" / "Don't agree", and choosing "Don't agree" skips the rest of the study.
+  - Declining jumps straight to the **Debriefing** component when one is present; if there is no Debriefing component, the run ends instead.
+  - `consent_decline_message` is shown when the run ends without a Debriefing component.
+  - Declines are recorded as `consent_declined` in the trial data and are still submitted, so partial runs remain auditable.
+- Added a **Debriefing** component: a closing screen that behaves like Instructions and doubles as the landing point for declined consent.
+- Fixed: `html-button-response` only compiled in the continuous-RDM path and rendered as an "Unsupported component" debug screen for all other task types. It now compiles in every task type and experiment mode.
+
 ## August 18, 2026
 
 ### RDM Direction No-Immediate-Repeat Sampling

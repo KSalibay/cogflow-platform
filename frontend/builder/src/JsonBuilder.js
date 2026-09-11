@@ -2597,6 +2597,8 @@ class JsonBuilder {
                 if (values.prompt !== undefined) out.prompt = values.prompt;
                 if (values.choices !== undefined) out.choices = values.choices;
                 if (values.button_html !== undefined) out.button_html = values.button_html;
+                if (values.consent_mode !== undefined) out.consent_mode = !!values.consent_mode;
+                if (values.consent_decline_message !== undefined) out.consent_decline_message = values.consent_decline_message;
             } else if (innerType === 'image-keyboard-response') {
                 if (values.stimulus_image !== undefined && out.stimulus === undefined) out.stimulus = values.stimulus_image;
                 if (values.stimulus_images !== undefined) out.stimulus_images = values.stimulus_images;
@@ -3878,6 +3880,7 @@ class JsonBuilder {
             'image-keyboard-response',
             'survey-response',
             'instructions',
+            'debriefing',
             'visual-angle-calibration',
             'reward-settings',
 
@@ -7707,6 +7710,22 @@ class JsonBuilder {
                 }
             },
             {
+                id: 'debriefing',
+                name: 'Debriefing',
+                icon: 'fas fa-comment-dots',
+                description: 'Closing screen shown at the end of the study (also used when consent is declined)',
+                category: 'basic',
+                type: 'debriefing',
+                parameters: {
+                    stimulus: { type: 'string', default: '<p>Thank you for taking part.</p>\n<p>Press any key to finish.</p>' },
+                    choices: { type: 'select', default: 'ALL_KEYS', options: ['ALL_KEYS', 'space', 'enter', 'escape'] },
+                    prompt: { type: 'string', default: '' },
+                    stimulus_duration: { type: 'number', default: null, min: 100, max: 30000 },
+                    trial_duration: { type: 'number', default: null, min: 500, max: 60000 },
+                    response_ends_trial: { type: 'boolean', default: true }
+                }
+            },
+            {
                 id: 'detection-response-task-start',
                 name: 'DRT Start (Response Detection Task)',
                 icon: 'fas fa-bullseye',
@@ -8043,7 +8062,9 @@ class JsonBuilder {
                     parameters: {
                         stimulus: { type: 'string', default: '<p>Click a button</p>' },
                         choices: { type: 'array', default: ['Option 1', 'Option 2'] },
-                        trial_duration: { type: 'number', default: null }
+                        trial_duration: { type: 'number', default: null },
+                        consent_mode: { type: 'boolean', default: false, description: 'Informed consent form: show fixed Agree / Don\'t agree buttons and end the study if the participant declines.' },
+                        consent_decline_message: { type: 'string', default: '<p>You have chosen not to take part. You may now close this window.</p>', description: 'Message shown after the participant declines consent.' }
                     }
                 }
             );
@@ -8584,7 +8605,9 @@ class JsonBuilder {
                 parameters: {
                     stimulus: { type: 'string', default: '<p>Click a button</p>' },
                     choices: { type: 'array', default: ['Option 1', 'Option 2'] },
-                    trial_duration: { type: 'number', default: null }
+                    trial_duration: { type: 'number', default: null },
+                    consent_mode: { type: 'boolean', default: false, description: 'Informed consent form: show fixed Agree / Don\'t agree buttons and end the study if the participant declines.' },
+                    consent_decline_message: { type: 'string', default: '<p>You have chosen not to take part. You may now close this window.</p>', description: 'Message shown after the participant declines consent.' }
                 }
             }
         );
@@ -11425,7 +11448,7 @@ class JsonBuilder {
         console.log('component.type:', component.type);
         
         // Handle html-keyboard-response components (Instructions) differently
-        if (component.type === 'html-keyboard-response') {
+        if (component.type === 'html-keyboard-response' || component.type === 'debriefing') {
             // Instructions components store parameters directly on the component object
                 let _stimulus = (component.stimulus || '');
                 // Strip Quill's ql-align-* classes and replace with inline styles.
@@ -11491,6 +11514,19 @@ class JsonBuilder {
         // Special handling for Block components (compact range/window representation)
         if (baseComponent.type === 'block') {
             return this.transformBlock(baseComponent);
+        }
+
+        // Consent mode supplies its own button labels at runtime, so only export the
+        // consent fields when it is actually enabled.
+        if (baseComponent.type === 'html-button-response') {
+            const consentOn = (baseComponent.consent_mode === true || baseComponent.consent_mode === 'true');
+            if (consentOn) {
+                baseComponent.consent_mode = true;
+                delete baseComponent.choices;
+            } else {
+                delete baseComponent.consent_mode;
+                delete baseComponent.consent_decline_message;
+            }
         }
 
         // Note: rdm-dot-groups is handled later so it still benefits from
@@ -12605,6 +12641,13 @@ class JsonBuilder {
             const btnHtml = (blockComponent.button_html ?? '').toString();
             if (btnHtml.trim() !== '') {
                 values.button_html = btnHtml;
+            }
+            if (blockComponent.consent_mode === true || blockComponent.consent_mode === 'true') {
+                values.consent_mode = true;
+                const declineMsg = (blockComponent.consent_decline_message ?? '').toString();
+                if (declineMsg.trim() !== '') {
+                    values.consent_decline_message = declineMsg;
+                }
             }
         } else if (resolvedComponentType === 'image-keyboard-response') {
             const img = (blockComponent.stimulus_image ?? blockComponent.stimulus ?? '').toString().trim();

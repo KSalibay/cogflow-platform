@@ -3043,6 +3043,16 @@
       return parts.length > 0 ? parts : 'ALL_KEYS';
     }
 
+    const CONSENT_AGREE_LABEL = 'Agree';
+    const CONSENT_DECLINE_LABEL = "Don't agree";
+    const CONSENT_DECLINE_INDEX = 1;
+    const CONSENT_SKIP_TIMELINE_PREFIX = 'cogflow-consent-skippable';
+
+    // Links a consent trial's on_finish hook to the timeline it should skip, resolved
+    // once the surrounding timeline is known.
+    const consentSkipStates = new WeakMap();
+    let consentSkipCounter = 0;
+
     function normalizeButtonChoices(raw) {
       if (raw === undefined || raw === null) return [];
       if (Array.isArray(raw)) return raw.map(x => String(x));
@@ -3051,6 +3061,117 @@
         .split(/[\n,]+/)
         .map(x => x.trim())
         .filter(Boolean);
+    }
+
+    function buildConsentOnFinishHook(declineMessage) {
+      const state = { skipTimelineName: null };
+
+      const hook = (data) => {
+        const declined = Number(data?.response) === CONSENT_DECLINE_INDEX;
+        if (data && typeof data === 'object') data.consent_declined = declined;
+        if (!declined) return;
+
+        const instance = window.__psy_jsPsych;
+
+        // Preferred: skip the rest of the study and land on the debriefing screen.
+        try {
+          if (state.skipTimelineName && instance && typeof instance.abortTimelineByName === 'function') {
+            instance.abortTimelineByName(state.skipTimelineName);
+            return;
+          }
+        } catch (e) {
+          console.warn('[TimelineCompiler] Failed to skip to debriefing after consent decline:', e);
+        }
+
+        // No debriefing authored: end the run instead.
+        // Aborting still runs jsPsych's global on_finish, so the decline is recorded
+        // and submitted like any other completed run.
+        try {
+          if (instance && typeof instance.abortExperiment === 'function') {
+            instance.abortExperiment(declineMessage);
+          }
+        } catch (e) {
+          console.warn('[TimelineCompiler] Failed to end study after consent decline:', e);
+        }
+      };
+
+      consentSkipStates.set(hook, state);
+      return hook;
+    }
+
+    function buildDebriefingTrial(item, HtmlKeyboard, wrapStimulus) {
+      const stimulus = (item.stimulus !== undefined && item.stimulus !== null) ? item.stimulus : item.stimulus_html;
+      return {
+        type: HtmlKeyboard,
+        stimulus: wrapStimulus(stimulus, item.prompt),
+        prompt: null,
+        choices: normalizeKeyChoices(item.choices),
+        stimulus_duration: (item.stimulus_duration === undefined ? null : item.stimulus_duration),
+        trial_duration: (item.trial_duration === undefined ? null : item.trial_duration),
+        response_ends_trial: (item.response_ends_trial === undefined ? true : item.response_ends_trial),
+        data: { plugin_type: 'debriefing' }
+      };
+    }
+
+    // Groups everything between the consent screen and the debriefing screen into a
+    // named timeline, so declining consent can skip straight to debriefing.
+    function applyConsentSkipToDebriefing(timeline) {
+      if (!Array.isArray(timeline)) return;
+
+      for (let consentIndex = 0; consentIndex < timeline.length; consentIndex++) {
+        const consentTrial = timeline[consentIndex];
+        if (consentTrial?.data?.consent_mode !== true) continue;
+
+        const state = consentSkipStates.get(consentTrial.on_finish);
+        if (!state) continue;
+
+        const debriefIndex = timeline.findIndex(
+          (t, i) => i > consentIndex && t?.data?.plugin_type === 'debriefing'
+        );
+        if (debriefIndex < 0) continue;
+
+        const skipped = timeline.slice(consentIndex + 1, debriefIndex);
+        if (skipped.length === 0) continue;
+
+        consentSkipCounter += 1;
+        const name = `${CONSENT_SKIP_TIMELINE_PREFIX}-${consentSkipCounter}`;
+        timeline.splice(consentIndex + 1, skipped.length, { name, timeline: skipped });
+        state.skipTimelineName = name;
+      }
+    }
+
+    function buildHtmlButtonTrial(item, type, HtmlButton, wrapStimulus) {
+      const stimulus = (item.stimulus !== undefined && item.stimulus !== null) ? item.stimulus : item.stimulus_html;
+
+      // Consent mode presents a fixed Agree / Don't agree pair and ends the study
+      // when the participant declines, so researchers don't have to hand-build an
+      // early-exit branch.
+      const consentMode = (item.consent_mode === true || item.consent_mode === 'true');
+      const consentDeclineMessage = (item.consent_decline_message === undefined
+        || item.consent_decline_message === null
+        || String(item.consent_decline_message).trim() === '')
+        ? '<p>You have chosen not to take part. You may now close this window.</p>'
+        : String(item.consent_decline_message);
+
+      const choices = consentMode
+        ? [CONSENT_AGREE_LABEL, CONSENT_DECLINE_LABEL]
+        : normalizeButtonChoices(item.choices !== undefined ? item.choices : item.button_choices);
+
+      return {
+        type: HtmlButton,
+        stimulus: wrapStimulus(stimulus, item.prompt),
+        prompt: null,
+        choices,
+        ...(item.button_html !== undefined ? { button_html: item.button_html } : {}),
+        stimulus_duration: (item.stimulus_duration === undefined ? null : item.stimulus_duration),
+        trial_duration: (consentMode ? null : (item.trial_duration === undefined ? null : item.trial_duration)),
+        ...(item.button_layout !== undefined ? { button_layout: item.button_layout } : {}),
+        ...(item.grid_rows !== undefined ? { grid_rows: item.grid_rows } : {}),
+        ...(item.grid_columns !== undefined ? { grid_columns: item.grid_columns } : {}),
+        response_ends_trial: (consentMode ? true : (item.response_ends_trial === undefined ? true : item.response_ends_trial)),
+        ...(consentMode ? { on_finish: buildConsentOnFinishHook(consentDeclineMessage) } : {}),
+        data: { plugin_type: type, ...(consentMode ? { consent_mode: true } : {}) }
+      };
     }
 
     function buildMwProbeOnStartHook() {
@@ -3807,22 +3928,13 @@
         if (type === 'html-button-response') {
           pushRdmContinuousSegment();
           const HtmlButton = requirePlugin('html-button-response (jsPsychHtmlButtonResponse)', HtmlButtonResponsePlugin);
-          const stimulus = (item.stimulus !== undefined && item.stimulus !== null) ? item.stimulus : item.stimulus_html;
-          const choices = normalizeButtonChoices(item.choices !== undefined ? item.choices : item.button_choices);
-          timeline.push({
-            type: HtmlButton,
-            stimulus: wrapMaybeFunctionStimulus(stimulus, item.prompt),
-            prompt: null,
-            choices,
-            ...(item.button_html !== undefined ? { button_html: item.button_html } : {}),
-            stimulus_duration: (item.stimulus_duration === undefined ? null : item.stimulus_duration),
-            trial_duration: (item.trial_duration === undefined ? null : item.trial_duration),
-            ...(item.button_layout !== undefined ? { button_layout: item.button_layout } : {}),
-            ...(item.grid_rows !== undefined ? { grid_rows: item.grid_rows } : {}),
-            ...(item.grid_columns !== undefined ? { grid_columns: item.grid_columns } : {}),
-            response_ends_trial: (item.response_ends_trial === undefined ? true : item.response_ends_trial),
-            data: { plugin_type: type }
-          });
+          timeline.push(buildHtmlButtonTrial(item, type, HtmlButton, wrapMaybeFunctionStimulus));
+          continue;
+        }
+
+        if (type === 'debriefing') {
+          pushRdmContinuousSegment();
+          timeline.push(buildDebriefingTrial(item, HtmlKeyboard, wrapMaybeFunctionStimulus));
           continue;
         }
 
@@ -3934,6 +4046,8 @@
 
       // Flush trailing RDM frames.
       pushRdmContinuousSegment();
+
+      applyConsentSkipToDebriefing(timeline);
 
       return { experimentType, timeline };
     }
@@ -4267,9 +4381,19 @@
         continue;
       }
 
+      if (type === 'debriefing') {
+        timeline.push(buildDebriefingTrial(item, HtmlKeyboard, wrapMaybeFunctionStimulus));
+        continue;
+      }
+
+      if (type === 'html-button-response') {
+        const HtmlButton = requirePlugin('html-button-response (jsPsychHtmlButtonResponse)', HtmlButtonResponsePlugin);
+        timeline.push(buildHtmlButtonTrial(item, type, HtmlButton, wrapMaybeFunctionStimulus));
+        continue;
+      }
+
       if (type === 'image-keyboard-response') {
-        const src = resolveMaybeRelativeUrl(item.stimulus);
-        const w = Number.isFinite(Number(item.stimulus_width)) ? Number(item.stimulus_width) : null;
+        const src = resolveMaybeRelativeUrl(item.stimulus);        const w = Number.isFinite(Number(item.stimulus_width)) ? Number(item.stimulus_width) : null;
         const h = Number.isFinite(Number(item.stimulus_height)) ? Number(item.stimulus_height) : null;
         const keep = (item.maintain_aspect_ratio !== undefined) ? (item.maintain_aspect_ratio === true) : true;
 
@@ -5933,6 +6057,8 @@
         data: { plugin_type: 'reward-summary' }
       });
     }
+
+    applyConsentSkipToDebriefing(timeline);
 
     return { experimentType, timeline };
   }
