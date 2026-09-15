@@ -2425,7 +2425,7 @@ class JSPsychSchemas {
                     block_component_type: {
                         type: this.parameterTypes.SELECT,
                         default: 'rdm-trial',
-                        options: ['rdm-trial', 'rdm-practice', 'rdm-adaptive', 'rdm-dot-groups', 'flanker-trial', 'sart-trial', 'simon-trial', 'pvt-trial', 'task-switching-trial', 'stroop-trial', 'emotional-stroop-trial', 'gabor-trial', 'gabor-quest', 'gabor-learning', 'nback-block', 'mot-trial', 'html-button-response', 'html-keyboard-response', 'image-keyboard-response', 'continuous-image-presentation'],
+                        options: ['rdm-trial', 'rdm-practice', 'rdm-adaptive', 'rdm-dot-groups', 'flanker-trial', 'sart-trial', 'simon-trial', 'pvt-trial', 'task-switching-trial', 'stroop-trial', 'emotional-stroop-trial', 'gabor-trial', 'gabor-quest', 'gabor-learning', 'nback-block', 'mot-trial', 'html-button-response', 'html-keyboard-response', 'image-keyboard-response', 'image-slider-response', 'continuous-image-presentation'],
                         required: true,
                         description: 'What component type this block generates'
                     },
@@ -2470,8 +2470,8 @@ class JSPsychSchemas {
                     prompt: {
                         type: this.parameterTypes.HTML_STRING,
                         default: '',
-                        blockTarget: 'html-keyboard-response,html-button-response,image-keyboard-response',
-                        description: 'Optional prompt shown below the stimulus (HTML allowed)'
+                        blockTarget: 'html-keyboard-response,html-button-response,image-keyboard-response,image-slider-response',
+                        description: 'Optional prompt shown below the stimulus (HTML allowed). For image-slider-response, %category% is replaced with the sampled stimulus category when present.'
                     },
                     choices: {
                         type: this.parameterTypes.STRING,
@@ -2494,14 +2494,87 @@ class JSPsychSchemas {
                     stimulus_image: {
                         type: this.parameterTypes.IMAGE,
                         default: '',
-                        blockTarget: 'image-keyboard-response',
+                        blockTarget: 'image-keyboard-response,image-slider-response',
                         description: 'Single image URL or filename (e.g., "img1.png" after uploading assets). If you provide stimulus_images, it takes precedence.'
                     },
                     stimulus_images: {
                         type: this.parameterTypes.HTML_STRING,
                         default: '',
-                        blockTarget: 'image-keyboard-response',
-                        description: 'List of images (comma or newline separated). Use this to sample different images across trials in the Block (works with uploaded assets filenames).'
+                        blockTarget: 'image-keyboard-response,image-slider-response',
+                        description: 'List of images (comma or newline separated). Use this to sample different images across trials in the Block (works with uploaded assets filenames). Prefix a line with a category and a colon (e.g. "happy:img/happy1.png") to tag that image\'s category, which %category% in the prompt will absorb.'
+                    },
+                    slider_min: {
+                        type: this.parameterTypes.INT,
+                        default: 1,
+                        blockTarget: 'image-slider-response',
+                        description: 'Rating Image + Slider: minimum slider value'
+                    },
+                    slider_max: {
+                        type: this.parameterTypes.INT,
+                        default: 10,
+                        blockTarget: 'image-slider-response',
+                        description: 'Rating Image + Slider: maximum slider value'
+                    },
+                    slider_step: {
+                        type: this.parameterTypes.INT,
+                        default: 1,
+                        blockTarget: 'image-slider-response',
+                        description: 'Rating Image + Slider: step size between ticks (controls how many ticks the slider has)'
+                    },
+                    slider_start_value: {
+                        type: this.parameterTypes.INT,
+                        default: null,
+                        blockTarget: 'image-slider-response',
+                        description: 'Rating Image + Slider: initial slider position (defaults to the midpoint of min/max)'
+                    },
+                    slider_labels: {
+                        type: this.parameterTypes.STRING,
+                        default: '',
+                        blockTarget: 'image-slider-response',
+                        description: 'Rating Image + Slider: comma-separated labels shown under the slider (e.g. "Not at all,Extremely")'
+                    },
+                    slider_button_label: {
+                        type: this.parameterTypes.STRING,
+                        default: 'Continue',
+                        blockTarget: 'image-slider-response',
+                        description: 'Rating Image + Slider: label for the button that submits the rating'
+                    },
+                    slider_require_movement: {
+                        type: this.parameterTypes.BOOL,
+                        default: false,
+                        blockTarget: 'image-slider-response',
+                        description: 'Rating Image + Slider: require the participant to move the slider before submitting'
+                    },
+                    slider_enabled: {
+                        type: this.parameterTypes.BOOL,
+                        default: true,
+                        blockTarget: 'image-slider-response',
+                        description: 'Image Categorization: show the optional intensity slider after the category question'
+                    },
+                    slider_accuracy_question_first: {
+                        type: this.parameterTypes.BOOL,
+                        default: true,
+                        blockTarget: 'image-slider-response',
+                        description: 'Image Categorization: ask the accuracy question before the optional intensity slider'
+                    },
+                    category_sampling_mode: {
+                        type: this.parameterTypes.SELECT,
+                        default: 'random',
+                        options: ['random', 'shuffle-once'],
+                        blockTarget: 'image-slider-response',
+                        description: 'Image Categorization: choose random image sampling or shuffle the image list once per Block'
+                    },
+                    slider_accuracy_question_enabled: {
+                        type: this.parameterTypes.BOOL,
+                        default: false,
+                        blockTarget: 'image-slider-response',
+                        description: 'Rating Image + Slider: show a follow-up radio question after each rating, with categories parsed from stimulus_images offered as options'
+                    },
+                    slider_accuracy_question_text: {
+                        type: this.parameterTypes.STRING,
+                        default: 'What is the emotion shown?',
+                        blockTarget: 'image-slider-response',
+                        description: 'Rating Image + Slider: question text for the follow-up accuracy question'
                     },
 
                     // Continuous Image Presentation (CIP) per-block settings.
@@ -4562,6 +4635,125 @@ class JSPsychSchemas {
                     response: { type: this.parameterTypes.KEY },
                     rt: { type: this.parameterTypes.INT },
                     correct: { type: this.parameterTypes.BOOL, optional: true }
+                }
+            },
+
+            'image-slider-response': {
+                name: 'image-slider-response',
+                description: 'Display image stimulus and collect a slider rating response (e.g., rate emotional intensity)',
+                parameters: {
+                    stimulus: {
+                        type: this.parameterTypes.IMAGE,
+                        required: true,
+                        description: 'Path to image file'
+                    },
+                    stimulus_height: {
+                        type: this.parameterTypes.INT,
+                        default: null,
+                        description: 'Height of image in pixels'
+                    },
+                    stimulus_width: {
+                        type: this.parameterTypes.INT,
+                        default: null,
+                        description: 'Width of image in pixels'
+                    },
+                    maintain_aspect_ratio: {
+                        type: this.parameterTypes.BOOL,
+                        default: true,
+                        description: 'Maintain image aspect ratio'
+                    },
+                    stimulus_category: {
+                        type: this.parameterTypes.STRING,
+                        default: '',
+                        description: 'Optional category label for this stimulus (e.g., "happy"). %category% in the prompt is replaced with this value.'
+                    },
+                    min: {
+                        type: this.parameterTypes.INT,
+                        default: 1,
+                        description: 'Minimum slider value'
+                    },
+                    max: {
+                        type: this.parameterTypes.INT,
+                        default: 10,
+                        description: 'Maximum slider value'
+                    },
+                    step: {
+                        type: this.parameterTypes.INT,
+                        default: 1,
+                        description: 'Step size between ticks (controls how many ticks the slider has)'
+                    },
+                    slider_start: {
+                        type: this.parameterTypes.INT,
+                        default: null,
+                        description: 'Initial slider position (defaults to the midpoint of min/max)'
+                    },
+                    labels: {
+                        type: this.parameterTypes.STRING,
+                        array: true,
+                        default: [],
+                        description: 'Labels shown under the slider (e.g., endpoints like "Not at all", "Extremely")'
+                    },
+                    button_label: {
+                        type: this.parameterTypes.STRING,
+                        default: 'Continue',
+                        description: 'Label for the button that submits the rating'
+                    },
+                    require_movement: {
+                        type: this.parameterTypes.BOOL,
+                        default: false,
+                        description: 'Require the participant to move the slider before submitting'
+                    },
+                    slider_enabled: {
+                        type: this.parameterTypes.BOOL,
+                        default: true,
+                        description: 'Show the optional intensity slider after the category question'
+                    },
+                    slider_accuracy_question_first: {
+                        type: this.parameterTypes.BOOL,
+                        default: true,
+                        description: 'Ask the accuracy question before the optional intensity slider'
+                    },
+                    prompt: {
+                        type: this.parameterTypes.HTML_STRING,
+                        default: null,
+                        description: 'Prompt text displayed below stimulus. %category% is replaced with stimulus_category when set.'
+                    },
+                    stimulus_duration: {
+                        type: this.parameterTypes.INT,
+                        default: null,
+                        description: 'How long to show stimulus (ms)'
+                    },
+                    trial_duration: {
+                        type: this.parameterTypes.INT,
+                        default: null,
+                        description: 'Maximum time allowed for response (ms)'
+                    },
+                    response_ends_trial: {
+                        type: this.parameterTypes.BOOL,
+                        default: true,
+                        description: 'End trial immediately after response'
+                    },
+                    accuracy_question_enabled: {
+                        type: this.parameterTypes.BOOL,
+                        default: false,
+                        description: 'Show a follow-up radio question after the rating (e.g., "What is the emotion shown?") with the stimulus categories offered as options'
+                    },
+                    accuracy_question_text: {
+                        type: this.parameterTypes.STRING,
+                        default: 'What is the emotion shown?',
+                        description: 'Question text for the follow-up accuracy question'
+                    },
+                    accuracy_question_categories: {
+                        type: this.parameterTypes.STRING,
+                        default: '',
+                        description: 'Comma-separated list of category options for the accuracy question. Leave blank to use this stimulus\'s own category as the only option.'
+                    }
+                },
+                data: {
+                    stimulus: { type: this.parameterTypes.IMAGE },
+                    response: { type: this.parameterTypes.INT },
+                    rt: { type: this.parameterTypes.INT },
+                    stimulus_category: { type: this.parameterTypes.STRING, optional: true }
                 }
             },
 

@@ -1199,6 +1199,17 @@ class JsonBuilder {
         return String(window.COGFLOW_PLATFORM_URL || '').trim().replace(/\/+$/, '');
     }
 
+    getPlatformStudySlug() {
+        const candidates = [
+            window.COGFLOW_STUDY_SLUG,
+            document.getElementById('publishStudySlug')?.value,
+            document.getElementById('studySlug')?.value
+        ];
+        return candidates
+            .map((value) => (value ?? '').toString().trim().toLowerCase())
+            .find(Boolean) || '';
+    }
+
     getPlatformAssetIndex() {
         const key = 'cogflow_platform_asset_index_v1';
         try {
@@ -1502,7 +1513,8 @@ class JsonBuilder {
         }
 
         const json = await res.json().catch(() => ({}));
-        const outUrl = (json && json.url) ? String(json.url).trim() : '';
+        const rawUrl = (json && json.url) ? String(json.url).trim() : '';
+        const outUrl = rawUrl.startsWith('/') ? `${safeBase}${rawUrl}` : rawUrl;
         if (!outUrl) throw new Error('Platform asset upload returned no URL');
         return { url: outUrl, path: json.path || null };
     }
@@ -1517,7 +1529,7 @@ class JsonBuilder {
             return;
         }
 
-        const studySlug = (window.COGFLOW_STUDY_SLUG || '').toString().trim();
+        const studySlug = this.getPlatformStudySlug();
         const scopeKey = studySlug || 'unscoped';
 
         const queue = inputFiles.slice().filter((f) => f && f.name).sort((a, b) => String(a.name).localeCompare(String(b.name)));
@@ -2604,6 +2616,22 @@ class JsonBuilder {
                 if (values.stimulus_images !== undefined) out.stimulus_images = values.stimulus_images;
                 if (values.prompt !== undefined) out.prompt = values.prompt;
                 if (values.choices !== undefined) out.choices = values.choices;
+            } else if (innerType === 'image-slider-response') {
+                if (values.stimulus_image !== undefined && out.stimulus === undefined) out.stimulus = values.stimulus_image;
+                if (values.stimulus_images !== undefined) out.stimulus_images = values.stimulus_images;
+                if (values.prompt !== undefined) out.prompt = values.prompt;
+                if (values.stimulus_category !== undefined) out.stimulus_category = values.stimulus_category;
+                if (values.min !== undefined) out.slider_min = values.min;
+                if (values.max !== undefined) out.slider_max = values.max;
+                if (values.step !== undefined) out.slider_step = values.step;
+                if (values.slider_start !== undefined) out.slider_start_value = values.slider_start;
+                if (values.labels !== undefined) out.slider_labels = Array.isArray(values.labels) ? csv(values.labels) : values.labels;
+                if (values.button_label !== undefined) out.slider_button_label = values.button_label;
+                if (values.require_movement !== undefined) out.slider_require_movement = !!values.require_movement;
+                if (values.slider_enabled !== undefined) out.slider_enabled = !!values.slider_enabled;
+                if (values.slider_accuracy_question_first !== undefined) out.slider_accuracy_question_first = !!values.slider_accuracy_question_first;
+                if (values.accuracy_question_enabled !== undefined) out.slider_accuracy_question_enabled = !!values.accuracy_question_enabled;
+                if (values.accuracy_question_text !== undefined) out.slider_accuracy_question_text = values.accuracy_question_text;
             }
 
             return out;
@@ -2918,6 +2946,20 @@ class JsonBuilder {
             if (Array.isArray(value)) return value.map(v => `${v}`.trim()).filter(Boolean).join(',');
             return value;
         };
+
+        if (t === 'image-categorization') {
+            const s = (config?.image_categorization_settings && typeof config.image_categorization_settings === 'object') ? config.image_categorization_settings : {};
+            setFrom('imageCategorizationAssets', s.stimulus_images);
+            setFrom('imageCategorizationPrompt', s.prompt);
+            setFrom('imageCategorizationQuestion', s.accuracy_question_text);
+            setFrom('imageCategorizationSampling', s.category_sampling_mode);
+            setFrom('imageCategorizationSliderEnabled', s.slider_enabled, 'checked');
+            setFrom('imageCategorizationBlockLength', s.block_length);
+            setFrom('imageCategorizationSliderMin', s.slider_min);
+            setFrom('imageCategorizationSliderMax', s.slider_max);
+            setFrom('imageCategorizationSliderStep', s.slider_step);
+            return;
+        }
 
         if (t === 'rdm') {
             const ds = (config?.display_settings && typeof config.display_settings === 'object') ? config.display_settings : {};
@@ -3787,7 +3829,7 @@ class JsonBuilder {
 
     maybeInsertStarterTimeline(taskType) {
         if (taskType === 'soc-dashboard' && this.experimentType !== 'continuous') return;
-        if (taskType !== 'flanker' && taskType !== 'sart' && taskType !== 'gabor' && taskType !== 'stroop' && taskType !== 'emotional-stroop' && taskType !== 'simon' && taskType !== 'task-switching' && taskType !== 'pvt' && taskType !== 'mot' && taskType !== 'soc-dashboard' && taskType !== 'nback') return;
+        if (taskType !== 'image-categorization' && taskType !== 'flanker' && taskType !== 'sart' && taskType !== 'gabor' && taskType !== 'stroop' && taskType !== 'emotional-stroop' && taskType !== 'simon' && taskType !== 'task-switching' && taskType !== 'pvt' && taskType !== 'mot' && taskType !== 'soc-dashboard' && taskType !== 'nback') return;
 
         const timelineContainer = document.getElementById('timelineComponents');
         if (!timelineContainer) return;
@@ -3797,7 +3839,9 @@ class JsonBuilder {
 
         const defs = this.getComponentDefinitions();
         const instructionsDef = defs.find(d => d.id === 'instructions');
-        const trialId = taskType === 'flanker'
+        const trialId = taskType === 'image-categorization'
+            ? 'block'
+            : taskType === 'flanker'
             ? 'flanker-trial'
             : (taskType === 'sart')
                 ? 'sart-trial'
@@ -3821,7 +3865,28 @@ class JsonBuilder {
         const trialDef = defs.find(d => d.id === trialId);
 
         if (instructionsDef) this.addComponentToTimeline(instructionsDef);
-        if (trialDef) this.addComponentToTimeline(trialDef);
+        if (trialDef) {
+            this.addComponentToTimeline(trialDef);
+            const addedElement = timelineContainer.querySelector('.timeline-component:last-child');
+            if (taskType === 'image-categorization' && addedElement) {
+                const addedData = JSON.parse(addedElement.dataset.componentData || '{}');
+                addedElement.dataset.componentData = JSON.stringify({
+                    ...addedData,
+                    block_component_type: 'image-slider-response',
+                    block_length: Number.parseInt(document.getElementById('imageCategorizationBlockLength')?.value || '20', 10),
+                    stimulus_images: document.getElementById('imageCategorizationAssets')?.value || '',
+                    prompt: document.getElementById('imageCategorizationPrompt')?.value || 'How intense is this emotion?',
+                    category_sampling_mode: document.getElementById('imageCategorizationSampling')?.value || 'random',
+                    slider_accuracy_question_enabled: true,
+                    slider_accuracy_question_text: document.getElementById('imageCategorizationQuestion')?.value || 'What is the emotion shown?',
+                    slider_enabled: !!document.getElementById('imageCategorizationSliderEnabled')?.checked,
+                    slider_accuracy_question_first: true,
+                    slider_min: Number.parseInt(document.getElementById('imageCategorizationSliderMin')?.value || '1', 10),
+                    slider_max: Number.parseInt(document.getElementById('imageCategorizationSliderMax')?.value || '10', 10),
+                    slider_step: Number.parseInt(document.getElementById('imageCategorizationSliderStep')?.value || '1', 10)
+                });
+            }
+        }
     }
 
     /**
@@ -3901,6 +3966,15 @@ class JsonBuilder {
 
         // Custom: do not restrict
         if (taskType === 'custom') return true;
+
+        if (taskType === 'image-categorization') {
+            if (type === 'image-slider-response') return true;
+            if (type === 'block') {
+                const innerType = getBlockInnerType();
+                return innerType === 'image-slider-response';
+            }
+            return false;
+        }
 
         if (taskType === 'rdm') {
             // RDM task: keep timeline focused on RDM components.
@@ -4237,7 +4311,62 @@ class JsonBuilder {
         const container = document.getElementById('parameterForms');
         const taskType = document.getElementById('taskType')?.value || 'rdm';
 
-        const taskSpecificDefaultsHtml = (taskType === 'flanker')
+        const taskSpecificDefaultsHtml = (taskType === 'image-categorization')
+            ? `
+            <div class="parameter-group" id="imageCategorizationExperimentParameters">
+                <div class="group-title">
+                    <div>
+                        <span>Image Categorization Settings</span>
+                        <small class="text-muted d-block">List uploaded assets as category:path pairs to build a category-sampling Block.</small>
+                    </div>
+                </div>
+                <div class="parameter-row">
+                    <label class="parameter-label" for="imageCategorizationAssets">Category assets:</label>
+                    <button type="button" class="btn btn-outline-info btn-sm mb-2" onclick="document.getElementById('assetsFolderInput')?.click()"><i class="fas fa-upload me-1"></i>Upload category asset folder</button>
+                    <textarea class="form-control parameter-input" id="imageCategorizationAssets" rows="5" placeholder="happy:faces/happy-01.png&#10;sad:faces/sad-01.png&#10;neutral:faces/neutral-01.png"></textarea>
+                    <div class="parameter-help">One asset per line in the form <code>category:path</code>. Upload the files with the existing Assets Folder control.</div>
+                </div>
+                <div class="parameter-row">
+                    <label class="parameter-label" for="imageCategorizationPrompt">Intensity prompt:</label>
+                    <input type="text" class="form-control parameter-input" id="imageCategorizationPrompt" value="How intense is this emotion?" />
+                    <div class="parameter-help">Shown with the intensity slider. Use <code>%category%</code> to insert the sampled category.</div>
+                </div>
+                <div class="parameter-row">
+                    <label class="parameter-label" for="imageCategorizationQuestion">Accuracy question:</label>
+                    <input type="text" class="form-control parameter-input" id="imageCategorizationQuestion" value="What is the emotion shown?" />
+                </div>
+                <div class="parameter-row">
+                    <label class="parameter-label" for="imageCategorizationSampling">Category sampling:</label>
+                    <select class="form-control parameter-input" id="imageCategorizationSampling">
+                        <option value="random" selected>Random image each trial</option>
+                        <option value="shuffle-once">Shuffle image list once per Block</option>
+                    </select>
+                </div>
+                <div class="parameter-row">
+                    <label class="parameter-label">Response mode:</label>
+                    <div class="parameter-input">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="imageCategorizationSliderEnabled">
+                            <label class="form-check-label" for="imageCategorizationSliderEnabled">Collect an optional intensity rating</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="parameter-row">
+                    <label class="parameter-label" for="imageCategorizationBlockLength">Trials per Block:</label>
+                    <input type="number" class="form-control parameter-input" id="imageCategorizationBlockLength" value="20" min="1" max="50000">
+                </div>
+                <div class="parameter-row">
+                    <label class="parameter-label">Slider range:</label>
+                    <div class="d-flex gap-2">
+                        <input type="number" class="form-control parameter-input" id="imageCategorizationSliderMin" value="1" min="-10000" max="10000">
+                        <input type="number" class="form-control parameter-input" id="imageCategorizationSliderMax" value="10" min="-10000" max="10000">
+                        <input type="number" class="form-control parameter-input" id="imageCategorizationSliderStep" value="1" min="1" max="10000">
+                    </div>
+                    <div class="parameter-help">Minimum, maximum, and step. Used only when the optional slider is enabled.</div>
+                </div>
+            </div>
+            `
+            : (taskType === 'flanker')
             ? `
             <div class="parameter-group" id="flankerExperimentParameters">
                 <div class="group-title d-flex justify-content-between align-items-center">
@@ -7028,6 +7157,24 @@ class JsonBuilder {
         const library = document.getElementById('componentLibrary');
         
         const components = this.getComponentDefinitions();
+        const activeTaskType = (document.getElementById('taskType')?.value || '').toString().trim().toLowerCase();
+        if (activeTaskType === 'image-categorization') {
+            const blockIndex = components.findIndex((component) => component?.id === 'block');
+            if (blockIndex >= 0) {
+                const [block] = components.splice(blockIndex, 1);
+                components.unshift(block);
+            } else {
+                components.unshift(this.getComponentDefinitions({ taskTypeOverride: 'image-categorization' })
+                    .find((component) => component?.id === 'block') || {
+                        id: 'block',
+                        name: 'Image Categorization Block',
+                        icon: 'fas fa-layer-group',
+                        description: 'Generate multiple image categorization trials from the task asset pool',
+                        category: 'advanced',
+                        parameters: {}
+                    });
+            }
+        }
         
         library.innerHTML = '';
         
@@ -7086,7 +7233,9 @@ class JsonBuilder {
         };
 
         const createBlockComponentDef = (currentTaskType) => {
-            const blockDisplayName = (currentTaskType === 'rdm')
+            const blockDisplayName = (currentTaskType === 'image-categorization')
+                ? 'Image Categorization Block'
+                : (currentTaskType === 'rdm')
                 ? 'RDM Block'
                 : (currentTaskType === 'nback')
                     ? 'N-back Block'
@@ -7112,7 +7261,9 @@ class JsonBuilder {
                                     ? 'Emotional Stroop Block'
                                 : 'Block';
 
-            const baseOptions = (currentTaskType === 'flanker')
+            const baseOptions = (currentTaskType === 'image-categorization')
+                ? ['image-slider-response']
+                : (currentTaskType === 'flanker')
                 ? ['flanker-trial']
                 : (currentTaskType === 'nback')
                     ? ['nback-block']
@@ -7137,7 +7288,7 @@ class JsonBuilder {
                         : ['rdm-trial', 'rdm-practice', 'rdm-adaptive', 'rdm-dot-groups'];
 
             // Always allow generic jsPsych trial types inside Blocks (across all tasks).
-            const genericOptions = ['html-button-response', 'html-keyboard-response', 'image-keyboard-response'];
+            const genericOptions = ['html-button-response', 'html-keyboard-response', 'image-keyboard-response', 'image-slider-response'];
             const options = Array.from(new Set([...(baseOptions || []), ...genericOptions]));
 
             const defaultType = (baseOptions && baseOptions[0]) ? baseOptions[0] : (options[0] || 'rdm-trial');
@@ -7646,7 +7797,20 @@ class JsonBuilder {
                 dynamic_target_group_every_n_frames: { type: 'string', default: '120-240', blockTarget: 'rdm-dot-groups' }
             };
 
-            const perTaskParams = (currentTaskType === 'flanker')
+            const perTaskParams = (currentTaskType === 'image-categorization')
+                ? {
+                    stimulus_images: { type: 'string', default: document.getElementById('imageCategorizationAssets')?.value || '' },
+                    prompt: { type: 'string', default: document.getElementById('imageCategorizationPrompt')?.value || 'How intense is this emotion?' },
+                    category_sampling_mode: { type: 'select', default: document.getElementById('imageCategorizationSampling')?.value || 'random', options: ['random', 'shuffle-once'] },
+                    slider_accuracy_question_enabled: { type: 'boolean', default: true },
+                    slider_accuracy_question_text: { type: 'string', default: document.getElementById('imageCategorizationQuestion')?.value || 'What is the emotion shown?' },
+                    slider_enabled: { type: 'boolean', default: !!document.getElementById('imageCategorizationSliderEnabled')?.checked },
+                    slider_accuracy_question_first: { type: 'boolean', default: false },
+                    slider_min: { type: 'number', default: Number.parseInt(document.getElementById('imageCategorizationSliderMin')?.value || '1', 10) },
+                    slider_max: { type: 'number', default: Number.parseInt(document.getElementById('imageCategorizationSliderMax')?.value || '10', 10) },
+                    slider_step: { type: 'number', default: Number.parseInt(document.getElementById('imageCategorizationSliderStep')?.value || '1', 10) }
+                }
+                : (currentTaskType === 'flanker')
                 ? flankerOnlyParams
                 : (currentTaskType === 'sart')
                     ? sartOnlyParams
@@ -8054,6 +8218,28 @@ class JsonBuilder {
                     }
                 },
                 {
+                    id: 'image-slider-response',
+                    name: 'Rating Image + Slider',
+                    icon: 'fas fa-sliders-h',
+                    description: 'Show image and collect a slider rating (e.g., rate emotional intensity 1-10)',
+                    category: 'stimulus',
+                    parameters: {
+                        stimulus: { type: 'string', default: 'img/sitting.png' },
+                        min: { type: 'number', default: 1 },
+                        max: { type: 'number', default: 10 },
+                        step: { type: 'number', default: 1 },
+                        labels: { type: 'string', default: '' },
+                        button_label: { type: 'string', default: 'Continue' },
+                        stimulus_category: { type: 'string', default: '' },
+                        prompt: { type: 'string', default: '' },
+                        stimulus_duration: { type: 'number', default: null },
+                        trial_duration: { type: 'number', default: null },
+                        accuracy_question_enabled: { type: 'boolean', default: false, description: 'Show a follow-up radio question after the rating (e.g., "What is the emotion shown?") with the stimulus categories offered as options.' },
+                        accuracy_question_text: { type: 'string', default: 'What is the emotion shown?' },
+                        accuracy_question_categories: { type: 'string', default: '', description: 'Comma-separated category options. Leave blank to use this stimulus\'s own category as the only option.' }
+                    }
+                },
+                {
                     id: 'html-button-response',
                     name: 'HTML + Button',
                     icon: 'fas fa-mouse-pointer',
@@ -8360,6 +8546,10 @@ class JsonBuilder {
                 }));
             }
 
+            if (taskType === 'image-categorization') {
+                baseComponents.push(createBlockComponentDef(taskType));
+            }
+
             // HTML-based components
             baseComponents.push(
                 {
@@ -8404,12 +8594,36 @@ class JsonBuilder {
                         stimulus_duration: { type: 'number', default: null },
                         trial_duration: { type: 'number', default: null }
                     }
+                },
+                {
+                    id: 'image-slider-response',
+                    name: 'Rating Image + Slider',
+                    icon: 'fas fa-sliders-h',
+                    description: 'Show image and collect a slider rating (e.g., rate emotional intensity 1-10)',
+                    category: 'stimulus',
+                    parameters: {
+                        stimulus: { type: 'string', default: 'img/sitting.png' },
+                        min: { type: 'number', default: 1 },
+                        max: { type: 'number', default: 10 },
+                        step: { type: 'number', default: 1 },
+                        labels: { type: 'string', default: '' },
+                        button_label: { type: 'string', default: 'Continue' },
+                        stimulus_category: { type: 'string', default: '' },
+                        prompt: { type: 'string', default: '' },
+                        stimulus_duration: { type: 'number', default: null },
+                        trial_duration: { type: 'number', default: null },
+                        accuracy_question_enabled: { type: 'boolean', default: false, description: 'Show a follow-up radio question after the rating (e.g., "What is the emotion shown?") with the stimulus categories offered as options.' },
+                        accuracy_question_text: { type: 'string', default: 'What is the emotion shown?' },
+                        accuracy_question_categories: { type: 'string', default: '', description: 'Comma-separated category options. Leave blank to use this stimulus\'s own category as the only option.' }
+                    }
                 }
             );
 
             // Block (task-scoped)
             // Block stays available for advanced authoring / parameter windows.
-            baseComponents.push(createBlockComponentDef(taskType));
+            if (taskType !== 'image-categorization') {
+                baseComponents.push(createBlockComponentDef(taskType));
+            }
 
             // Add specialized components based on data collection settings
             // (these are task-agnostic and should be available for all tasks).
@@ -8594,6 +8808,28 @@ class JsonBuilder {
                     choices: { type: 'array', default: ['f', 'j'] },
                     stimulus_duration: { type: 'number', default: null },
                     trial_duration: { type: 'number', default: null }
+                }
+            },
+            {
+                id: 'image-slider-response',
+                name: 'Rating Image + Slider',
+                icon: 'fas fa-sliders-h',
+                description: 'Show image and collect a slider rating (e.g., rate emotional intensity 1-10)',
+                category: 'stimulus',
+                parameters: {
+                    stimulus: { type: 'string', default: 'img/sitting.png' },
+                    min: { type: 'number', default: 1 },
+                    max: { type: 'number', default: 10 },
+                    step: { type: 'number', default: 1 },
+                    labels: { type: 'string', default: '' },
+                    button_label: { type: 'string', default: 'Continue' },
+                    stimulus_category: { type: 'string', default: '' },
+                    prompt: { type: 'string', default: '' },
+                    stimulus_duration: { type: 'number', default: null },
+                    trial_duration: { type: 'number', default: null },
+                    accuracy_question_enabled: { type: 'boolean', default: false, description: 'Show a follow-up radio question after the rating (e.g., "What is the emotion shown?") with the stimulus categories offered as options.' },
+                    accuracy_question_text: { type: 'string', default: 'What is the emotion shown?' },
+                    accuracy_question_categories: { type: 'string', default: '', description: 'Comma-separated category options. Leave blank to use this stimulus\'s own category as the only option.' }
                 }
             },
             {
@@ -8885,6 +9121,22 @@ class JsonBuilder {
                 if (currentTaskType === 'nback') {
                     Object.assign(componentData, this.getNbackDefaultsForNewBlock());
                 }
+                if (currentTaskType === 'image-categorization') {
+                    Object.assign(componentData, {
+                        block_component_type: 'image-slider-response',
+                        stimulus_images: document.getElementById('imageCategorizationAssets')?.value || '',
+                        prompt: document.getElementById('imageCategorizationPrompt')?.value || 'How intense is this emotion?',
+                        category_sampling_mode: document.getElementById('imageCategorizationSampling')?.value || 'random',
+                        slider_accuracy_question_enabled: true,
+                        slider_accuracy_question_text: document.getElementById('imageCategorizationQuestion')?.value || 'What is the emotion shown?',
+                        slider_enabled: !!document.getElementById('imageCategorizationSliderEnabled')?.checked,
+                        slider_accuracy_question_first: true,
+                        block_length: Number.parseInt(document.getElementById('imageCategorizationBlockLength')?.value || '20', 10),
+                        slider_min: Number.parseInt(document.getElementById('imageCategorizationSliderMin')?.value || '1', 10),
+                        slider_max: Number.parseInt(document.getElementById('imageCategorizationSliderMax')?.value || '10', 10),
+                        slider_step: Number.parseInt(document.getElementById('imageCategorizationSliderStep')?.value || '1', 10)
+                    });
+                }
                     if (currentTaskType === 'sart') {
                         Object.assign(componentData, this.getSartDefaultsForNewBlock());
                     }
@@ -9074,6 +9326,25 @@ class JsonBuilder {
             },
             timeline: this.getTimelineFromDOM()
         };
+
+        if (taskType === 'image-categorization') {
+            const sliderMin = Number.parseInt(document.getElementById('imageCategorizationSliderMin')?.value || '1', 10);
+            const sliderMax = Number.parseInt(document.getElementById('imageCategorizationSliderMax')?.value || '10', 10);
+            const sliderStep = Number.parseInt(document.getElementById('imageCategorizationSliderStep')?.value || '1', 10);
+            config.image_categorization_settings = {
+                stimulus_images: document.getElementById('imageCategorizationAssets')?.value || '',
+                prompt: document.getElementById('imageCategorizationPrompt')?.value || 'How intense is this emotion?',
+                accuracy_question_text: document.getElementById('imageCategorizationQuestion')?.value || 'What is the emotion shown?',
+                category_sampling_mode: document.getElementById('imageCategorizationSampling')?.value || 'random',
+                accuracy_question_enabled: true,
+                slider_enabled: !!document.getElementById('imageCategorizationSliderEnabled')?.checked,
+                slider_accuracy_question_first: true,
+                block_length: Math.max(1, Number.parseInt(document.getElementById('imageCategorizationBlockLength')?.value || '20', 10)),
+                slider_min: Number.isFinite(sliderMin) ? sliderMin : 1,
+                slider_max: Number.isFinite(sliderMax) ? sliderMax : 10,
+                slider_step: Number.isFinite(sliderStep) && sliderStep > 0 ? sliderStep : 1
+            };
+        }
 
         // Add task-specific defaults
         if (taskType === 'rdm') {
@@ -12666,6 +12937,45 @@ class JsonBuilder {
             if (choices !== '') {
                 values.choices = choices;
             }
+        } else if (resolvedComponentType === 'image-slider-response') {
+            const img = (blockComponent.stimulus_image ?? blockComponent.stimulus ?? '').toString().trim();
+            if (img !== '') {
+                values.stimulus_image = img;
+            }
+            const imgsRaw = (blockComponent.stimulus_images ?? '').toString();
+            if (imgsRaw.trim() !== '') {
+                values.stimulus_images = imgsRaw;
+            }
+            const prompt = (blockComponent.prompt ?? '').toString();
+            if (prompt.trim() !== '') {
+                values.prompt = prompt;
+            }
+            const sliderMin = Number.parseFloat(blockComponent.slider_min);
+            if (Number.isFinite(sliderMin)) values.min = sliderMin;
+            const sliderMax = Number.parseFloat(blockComponent.slider_max);
+            if (Number.isFinite(sliderMax)) values.max = sliderMax;
+            const sliderStep = Number.parseFloat(blockComponent.slider_step);
+            if (Number.isFinite(sliderStep)) values.step = sliderStep;
+            const sliderStart = Number.parseFloat(blockComponent.slider_start_value);
+            if (Number.isFinite(sliderStart)) values.slider_start = sliderStart;
+            const sliderLabels = (blockComponent.slider_labels ?? '').toString().trim();
+            if (sliderLabels !== '') values.labels = sliderLabels;
+            const sliderButtonLabel = (blockComponent.slider_button_label ?? '').toString().trim();
+            if (sliderButtonLabel !== '') values.button_label = sliderButtonLabel;
+            if (blockComponent.slider_require_movement !== undefined) {
+                values.require_movement = !!blockComponent.slider_require_movement;
+            }
+            if (blockComponent.slider_accuracy_question_enabled !== undefined) {
+                values.accuracy_question_enabled = !!blockComponent.slider_accuracy_question_enabled;
+            }
+            if (blockComponent.slider_enabled !== undefined) {
+                values.slider_enabled = !!blockComponent.slider_enabled;
+            }
+            if (blockComponent.slider_accuracy_question_first !== undefined) {
+                values.slider_accuracy_question_first = !!blockComponent.slider_accuracy_question_first;
+            }
+            const accuracyText = (blockComponent.slider_accuracy_question_text ?? '').toString().trim();
+            if (accuracyText !== '') values.accuracy_question_text = accuracyText;
         } else if (resolvedComponentType === 'continuous-image-presentation') {
             // Continuous Image Presentation (CIP): export the per-block cip_* fields, including hidden URL lists.
             // IMPORTANT: the Interpreter consumes these from block.parameter_values (not from top-level config defaults).
@@ -14842,6 +15152,7 @@ class JsonBuilder {
             window.COGFLOW_STUDY_NAME = studyName;
             window.COGFLOW_STUDY_SLUG = studySlug;
             window.COGFLOW_CONFIG_VERSION = taskLabel;
+            config = this.rewriteBareAssetFilenamesToPlatformUrls(config, { studySlug });
         } catch {
             // ignore storage errors
         }

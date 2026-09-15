@@ -99,6 +99,8 @@ class ComponentPreview {
             this.showHtmlButtonResponsePreview(componentData);
         } else if (componentType === 'image-keyboard-response') {
             this.showImageKeyboardResponsePreview(componentData);
+        } else if (componentType === 'image-slider-response') {
+            this.showImageSliderResponsePreview(componentData);
         } else if (componentType === 'continuous-image-presentation') {
             this.showContinuousImagePresentationPreview(componentData);
         } else if (componentType === 'visual-angle-calibration') {
@@ -1009,6 +1011,8 @@ class ComponentPreview {
         // Local cache placeholder: asset://<componentId>/<field>
         const m = /^asset:\/\/([^/]+)\/([^/]+)$/.exec(s);
         if (!m) {
+            const platformUrl = this.resolvePlatformAssetUrlByFilename(s);
+            if (platformUrl) return platformUrl;
             // Token Store uploaded assets: allow referring to images by filename
             // after using the Builder's "Upload Assets" (folder) feature.
             const tokenUrl = this.resolveTokenStoreAssetUrlByFilename(s);
@@ -1025,6 +1029,27 @@ class ComponentPreview {
         }
 
         return '';
+    }
+
+    resolvePlatformAssetUrlByFilename(rawName) {
+        try {
+            const raw = (rawName ?? '').toString().trim();
+            if (!raw || /^(https?:|data:|blob:|asset:)/i.test(raw)) return '';
+            const filename = raw.split(/[\\/]/).pop();
+            if (!filename) return '';
+            const slug = (
+                window.COGFLOW_STUDY_SLUG
+                || document.getElementById('publishStudySlug')?.value
+                || document.getElementById('studySlug')?.value
+                || 'unscoped'
+            ).toString().trim().toLowerCase() || 'unscoped';
+            const parsed = JSON.parse(localStorage.getItem('cogflow_platform_asset_index_v1') || '{}');
+            const files = parsed?.[slug]?.files;
+            const entry = files?.[filename];
+            return entry?.url ? String(entry.url).trim() : '';
+        } catch {
+            return '';
+        }
     }
 
     resolveTokenStoreAssetUrlByFilename(name) {
@@ -1109,6 +1134,103 @@ class ComponentPreview {
             <div style="margin-top:14px; font-size:12px; opacity:0.75;">
                 <b>Choices:</b> ${Array.isArray(choices) ? choices.join(', ') : String(choices)}
             </div>
+        `;
+
+        modalBody.innerHTML = this.wrapCenteredPreview(body);
+        modal.show();
+    }
+
+    showImageSliderResponsePreview(componentData) {
+        const previewModal = this.getPreviewModal();
+        if (!previewModal) return;
+        const { modalEl, modal } = previewModal;
+
+        const modalBody = modalEl.querySelector('.modal-body');
+        if (!modalBody) return;
+
+        const stim = this.resolveMaybeAssetUrl(componentData?.stimulus);
+        const w = componentData?.stimulus_width;
+        const h = componentData?.stimulus_height;
+        const category = (componentData?.stimulus_category ?? '').toString();
+        const promptRaw = (componentData?.prompt ?? '').toString();
+        let displayPromptRaw = promptRaw;
+        let displayAccuracyRaw = (componentData?.accuracy_question_text ?? '').toString().trim() || 'What is the emotion shown?';
+        const legacyPromptReversal = /what is the emotion shown\??/i.test(displayPromptRaw.trim())
+            && (/%category%/i.test(displayAccuracyRaw) || /how intense|intensity/i.test(displayAccuracyRaw));
+        if (legacyPromptReversal) {
+            [displayPromptRaw, displayAccuracyRaw] = [displayAccuracyRaw, displayPromptRaw];
+        }
+        const prompt = (category && displayPromptRaw) ? displayPromptRaw.replace(/%category%/g, category) : displayPromptRaw;
+
+        const min = Number.isFinite(Number(componentData?.min)) ? Number(componentData.min) : 1;
+        const max = Number.isFinite(Number(componentData?.max)) ? Number(componentData.max) : 10;
+        const step = Number.isFinite(Number(componentData?.step)) && Number(componentData.step) > 0 ? Number(componentData.step) : 1;
+        const start = Number.isFinite(Number(componentData?.slider_start)) ? Number(componentData.slider_start) : Math.round((min + max) / 2);
+        const buttonLabel = (componentData?.button_label ?? 'Continue').toString();
+
+        const rawLabels = componentData?.labels;
+        const labels = Array.isArray(rawLabels)
+            ? rawLabels.map((x) => String(x))
+            : (rawLabels ?? '').toString().split(/[\n,]+/).map((x) => x.trim()).filter(Boolean);
+
+        const styleParts = [];
+        if (Number.isFinite(Number(w))) styleParts.push(`width:${Number(w)}px;`);
+        if (Number.isFinite(Number(h))) styleParts.push(`height:${Number(h)}px;`);
+        styleParts.push('max-width:100%; max-height:55vh; object-fit:contain;');
+
+        const imgHtml = stim
+            ? `<img src="${stim}" alt="stimulus" style="${styleParts.join(' ')}" />`
+            : `<div class="text-warning">No image stimulus set (or missing cached asset).</div>`;
+
+        const labelsHtml = labels.length > 0
+            ? `<div style="display:flex; justify-content:space-between; font-size:12px; opacity:0.75; margin-top:6px;">${labels.map((l) => `<span>${l}</span>`).join('')}</div>`
+            : '';
+
+        const accuracyEnabled = !!componentData?.accuracy_question_enabled;
+        const accuracyText = displayAccuracyRaw;
+        const rawAccuracyCategories = componentData?.accuracy_question_categories;
+        const accuracyCategories = Array.isArray(rawAccuracyCategories)
+            ? rawAccuracyCategories.map((x) => String(x))
+            : (rawAccuracyCategories ?? '').toString().split(/[\n,]+/).map((x) => x.trim()).filter(Boolean);
+        const sliderEnabled = !(componentData?.slider_enabled === false || componentData?.slider_enabled === 'false');
+        const questionFirst = legacyPromptReversal || componentData?.slider_accuracy_question_first === undefined
+            || componentData?.slider_accuracy_question_first === true
+            || componentData?.slider_accuracy_question_first === 'true';
+
+        const accuracyHtml = accuracyEnabled
+            ? `
+                <div style="margin-top:18px; padding-top:14px; border-top:1px dashed rgba(255,255,255,0.25);">
+                    <div style="font-size:13px; opacity:0.8; margin-bottom:6px;">${sliderEnabled && !questionFirst ? 'Follow-up accuracy question:' : 'Accuracy question:'}</div>
+                    <div style="font-weight:600;">${accuracyText}</div>
+                    <div style="margin-top:8px; display:flex; flex-direction:column; gap:6px;">
+                        ${accuracyCategories.length > 0
+                            ? accuracyCategories.map((c) => `<label style="display:flex; gap:8px; align-items:center;"><input type="radio" disabled /> ${c}</label>`).join('')
+                            : '<span class="text-warning" style="font-size:12px;">No categories available (add category:path prefixes to stimulus_images, or set accuracy_question_categories).</span>'}
+                    </div>
+                </div>
+            `
+            : '';
+
+        const sliderHtml = sliderEnabled
+            ? `
+                ${prompt ? `<div style="margin-top:16px; opacity:0.9;">${prompt}</div>` : ''}
+                <div style="margin-top:16px; max-width:420px; margin-left:auto; margin-right:auto;">
+                    <input type="range" min="${min}" max="${max}" step="${step}" value="${start}" disabled style="width:100%;" />
+                    ${labelsHtml}
+                </div>
+                <div style="margin-top:16px; display:flex; justify-content:center;">
+                    <button type="button" class="btn btn-outline-light" disabled>${buttonLabel}</button>
+                </div>
+                <div style="margin-top:14px; font-size:12px; opacity:0.75; text-align:center;">
+                    Range: ${min}-${max} (step ${step})
+                </div>
+            `
+            : '';
+        const body = `
+            <h5 style="margin:0 0 10px 0;">Rating Image + Slider${category ? ` <span style="font-size:0.75em; opacity:0.7;">(category: ${category})</span>` : ''}</h5>
+            <div style="display:flex; justify-content:center; margin:14px 0;">${imgHtml}</div>
+            ${questionFirst ? accuracyHtml : `${sliderHtml}${accuracyHtml}`}
+            ${questionFirst ? sliderHtml : ''}
         `;
 
         modalBody.innerHTML = this.wrapCenteredPreview(body);
@@ -2546,6 +2668,11 @@ class ComponentPreview {
 
         if (baseType === 'image-keyboard-response') {
             this.showImageKeyboardResponsePreview(sampled);
+            return;
+        }
+
+        if (baseType === 'image-slider-response') {
+            this.showImageSliderResponsePreview(sampled);
             return;
         }
 
@@ -4175,6 +4302,63 @@ class ComponentPreview {
             sampled.stimulus = chosen;
             sampled.prompt = (src?.prompt ?? '').toString();
             sampled.choices = (src?.choices ?? 'ALL_KEYS');
+        } else if (componentType === 'image-slider-response') {
+            const listRaw = (src?.stimulus_images ?? '').toString();
+            const lines = listRaw
+                ? listRaw.split(/[\n,]+/).map(s => s.trim()).filter(Boolean)
+                : [];
+
+            // Lines may be tagged "category:path"; split those apart so the preview
+            // can substitute %category% the same way the interpreter does at runtime.
+            const pairs = lines.map((line) => {
+                const sep = line.indexOf(':');
+                return (sep > 0)
+                    ? { category: line.slice(0, sep).trim(), path: line.slice(sep + 1).trim() }
+                    : { category: null, path: line };
+            }).filter((p) => p.path);
+
+            const chosenPair = (pairs.length > 0)
+                ? pickFromList(pairs, { category: null, path: '' })
+                : (() => {
+                    const v = (src?.stimulus_image ?? src?.stimulus ?? '');
+                    const path = Array.isArray(v) ? pickFromList(v, '') : (v ?? '').toString();
+                    return { category: (src?.stimulus_category ?? null), path };
+                })();
+
+            sampled.stimulus = chosenPair.path;
+            sampled.stimulus_category = chosenPair.category;
+            sampled.min = src?.min ?? src?.slider_min ?? 1;
+            sampled.max = src?.max ?? src?.slider_max ?? 10;
+            sampled.step = src?.step ?? src?.slider_step ?? 1;
+            sampled.slider_start = src?.slider_start ?? src?.slider_start_value ?? null;
+            sampled.labels = src?.labels ?? src?.slider_labels ?? '';
+            sampled.button_label = src?.button_label ?? src?.slider_button_label ?? 'Continue';
+            sampled.require_movement = !!(src?.require_movement ?? src?.slider_require_movement);
+            const rawPrompt = (src?.prompt ?? '').toString();
+            const rawAccuracyText = (src?.accuracy_question_text ?? src?.slider_accuracy_question_text ?? 'What is the emotion shown?').toString();
+            const looksLikeLegacyReversal = /what is the emotion shown\??/i.test(rawPrompt.trim())
+                && (/%category%/i.test(rawAccuracyText) || /how intense|intensity/i.test(rawAccuracyText));
+            const taskType = (document.getElementById('taskType')?.value || '').toString().trim().toLowerCase();
+            const taskIntensityPrompt = taskType === 'image-categorization'
+                ? (document.getElementById('imageCategorizationPrompt')?.value || '').toString().trim()
+                : '';
+            const taskAccuracyText = taskType === 'image-categorization'
+                ? (document.getElementById('imageCategorizationQuestion')?.value || '').toString().trim()
+                : '';
+            sampled.prompt = taskIntensityPrompt || (looksLikeLegacyReversal ? rawAccuracyText : rawPrompt);
+
+            sampled.accuracy_question_enabled = !!(src?.accuracy_question_enabled ?? src?.slider_accuracy_question_enabled);
+            sampled.accuracy_question_text = taskAccuracyText || (looksLikeLegacyReversal ? rawPrompt : rawAccuracyText);
+            sampled.slider_enabled = !(src?.slider_enabled === false || src?.slider_enabled === 'false');
+            sampled.slider_accuracy_question_first = taskType === 'image-categorization'
+                || looksLikeLegacyReversal
+                || src?.slider_accuracy_question_first === undefined
+                || src?.slider_accuracy_question_first === true
+                || src?.slider_accuracy_question_first === 'true';
+            const distinctCategories = Array.from(new Set(pairs.map((p) => p.category).filter(Boolean)));
+            sampled.accuracy_question_categories = distinctCategories.length > 0
+                ? distinctCategories
+                : (src?.accuracy_question_categories ?? '');
         }
 
         return sampled;

@@ -373,6 +373,10 @@ class TimelineBuilder {
             this._attachRichTextEditorToParam(modalBody, modal, 'stimulus');
         }
 
+        if (component.type === 'image-slider-response') {
+            this._setupAccuracyQuestionControls(modalBody);
+        }
+
         // Show modal
         const bootstrapModal = new bootstrap.Modal(modal);
         bootstrapModal.show();
@@ -1704,8 +1708,8 @@ class TimelineBuilder {
         const getBlockInnerType = (c) => {
             try {
                 const inner = (c?.parameters && typeof c.parameters === 'object')
-                    ? (c.parameters.block_component_type ?? c.block_component_type)
-                    : c?.block_component_type;
+                    ? (c.parameters.block_component_type ?? c.parameters.component_type ?? c.block_component_type ?? c.component_type)
+                    : (c?.block_component_type ?? c?.component_type ?? c?.parameter_values?.block_component_type ?? c?.parameter_values?.component_type);
                 return (inner ?? '').toString().trim();
             } catch {
                 return '';
@@ -1714,8 +1718,8 @@ class TimelineBuilder {
 
         const inferTaskTypeOverrideForBlock = (c) => {
             const inner = (c?.parameters && typeof c.parameters === 'object')
-                ? (c.parameters.block_component_type ?? c.block_component_type)
-                : c?.block_component_type;
+                ? (c.parameters.block_component_type ?? c.parameters.component_type ?? c.block_component_type ?? c.component_type)
+                : (c?.block_component_type ?? c?.component_type ?? c?.parameter_values?.block_component_type ?? c?.parameter_values?.component_type);
 
             const innerType = (inner ?? '').toString().trim();
             if (!innerType) return null;
@@ -1732,6 +1736,7 @@ class TimelineBuilder {
             if (innerType === 'gabor-trial' || innerType === 'gabor-quest' || innerType === 'gabor-learning') return 'gabor';
             if (innerType === 'mot-trial') return 'mot';
             if (innerType === 'continuous-image-presentation') return 'continuous-image';
+            if (innerType === 'image-slider-response') return 'image-categorization';
             return null;
         };
 
@@ -1768,7 +1773,24 @@ class TimelineBuilder {
             ? defs.find(d => d && (d.id === type || d.type === type))
             : null;
 
-        const parameters = def && def.parameters && typeof def.parameters === 'object' ? def.parameters : null;
+        let parameters = def && def.parameters && typeof def.parameters === 'object' ? def.parameters : null;
+        if ((!parameters || Object.keys(parameters).length === 0) && type === 'block' && getBlockInnerType(component) === 'image-slider-response') {
+            parameters = {
+                block_component_type: { type: 'select', default: 'image-slider-response', options: ['image-slider-response'] },
+                block_length: { type: 'number', default: 20, min: 1, max: 50000 },
+                sampling_mode: { type: 'select', default: 'per-trial', options: ['per-trial', 'per-block'] },
+                category_sampling_mode: { type: 'select', default: 'random', options: ['random', 'shuffle-once'] },
+                stimulus_images: { type: 'string', default: '' },
+                prompt: { type: 'string', default: 'How intense is this emotion?' },
+                slider_accuracy_question_enabled: { type: 'boolean', default: true },
+                slider_accuracy_question_text: { type: 'string', default: 'What is the emotion shown?' },
+                slider_enabled: { type: 'boolean', default: false },
+                slider_accuracy_question_first: { type: 'boolean', default: true },
+                slider_min: { type: 'number', default: 1, min: -10000, max: 10000 },
+                slider_max: { type: 'number', default: 10, min: -10000, max: 10000 },
+                slider_step: { type: 'number', default: 1, min: 1, max: 10000 }
+            };
+        }
         if (!parameters || Object.keys(parameters).length === 0) {
             return '<p class="text-muted">No editable parameters for this component.</p>';
         }
@@ -1808,8 +1830,10 @@ class TimelineBuilder {
 
             const hintTask = (componentKeyHint || paramKeyHint || taskTypeOverride);
 
-            const genericOptions = ['html-button-response', 'html-keyboard-response', 'image-keyboard-response'];
-            const baseOptions = (hintTask === 'flanker')
+            const genericOptions = ['html-button-response', 'html-keyboard-response', 'image-keyboard-response', 'image-slider-response'];
+            const baseOptions = (hintTask === 'image-categorization')
+                ? ['image-slider-response']
+                : (hintTask === 'flanker')
                 ? ['flanker-trial']
                 : (hintTask === 'nback')
                     ? ['nback-block']
@@ -1852,6 +1876,8 @@ class TimelineBuilder {
 
             if (component.parameters && Object.prototype.hasOwnProperty.call(component.parameters, paramName)) {
                 currentValue = component.parameters[paramName];
+            } else if (component.parameter_values && Object.prototype.hasOwnProperty.call(component.parameter_values, paramName)) {
+                currentValue = component.parameter_values[paramName];
             } else if (Object.prototype.hasOwnProperty.call(component, paramName)) {
                 currentValue = component[paramName];
             } else {
@@ -2371,6 +2397,17 @@ class TimelineBuilder {
 
     formatParameterNameForComponent(componentType, paramName) {
         const type = (componentType ?? '').toString();
+
+        if (type === 'block') {
+            const imageCategorizationLabelByParam = {
+                prompt: 'Intensity Question (Slider Prompt)',
+                slider_accuracy_question_text: 'Accuracy Question (Radio Options)',
+                slider_accuracy_question_first: 'Ask Accuracy Question Before Intensity Slider'
+            };
+            if (Object.prototype.hasOwnProperty.call(imageCategorizationLabelByParam, paramName)) {
+                return imageCategorizationLabelByParam[paramName];
+            }
+        }
 
         if (type === 'soc-subtask-sart-like' || type === 'sart-like') {
             const sartLabelByParam = {
@@ -2935,7 +2972,7 @@ class TimelineBuilder {
 
             // Always include generic jsPsych options for Block inner trials.
             // (These are schema-driven elsewhere; this allowlist rebuild must not strip them.)
-            const generic = ['html-button-response', 'html-keyboard-response', 'image-keyboard-response'];
+            const generic = ['html-button-response', 'html-keyboard-response', 'image-keyboard-response', 'image-slider-response'];
             let allowed = Array.from(new Set([...(baseAllowed || []), ...generic]));
 
             // Never drop the current value (prevents silent fallback to the first option).
@@ -4294,7 +4331,7 @@ class TimelineBuilder {
                 let scopeLabel = '';
 
                 if (isPlatform) {
-                    const studySlug = (window.COGFLOW_STUDY_SLUG || '').toString().trim();
+                    const studySlug = this.jsonBuilder.getPlatformStudySlug?.() || '';
                     const scopeKey = studySlug || 'unscoped';
                     filesMap = this.jsonBuilder.getPlatformAssetMap(scopeKey);
                     scopeLabel = scopeKey;
@@ -4352,7 +4389,7 @@ class TimelineBuilder {
                 }
 
                 const taskType = lastAssetsTaskType || this.jsonBuilder.normalizeTokenStoreTaskType(document.getElementById('taskType')?.value || 'task');
-                const studySlug = (window.COGFLOW_STUDY_SLUG || '').toString().trim();
+                const studySlug = this.jsonBuilder.getPlatformStudySlug?.() || '';
                 const scopeKey = studySlug || 'unscoped';
 
                 const filesMap = isPlatform
@@ -4957,7 +4994,7 @@ class TimelineBuilder {
         const pass = (name) => normalizedMode === 'audio' ? isAudioExt(name) : isImageExt(name);
 
         if (isPlatform) {
-            const studySlug = (window.COGFLOW_STUDY_SLUG || '').toString().trim();
+            const studySlug = this.jsonBuilder.getPlatformStudySlug?.() || '';
             const scopeKey = studySlug || 'unscoped';
             const merged = new Map();
 
@@ -6366,6 +6403,40 @@ class TimelineBuilder {
         };
 
         consentToggle.addEventListener('change', sync);
+        sync();
+    }
+
+    // Hides the question-text/categories fields until the accuracy-question
+    // checkbox is enabled, so the form isn't cluttered by default.
+    _setupAccuracyQuestionControls(modalBody) {
+        if (!modalBody) return;
+
+        const toggle = modalBody.querySelector('#param_accuracy_question_enabled');
+        if (!toggle) return;
+
+        const textRow = modalBody.querySelector('[data-param-name="accuracy_question_text"]');
+        const categoriesRow = modalBody.querySelector('[data-param-name="accuracy_question_categories"]');
+
+        let hint = modalBody.querySelector('#cf-accuracy-question-hint');
+        if (!hint && textRow) {
+            hint = document.createElement('div');
+            hint.id = 'cf-accuracy-question-hint';
+            hint.className = 'form-text text-muted';
+            textRow.appendChild(hint);
+        }
+
+        const sync = () => {
+            const on = !!toggle.checked;
+            if (textRow) textRow.style.display = on ? '' : 'none';
+            if (categoriesRow) categoriesRow.style.display = on ? '' : 'none';
+            if (hint) {
+                hint.textContent = on
+                    ? 'Shown after the rating, with categories parsed from stimulus_images (or accuracy_question_categories) offered as radio options.'
+                    : '';
+            }
+        };
+
+        toggle.addEventListener('change', sync);
         sync();
     }
 

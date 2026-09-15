@@ -288,6 +288,17 @@
       margin-top: 10px;
       opacity: 0.9;
     }
+
+    /* Keep image-slider stimuli contained while preserving their aspect ratio. */
+    .jspsych-image-slider-response-stimulus img {
+      display: block;
+      max-width: min(720px, 90vw);
+      max-height: 55vh;
+      width: auto;
+      height: auto;
+      object-fit: contain;
+      margin: 0 auto;
+    }
   </style>
 </head>
 <body>
@@ -298,6 +309,7 @@
   <script src="https://unpkg.com/jspsych@8.2.3/dist/index.browser.min.js"></script>
   <script src="https://unpkg.com/@jspsych/plugin-html-keyboard-response@2.1.0/dist/index.browser.min.js"></script>
   <script src="https://unpkg.com/@jspsych/plugin-html-button-response@2/dist/index.browser.min.js"></script>
+  <script src="https://unpkg.com/@jspsych/plugin-image-slider-response@2/dist/index.browser.min.js"></script>
 
   <!-- Interpreter runtime -->
   <script>
@@ -328,7 +340,7 @@
   <script src="src/jspsych-soc-dashboard.js?v=20260511o"></script>
   <script src="src/eyeTrackingWebgazer.js?v=20260207"></script>
   <script src="src/configLoader.js?v=20260207"></script>
-  <script src="src/timelineCompiler.js?v=20260512a"></script>
+  <script src="src/timelineCompiler.js?v=20260916-6"></script>
   <script src="src/djangoRuntimeBackend.js"></script>
   <script src="src/main.js?v=20260324-2"></script>
 </body>

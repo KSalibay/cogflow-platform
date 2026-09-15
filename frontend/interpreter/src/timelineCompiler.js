@@ -471,10 +471,47 @@
       ...(isObject(block.parameter_values) ? { ...block.parameter_values } : {})
     };
 
-    // Image list helper for image-keyboard-response Blocks.
+    if (baseType === 'image-slider-response' && isObject(opts?.imageCategorizationDefaults)) {
+      const defaults = opts.imageCategorizationDefaults;
+      const fallbackValues = {
+        stimulus_images: defaults.stimulus_images,
+        prompt: defaults.prompt,
+        slider_accuracy_question_enabled: defaults.accuracy_question_enabled,
+        slider_accuracy_question_text: defaults.accuracy_question_text,
+        slider_enabled: defaults.slider_enabled,
+        slider_accuracy_question_first: defaults.slider_accuracy_question_first,
+        category_sampling_mode: defaults.category_sampling_mode,
+        slider_min: defaults.slider_min,
+        slider_max: defaults.slider_max,
+        slider_step: defaults.slider_step
+      };
+      for (const [key, value] of Object.entries(fallbackValues)) {
+        if (values[key] === undefined && value !== undefined) values[key] = value;
+      }
+    }
+
+    if (baseType === 'image-slider-response') {
+      if ((opts?.taskType ?? '').toString().trim().toLowerCase() === 'image-categorization') {
+        values.slider_accuracy_question_first = true;
+      }
+      const promptText = (values.prompt ?? '').toString().trim();
+      const accuracyText = (values.slider_accuracy_question_text ?? values.accuracy_question_text ?? '').toString().trim();
+      const looksLikeLegacyReversal = /what is the emotion shown\??/i.test(promptText)
+        && (/%category%/i.test(accuracyText) || /how intense|intensity/i.test(accuracyText));
+      if (looksLikeLegacyReversal) {
+        values.prompt = accuracyText;
+        values.slider_accuracy_question_text = promptText;
+        values.slider_accuracy_question_first = true;
+      }
+    }
+
+    // Image list helper for image-keyboard-response / image-slider-response Blocks.
     // Builder can export a comma/newline-separated string under `stimulus_images`.
-    // We convert it into an array and feed it through the existing array-sampling path.
-    if (baseType === 'image-keyboard-response') {
+    // Each line may optionally be prefixed with a category label ("category:path"),
+    // e.g. "happy:img/happy1.png", so prompts can reference %category% per trial.
+    let imageCategoryPairs = null;
+    let imageAllCategories = null;
+    if (baseType === 'image-keyboard-response' || baseType === 'image-slider-response') {
       const parseStringList = (raw) => {
         const s = (raw === undefined || raw === null) ? '' : String(raw);
         return s
@@ -484,9 +521,22 @@
       };
 
       if (typeof values.stimulus_images === 'string' && values.stimulus_images.trim() !== '') {
-        const list = parseStringList(values.stimulus_images);
-        if (list.length > 0) {
-          values.stimulus_image = list;
+        const lines = parseStringList(values.stimulus_images);
+        const pairs = lines.map((line) => {
+          const sep = line.indexOf(':');
+          if (sep > 0) {
+            return { category: line.slice(0, sep).trim(), path: line.slice(sep + 1).trim() };
+          }
+          return { category: null, path: line };
+        }).filter((p) => p.path);
+
+        if (pairs.length > 0) {
+          imageCategoryPairs = pairs;
+          const catSet = new Set();
+          for (const p of pairs) {
+            if (p.category) catSet.add(p.category);
+          }
+          if (catSet.size > 0) imageAllCategories = Array.from(catSet);
         }
         delete values.stimulus_images;
       }
@@ -1564,6 +1614,17 @@
       : null;
 
     const trials = [];
+    const categorySamplingMode = (values.category_sampling_mode ?? 'random').toString().trim().toLowerCase();
+    const shuffledImageOrder = (Array.isArray(imageCategoryPairs) && categorySamplingMode === 'shuffle-once')
+      ? (() => {
+          const order = imageCategoryPairs.map((_, index) => index);
+          for (let k = order.length - 1; k > 0; k--) {
+            const j = Math.floor(rng() * (k + 1));
+            [order[k], order[j]] = [order[j], order[k]];
+          }
+          return order;
+        })()
+      : null;
     for (let i = 0; i < length; i++) {
       const t = {
         type: canonicalBaseType,
@@ -1581,6 +1642,43 @@
         if (Array.isArray(seq) && i < seq.length) {
           t[k] = seq[i];
         }
+      }
+
+      if (baseType === 'image-slider-response') {
+        if (t.stimulus === undefined && t.stimulus_image !== undefined) t.stimulus = t.stimulus_image;
+        if (t.min === undefined && t.slider_min !== undefined) t.min = t.slider_min;
+        if (t.max === undefined && t.slider_max !== undefined) t.max = t.slider_max;
+        if (t.step === undefined && t.slider_step !== undefined) t.step = t.slider_step;
+        if (t.slider_start === undefined && t.slider_start_value !== undefined) t.slider_start = t.slider_start_value;
+        if (t.labels === undefined && t.slider_labels !== undefined) t.labels = t.slider_labels;
+        if (t.button_label === undefined && t.slider_button_label !== undefined) t.button_label = t.slider_button_label;
+        if (t.require_movement === undefined && t.slider_require_movement !== undefined) t.require_movement = t.slider_require_movement;
+        if (t.accuracy_question_enabled === undefined && t.slider_accuracy_question_enabled !== undefined) t.accuracy_question_enabled = t.slider_accuracy_question_enabled;
+        if (t.accuracy_question_text === undefined && t.slider_accuracy_question_text !== undefined) t.accuracy_question_text = t.slider_accuracy_question_text;
+        if (t.slider_enabled === undefined) t.slider_enabled = true;
+        if (t.slider_accuracy_question_first === undefined) t.slider_accuracy_question_first = true;
+      }
+
+      if ((baseType === 'image-keyboard-response' || baseType === 'image-slider-response') && Array.isArray(imageCategoryPairs) && imageCategoryPairs.length > 0) {
+        const pickIdx = shuffledImageOrder
+          ? shuffledImageOrder[i % shuffledImageOrder.length]
+          : Math.floor(rng() * imageCategoryPairs.length);
+        const pair = imageCategoryPairs[Math.max(0, Math.min(imageCategoryPairs.length - 1, pickIdx))];
+        t.stimulus_image = pair.path;
+        if (pair.category !== null && pair.category !== undefined) {
+          t.stimulus_category = pair.category;
+        }
+      }
+
+      if (baseType === 'image-slider-response' && (t.accuracy_question_enabled === true || t.accuracy_question_enabled === 'true') && Array.isArray(imageAllCategories) && imageAllCategories.length > 1) {
+        const shuffled = imageAllCategories.slice();
+        for (let k = shuffled.length - 1; k > 0; k--) {
+          const j = Math.floor(rng() * (k + 1));
+          const tmp = shuffled[k];
+          shuffled[k] = shuffled[j];
+          shuffled[j] = tmp;
+        }
+        t.accuracy_question_categories = shuffled;
       }
 
       if (baseType === 'sart-trial') {
@@ -3174,6 +3272,139 @@
       };
     }
 
+    // Rating Image + Slider: image stimulus with a numeric slider response. When the
+    // block/component carries a stimulus_category (e.g. sampled from a "happy:img.png"
+    // asset list), %category% in the prompt is replaced with it so researchers can write
+    // prompts like "How %category% is this face?" once and have it read naturally per trial.
+    function buildImageSliderTrial(item, ImageSlider, resolveUrl) {
+      const rawStimulus = (item.stimulus !== undefined && item.stimulus !== null) ? item.stimulus : item.stimulus_image;
+      const src = resolveUrl(rawStimulus);
+
+      const w = Number.isFinite(Number(item.stimulus_width)) ? Number(item.stimulus_width) : null;
+      const h = Number.isFinite(Number(item.stimulus_height)) ? Number(item.stimulus_height) : null;
+
+      const minV = Number.isFinite(Number(item.min)) ? Number(item.min) : 0;
+      const maxV = Number.isFinite(Number(item.max)) ? Number(item.max) : 100;
+      const stepV = (Number.isFinite(Number(item.step)) && Number(item.step) > 0) ? Number(item.step) : 1;
+      const startV = Number.isFinite(Number(item.slider_start))
+        ? Number(item.slider_start)
+        : Math.round((minV + maxV) / 2);
+
+      const labels = (() => {
+        if (Array.isArray(item.labels)) return item.labels.map((x) => String(x));
+        const raw = (item.labels ?? '').toString().trim();
+        if (!raw) return [];
+        return raw.split(/[\n,]+/).map((x) => x.trim()).filter(Boolean);
+      })();
+
+      const category = (item.stimulus_category ?? '').toString();
+      const promptRaw = (item.prompt ?? '').toString();
+      const prompt = (category && promptRaw) ? promptRaw.replace(/%category%/g, category) : (promptRaw || null);
+
+      return {
+        type: ImageSlider,
+        stimulus: src,
+        stimulus_height: h,
+        stimulus_width: w,
+        maintain_aspect_ratio: (item.maintain_aspect_ratio !== undefined) ? (item.maintain_aspect_ratio === true) : true,
+        min: minV,
+        max: maxV,
+        step: stepV,
+        slider_start: startV,
+        labels,
+        button_label: (item.button_label ?? 'Continue').toString(),
+        require_movement: item.require_movement === true,
+        prompt,
+        stimulus_duration: (item.stimulus_duration === undefined ? null : item.stimulus_duration),
+        trial_duration: (item.trial_duration === undefined ? null : item.trial_duration),
+        response_ends_trial: (item.response_ends_trial === undefined ? true : item.response_ends_trial),
+        data: {
+          plugin_type: 'image-slider-response',
+          ...(category ? { stimulus_category: category } : {})
+        }
+      };
+    }
+
+    // Options for the accuracy question default to whatever categories were parsed
+    // from the block's stimulus list; a standalone component without a category list
+    // falls back to its own single stimulus_category as the only option.
+    function resolveAccuracyQuestionCategories(item) {
+      if (Array.isArray(item.accuracy_question_categories) && item.accuracy_question_categories.length > 0) {
+        return item.accuracy_question_categories.map((x) => String(x));
+      }
+      const raw = (item.accuracy_question_categories ?? '').toString().trim();
+      if (raw) {
+        return raw.split(/[\n,]+/).map((x) => x.trim()).filter(Boolean);
+      }
+      const single = (item.stimulus_category ?? '').toString().trim();
+      return single ? [single] : [];
+    }
+
+    function buildAccuracyQuestionTrial(item, SurveyResponse, resolveUrl) {
+      const categories = resolveAccuracyQuestionCategories(item);
+      const correctCategory = (item.stimulus_category ?? '').toString();
+      const questionText = (item.accuracy_question_text ?? '').toString().trim() || 'What is the emotion shown?';
+      const rawStimulus = (item.stimulus !== undefined && item.stimulus !== null)
+        ? item.stimulus
+        : item.stimulus_image;
+      const stimulus = rawStimulus ? resolveUrl(rawStimulus) : '';
+
+      return {
+        type: SurveyResponse,
+        title: '',
+        instructions: stimulus ? `<img src="${String(stimulus).replace(/"/g, '&quot;')}" alt="stimulus" style="max-width:100%; max-height:55vh; object-fit:contain;" />` : '',
+        submit_label: 'Continue',
+        allow_empty_on_timeout: false,
+        timeout_ms: null,
+        questions: [{
+          id: 'category',
+          type: 'radio',
+          prompt: questionText,
+          options: categories,
+          required: true
+        }],
+        on_finish: (data) => {
+          if (!data || typeof data !== 'object') return;
+          const chosen = (data.responses && typeof data.responses === 'object') ? data.responses.category : null;
+          data.accuracy_question_correct_category = correctCategory || null;
+          data.accuracy_question_response = chosen;
+          data.accuracy_question_is_correct = (correctCategory !== '' && chosen !== null && String(chosen) === correctCategory);
+        },
+        data: {
+          plugin_type: 'image-slider-accuracy-question',
+          ...(stimulus ? { stimulus } : {}),
+          ...(correctCategory ? { stimulus_category: correctCategory } : {})
+        }
+      };
+    }
+
+    // Wraps the slider trial with a follow-up radio question when requested, so a
+    // single "accuracy_question_enabled" checkbox in the Builder can add it without
+    // researchers building a second timeline item by hand.
+    function maybeAppendAccuracyQuestion(sliderTrial, item, requireSurveyResponsePlugin, resolveUrl) {
+      const enabled = (item.accuracy_question_enabled === true || item.accuracy_question_enabled === 'true');
+      const sliderEnabled = !(item.slider_enabled === false || item.slider_enabled === 'false');
+      if (!enabled && sliderEnabled) return sliderTrial;
+
+      const promptText = (item.prompt ?? '').toString().trim();
+      const accuracyText = (item.accuracy_question_text ?? '').toString().trim();
+      if (/what is the emotion shown\??/i.test(promptText)
+        && (/%category%/i.test(accuracyText) || /how intense|intensity/i.test(accuracyText))) {
+        item.prompt = accuracyText;
+        item.accuracy_question_text = promptText;
+        item.slider_accuracy_question_first = true;
+      }
+
+      const categories = resolveAccuracyQuestionCategories(item);
+      if (categories.length === 0) return sliderEnabled ? sliderTrial : null;
+
+      const SurveyResponse = requireSurveyResponsePlugin();
+      const accuracyTrial = buildAccuracyQuestionTrial(item, SurveyResponse, resolveUrl);
+      return item.slider_accuracy_question_first === false || item.slider_accuracy_question_first === 'false'
+        ? (sliderEnabled ? { timeline: [sliderTrial, accuracyTrial] } : accuracyTrial)
+        : (sliderEnabled ? { timeline: [accuracyTrial, sliderTrial] } : accuracyTrial);
+    }
+
     function buildMwProbeOnStartHook() {
       return (trial) => {
         let drtRunningAtProbeStart = false;
@@ -3243,6 +3474,10 @@
       (typeof jsPsychHtmlButtonResponse !== 'undefined') ? jsPsychHtmlButtonResponse : null
     ) || resolvePlugin(window.jsPsychHtmlButtonResponse);
 
+    const ImageSliderResponsePlugin = resolvePlugin(
+      (typeof jsPsychImageSliderResponse !== 'undefined') ? jsPsychImageSliderResponse : null
+    ) || resolvePlugin(window.jsPsychImageSliderResponse);
+
     const experimentType = config.experiment_type || 'trial-based';
     const taskType = config.task_type || 'rdm';
 
@@ -3272,6 +3507,7 @@
     const taskSwitchingDefaults = isObject(config.task_switching_settings) ? config.task_switching_settings : {};
     const pvtDefaults = isObject(config.pvt_settings) ? config.pvt_settings : {};
     const nbackDefaults = isObject(config.nback_settings) ? config.nback_settings : {};
+    const imageCategorizationDefaults = isObject(config.image_categorization_settings) ? config.image_categorization_settings : {};
 
     const resolveNbackResponseDevice = (raw) => {
       const d = (raw ?? 'inherit').toString().trim().toLowerCase();
@@ -3325,6 +3561,7 @@
       defaultGeneratedTrialDurationMs,
       globalRandomizeOrder: config.randomize_order === true,
       nbackDefaults,
+      imageCategorizationDefaults,
       taskSwitchingDefaults,
       ...blockLengthOpts
     });
@@ -3972,6 +4209,17 @@
           continue;
         }
 
+        if (type === 'image-slider-response') {
+          pushRdmContinuousSegment();
+          const sliderEnabled = !(item.slider_enabled === false || item.slider_enabled === 'false');
+          const sliderTrial = sliderEnabled
+            ? buildImageSliderTrial(item, requirePlugin('image-slider-response (jsPsychImageSliderResponse)', ImageSliderResponsePlugin), resolveMaybeRelativeUrl)
+            : null;
+          const responseNode = maybeAppendAccuracyQuestion(sliderTrial, item, () => requirePlugin('survey-response (window.jsPsychSurveyResponse)', window.jsPsychSurveyResponse), resolveMaybeRelativeUrl);
+          if (responseNode) timeline.push(responseNode);
+          continue;
+        }
+
         if (type === 'survey-response') {
           pushRdmContinuousSegment();
           const SurveyResponse = requirePlugin('survey-response (window.jsPsychSurveyResponse)', window.jsPsychSurveyResponse);
@@ -4420,6 +4668,16 @@
           response_ends_trial: (item.response_ends_trial === undefined ? true : item.response_ends_trial),
           data: { plugin_type: type }
         });
+        continue;
+      }
+
+      if (type === 'image-slider-response') {
+        const sliderEnabled = !(item.slider_enabled === false || item.slider_enabled === 'false');
+        const sliderTrial = sliderEnabled
+          ? buildImageSliderTrial(item, requirePlugin('image-slider-response (jsPsychImageSliderResponse)', ImageSliderResponsePlugin), resolveMaybeRelativeUrl)
+          : null;
+        const responseNode = maybeAppendAccuracyQuestion(sliderTrial, item, () => requirePlugin('survey-response (window.jsPsychSurveyResponse)', window.jsPsychSurveyResponse), resolveMaybeRelativeUrl);
+        if (responseNode) timeline.push(responseNode);
         continue;
       }
 

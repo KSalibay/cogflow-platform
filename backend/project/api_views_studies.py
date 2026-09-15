@@ -1,6 +1,7 @@
 from django.http import HttpResponse
 from django.utils import timezone
 from django.db.models.deletion import ProtectedError
+from rest_framework.permissions import AllowAny
 from copy import deepcopy
 from datetime import datetime
 import io
@@ -1748,14 +1749,9 @@ class UploadBuilderAssetView(APIView):
 
 
 class DownloadBuilderAssetView(APIView):
+    permission_classes = [AllowAny]
+
     def get(self, request, asset_path: str):
-        if not request.user.is_authenticated:
-            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
-
-        profile = get_or_create_profile(request.user)
-        if not _can_manage_researcher_resources(request, profile):
-            return Response({"error": "Insufficient role permissions"}, status=status.HTTP_403_FORBIDDEN)
-
         normalized = (asset_path or "").replace("\\", "/").strip("/")
         if not normalized.startswith("builder-assets/"):
             return Response({"error": "Invalid builder asset path"}, status=status.HTTP_400_BAD_REQUEST)
@@ -1767,11 +1763,23 @@ class DownloadBuilderAssetView(APIView):
         owner_user_id = int(m.group("uid"))
         scope_slug = (m.group("scope") or "").strip()
 
+        is_authenticated = bool(request.user and request.user.is_authenticated)
+        profile = get_or_create_profile(request.user) if is_authenticated else None
+
+        # Study-scoped assets are referenced by participant-facing experiment configs.
+        # Keep unscoped assets private, while allowing the runtime to fetch assets for
+        # an active study without requiring the participant to authenticate.
+        if not is_authenticated and scope_slug.lower() == "unscoped":
+            return Response({"error": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+        if is_authenticated and not _can_manage_researcher_resources(request, profile):
+            return Response({"error": "Insufficient role permissions"}, status=status.HTTP_403_FORBIDDEN)
+
         # Backward-compatible policy:
         # - Uploader can always read their own assets.
         # - For study-scoped assets, collaborators with study access can also read.
         # - Unscoped assets remain uploader-private.
-        if owner_user_id != request.user.id:
+        if is_authenticated and owner_user_id != request.user.id:
             if scope_slug.lower() == "unscoped":
                 return Response({"error": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
 
@@ -1781,6 +1789,10 @@ class DownloadBuilderAssetView(APIView):
 
             if not _has_study_access(study, request.user, profile):
                 return Response({"error": "Study is not shared with the current researcher"}, status=status.HTTP_403_FORBIDDEN)
+        elif not is_authenticated:
+            study = Study.objects.filter(slug=scope_slug, is_active=True).first()
+            if not study:
+                return Response({"error": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
 
         if not default_storage.exists(normalized):
             return Response({"error": "Asset not found"}, status=status.HTTP_404_NOT_FOUND)
