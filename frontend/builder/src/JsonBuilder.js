@@ -7799,7 +7799,7 @@ class JsonBuilder {
 
             const perTaskParams = (currentTaskType === 'image-categorization')
                 ? {
-                    stimulus_images: { type: 'string', default: document.getElementById('imageCategorizationAssets')?.value || '' },
+                    stimulus_images: { type: 'HTML_STRING', default: document.getElementById('imageCategorizationAssets')?.value || '' },
                     prompt: { type: 'string', default: document.getElementById('imageCategorizationPrompt')?.value || 'How intense is this emotion?' },
                     category_sampling_mode: { type: 'select', default: document.getElementById('imageCategorizationSampling')?.value || 'random', options: ['random', 'shuffle-once'] },
                     slider_accuracy_question_enabled: { type: 'boolean', default: true },

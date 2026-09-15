@@ -290,14 +290,36 @@
     }
 
     /* Keep image-slider stimuli contained while preserving their aspect ratio. */
-    .jspsych-image-slider-response-stimulus img {
+    #jspsych-image-slider-response-stimulus {
+      max-width: 100%;
+      overflow: hidden;
+    }
+    #jspsych-image-slider-response-stimulus img {
       display: block;
-      max-width: min(720px, 90vw);
-      max-height: 55vh;
-      width: auto;
-      height: auto;
+      max-width: min(720px, 90vw) !important;
+      max-height: 55vh !important;
+      width: auto !important;
+      height: auto !important;
       object-fit: contain;
       margin: 0 auto;
+    }
+    .jspsych-image-slider-response-container {
+      width: min(300px, 80vw) !important;
+      max-width: 100% !important;
+      margin: 20px auto !important;
+    }
+    .jspsych-image-slider-response-container input[type="range"],
+    #jspsych-image-slider-response-response {
+      width: 100% !important;
+      max-width: 100% !important;
+    }
+    #jspsych-image-slider-response-next {
+      display: block !important;
+      width: auto !important;
+      min-width: 0 !important;
+      max-width: max-content !important;
+      margin: 16px auto !important;
+      padding: 6px 16px !important;
     }
   </style>
 </head>
@@ -340,7 +362,7 @@
   <script src="src/jspsych-soc-dashboard.js?v=20260511o"></script>
   <script src="src/eyeTrackingWebgazer.js?v=20260207"></script>
   <script src="src/configLoader.js?v=20260207"></script>
-  <script src="src/timelineCompiler.js?v=20260916-6"></script>
+  <script src="src/timelineCompiler.js?v=20260916-10"></script>
   <script src="src/djangoRuntimeBackend.js"></script>
   <script src="src/main.js?v=20260324-2"></script>
 </body>

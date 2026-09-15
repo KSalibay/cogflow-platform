@@ -1780,7 +1780,7 @@ class TimelineBuilder {
                 block_length: { type: 'number', default: 20, min: 1, max: 50000 },
                 sampling_mode: { type: 'select', default: 'per-trial', options: ['per-trial', 'per-block'] },
                 category_sampling_mode: { type: 'select', default: 'random', options: ['random', 'shuffle-once'] },
-                stimulus_images: { type: 'string', default: '' },
+                stimulus_images: { type: 'HTML_STRING', default: '' },
                 prompt: { type: 'string', default: 'How intense is this emotion?' },
                 slider_accuracy_question_enabled: { type: 'boolean', default: true },
                 slider_accuracy_question_text: { type: 'string', default: 'What is the emotion shown?' },
@@ -1884,6 +1884,12 @@ class TimelineBuilder {
                 currentValue = (paramDef && typeof paramDef === 'object') ? paramDef.default : undefined;
             }
 
+            if (type === 'block' && paramName === 'stimulus_images' && typeof currentValue === 'string') {
+                currentValue = currentValue
+                    .replace(/,(?=[A-Za-z][\w -]*:(?:(?:https?:\/\/)|asset:\/\/|\/))/g, '\n')
+                    .replace(/(?<!^)(?!(?:https?):\/\/)(?=[A-Za-z][\w -]*:(?:(?:https?:\/\/)|asset:\/\/|\/))/g, '\n');
+            }
+
             const shouldDisable = isDrtStart && isoLockedFieldNames.has(paramName) && !overrideIso;
             const label = (isDrtStart && paramName === 'override_iso_standard')
                 ? 'Override ISO standard'
@@ -1984,6 +1990,13 @@ class TimelineBuilder {
         const safeVal = (currentValue === undefined || currentValue === null)
             ? (def.default ?? '')
             : currentValue;
+
+        if (paramName === 'stimulus_images') {
+            const normalized = String(safeVal)
+                .replace(/,(?=[A-Za-z][\w -]*:(?:(?:https?:\/\/)|asset:\/\/|\/))/g, '\n')
+                .replace(/(?<!^)(?!(?:https?):\/\/)(?=[A-Za-z][\w -]*:(?:(?:https?:\/\/)|asset:\/\/|\/))/g, '\n');
+            return `<textarea class="form-control" id="${this.escapeHtmlAttr(inputId)}" rows="8" ${disabledAttr}>${this.escapeHtml(normalized)}</textarea>`;
+        }
 
         if (t === 'boolean') {
             return `

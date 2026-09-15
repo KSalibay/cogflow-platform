@@ -3280,7 +3280,7 @@
       const rawStimulus = (item.stimulus !== undefined && item.stimulus !== null) ? item.stimulus : item.stimulus_image;
       const src = resolveUrl(rawStimulus);
 
-      const w = Number.isFinite(Number(item.stimulus_width)) ? Number(item.stimulus_width) : null;
+      const w = Number.isFinite(Number(item.stimulus_width)) ? Number(item.stimulus_width) : 720;
       const h = Number.isFinite(Number(item.stimulus_height)) ? Number(item.stimulus_height) : null;
 
       const minV = Number.isFinite(Number(item.min)) ? Number(item.min) : 0;
