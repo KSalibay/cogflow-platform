@@ -177,6 +177,17 @@ def _can_manage_researcher_resources(request, profile) -> bool:
     return profile.role in {profile.ROLE_ADMIN, profile.ROLE_RESEARCHER, profile.ROLE_INSTRUCTOR}
 
 
+def _can_manage_study_resources(request, profile) -> bool:
+    if not request.user.is_authenticated:
+        return False
+    return profile.role in {
+        profile.ROLE_ADMIN,
+        profile.ROLE_RESEARCHER,
+        profile.ROLE_INSTRUCTOR,
+        profile.ROLE_STUDENT,
+    }
+
+
 def _can_use_builder(request, profile) -> bool:
     if not request.user.is_authenticated:
         return False
@@ -221,8 +232,8 @@ def _course_instructor_permissions() -> dict:
         "can_view_run_rows": True,
         "can_view_pseudonyms": True,
         "can_view_full_payload": True,
-        "can_manage_sharing": False,
-        "can_remove_users": False,
+        "can_manage_sharing": True,
+        "can_remove_users": True,
     }
 
 
@@ -259,7 +270,7 @@ def _can_manage_study_scope(request, profile, study: Study | None) -> bool:
         return False
     if study and study.owner_user_id == request.user.id:
         return True
-    return _can_manage_researcher_resources(request, profile)
+    return _can_manage_study_resources(request, profile)
 
 
 def _ensure_owner_access_record(study: Study | None, owner_user, granted_by=None):

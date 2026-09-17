@@ -1678,7 +1678,7 @@ class UploadBuilderAssetView(APIView):
             return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
 
         profile = get_or_create_profile(request.user)
-        if not _can_manage_researcher_resources(request, profile):
+        if not _can_manage_study_resources(request, profile):
             return Response({"error": "Insufficient role permissions"}, status=status.HTTP_403_FORBIDDEN)
 
         uploaded = request.FILES.get("file")
@@ -1772,7 +1772,7 @@ class DownloadBuilderAssetView(APIView):
         if not is_authenticated and scope_slug.lower() == "unscoped":
             return Response({"error": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
 
-        if is_authenticated and not _can_manage_researcher_resources(request, profile):
+        if is_authenticated and not _can_manage_study_resources(request, profile):
             return Response({"error": "Insufficient role permissions"}, status=status.HTTP_403_FORBIDDEN)
 
         # Backward-compatible policy:
@@ -2059,11 +2059,12 @@ class ShareStudyView(APIView):
         if target_profile.role not in {
             target_profile.ROLE_RESEARCHER,
             target_profile.ROLE_INSTRUCTOR,
+            target_profile.ROLE_STUDENT,
             target_profile.ROLE_ADMIN,
             target_profile.ROLE_ANALYST,
         }:
             return Response(
-                {"error": "Only researcher/instructor/admin/analyst accounts can receive study shares"},
+                {"error": "Only researcher/instructor/student/admin/analyst accounts can receive study shares"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -2127,7 +2128,7 @@ class ShareStudyValidateUserView(APIView):
             return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
 
         profile = get_or_create_profile(request.user)
-        if not _can_manage_researcher_resources(request, profile):
+        if not _can_manage_study_resources(request, profile):
             return Response({"error": "Insufficient role permissions"}, status=status.HTTP_403_FORBIDDEN)
 
         study = Study.objects.filter(slug=study_slug, is_active=True).first()
@@ -2150,6 +2151,7 @@ class ShareStudyValidateUserView(APIView):
         eligible = target_profile.role in {
             target_profile.ROLE_RESEARCHER,
             target_profile.ROLE_INSTRUCTOR,
+            target_profile.ROLE_STUDENT,
             target_profile.ROLE_ANALYST,
             target_profile.ROLE_ADMIN,
         }
@@ -2234,7 +2236,7 @@ class DuplicateStudyView(APIView):
             return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
 
         profile = get_or_create_profile(request.user)
-        if not _can_manage_researcher_resources(request, profile):
+        if not _can_manage_study_resources(request, profile):
             return Response({"error": "Insufficient role permissions"}, status=status.HTTP_403_FORBIDDEN)
 
         source_study = Study.objects.filter(slug=study_slug, is_active=True).first()
@@ -2318,7 +2320,7 @@ class DeleteStudyView(APIView):
             return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
 
         profile = get_or_create_profile(request.user)
-        if not _can_manage_researcher_resources(request, profile):
+        if not _can_manage_study_resources(request, profile):
             return Response({"error": "Insufficient role permissions"}, status=status.HTTP_403_FORBIDDEN)
 
         study = Study.objects.filter(slug=study_slug, is_active=True).first()
@@ -2375,7 +2377,7 @@ class DeleteStudyConfigVersionView(APIView):
             return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
 
         profile = get_or_create_profile(request.user)
-        if not _can_manage_researcher_resources(request, profile):
+        if not _can_manage_study_resources(request, profile):
             return Response({"error": "Insufficient role permissions"}, status=status.HTTP_403_FORBIDDEN)
 
         study = Study.objects.filter(slug=study_slug, is_active=True).first()

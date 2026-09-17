@@ -172,7 +172,29 @@ class CourseWorkflowTests(APITestCase):
         self.assertEqual(study.course_section, self.course)
         access = StudyResearcherAccess.objects.get(study=study, user=self.instructor)
         self.assertTrue(access.can_view_full_payload)
-        self.assertTrue(access.can_manage_sharing is False)
+        self.assertTrue(access.can_manage_sharing)
+        self.assertTrue(access.can_remove_users)
+
+        other_student = User.objects.create_user(username="other-student", password="pass-1234")
+        other_student_profile = get_or_create_profile(other_student)
+        other_student_profile.role = other_student_profile.ROLE_STUDENT
+        other_student_profile.save(update_fields=["role"])
+
+        validate_response = self.client.post(
+            reverse("studies-share-validate-user", args=[study.slug]),
+            data={"username": other_student.username},
+            format="json",
+        )
+        self.assertEqual(validate_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(validate_response.data["eligible"])
+
+        share_response = self.client.post(
+            reverse("studies-share", args=[study.slug]),
+            data={"username": other_student.username},
+            format="json",
+        )
+        self.assertEqual(share_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(StudyResearcherAccess.objects.filter(study=study, user=other_student).exists())
 
     def test_student_cannot_view_course_roster(self):
         student = User.objects.create_user(username="student", password="pass-1234")
