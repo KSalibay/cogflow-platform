@@ -148,15 +148,28 @@
     .psy-wrap--buttons {
       min-height: 0;
     }
-    .jspsych-display-element:has(.psy-wrap--buttons),
     #jspsych-content:has(.psy-wrap--buttons) {
+      display: flex !important;
+      flex-direction: column;
+      justify-content: center;
+      min-height: 0;
       height: auto;
-    }
-    #jspsych-content:has(.psy-wrap--buttons) {
+      max-height: 100%;
+      overflow-y: auto;
       padding-block: clamp(16px, 4vh, 40px);
     }
     #jspsych-html-button-response-btngroup {
-      margin-top: 8px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      width: min(900px, 100%);
+      margin: 8px auto 0;
+      padding-inline: clamp(18px, 3vw, 32px);
+      box-sizing: border-box;
+    }
+    #jspsych-html-button-response-btngroup .jspsych-html-button-response-button {
+      margin: 0;
     }
 
     .psy-stage {
@@ -307,10 +320,13 @@
     }
 
     /* Keep image-slider stimuli contained while preserving their aspect ratio. */
-    #jspsych-image-slider-response-stimulus {
-      max-width: 100%;
-      overflow: hidden;
+    #jspsych-image-slider-response-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
     }
+    #jspsych-image-slider-response-stimulus,
     #jspsych-image-slider-response-stimulus img {
       display: block;
       max-width: min(720px, 90vw) !important;
@@ -320,10 +336,64 @@
       object-fit: contain;
       margin: 0 auto;
     }
+    .psy-image-slider-prompt {
+      width: min(720px, 90vw);
+      margin: 24px auto 0;
+      text-align: center;
+      line-height: 1.5;
+    }
+    .sr-shell {
+      width: min(900px, 100%);
+      margin: 0 auto;
+      padding: clamp(16px, 3vw, 32px);
+      box-sizing: border-box;
+      text-align: left;
+    }
+    .sr-shell--image-categorization {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      width: min(720px, 100%);
+      min-height: 100%;
+      text-align: center;
+    }
+    .sr-shell--image-categorization .sr-instructions img {
+      display: block;
+      max-width: min(720px, 90vw) !important;
+      max-height: 55vh !important;
+      width: auto;
+      height: auto;
+      margin: 0 auto;
+    }
+    .sr-shell--image-categorization .sr-options {
+      align-items: center;
+    }
+    .sr-shell--image-categorization .sr-submit-row {
+      justify-content: center !important;
+    }
+    .sr-options {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      width: 100%;
+    }
+    .sr-option {
+      display: inline-flex;
+      align-items: flex-start;
+      gap: 10px;
+      width: max-content;
+      max-width: 100%;
+      margin: 6px 0;
+    }
+    .sr-option span {
+      white-space: normal;
+      word-break: normal;
+      overflow-wrap: break-word;
+    }
     .jspsych-image-slider-response-container {
       width: min(300px, 80vw) !important;
       max-width: 100% !important;
-      margin: 20px auto !important;
+      margin: 12px auto 20px !important;
     }
     .jspsych-image-slider-response-container input[type="range"],
     #jspsych-image-slider-response-response {

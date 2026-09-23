@@ -24,6 +24,10 @@ const compilerSource = fs.readFileSync(
   path.join(__dirname, '../frontend/interpreter/src/timelineCompiler.js'),
   'utf8'
 );
+const interpreterHtml = fs.readFileSync(
+  path.join(__dirname, '../frontend/interpreter/index.html'),
+  'utf8'
+);
 eval(compilerSource);
 
 function compileOne(item) {
@@ -44,6 +48,7 @@ const consentTrial = compileOne({
   type: 'html-button-response',
   stimulus: '<p>Consent text</p>',
   choices: ['Something', 'Else', 'Third'],
+  button_html: '',
   consent_mode: true,
   consent_decline_message: '<p>No thanks.</p>',
 });
@@ -55,6 +60,23 @@ assert(
 assert(consentTrial.response_ends_trial === true, 'Consent trial must end on response');
 assert(typeof consentTrial.on_finish === 'function', 'Consent trial must attach an on_finish hook');
 assert(consentTrial.data?.consent_mode === true, 'Consent trial data must flag consent_mode');
+assert(consentTrial.button_html === undefined, 'Blank custom button HTML must not suppress jsPsych default buttons');
+assert(interpreterHtml.includes('#jspsych-content:has(.psy-wrap--buttons)'), 'Consent layout override must target the button trial content');
+assert(interpreterHtml.includes('overflow-y: auto;'), 'Consent layout must remain scrollable on short viewports');
+assert(interpreterHtml.includes('flex-wrap: wrap;'), 'Consent buttons must wrap inside narrow viewports');
+
+// Legacy Builder configs may describe consent clearly but omit the consent flag and choices.
+const legacyConsentTrial = compileOne({
+  type: 'html-button-response',
+  stimulus: '<p>This is an informed consent form</p>',
+  prompt: '<p>Click Agree to agree</p>',
+  choices: [],
+});
+assert(
+  JSON.stringify(legacyConsentTrial.choices) === JSON.stringify(['Agree', "Don't agree"]),
+  'Legacy informed-consent text without choices must recover the fixed consent buttons'
+);
+assert(legacyConsentTrial.data?.consent_mode === true, 'Recovered legacy consent must use consent behavior');
 
 // Declining ends the study and is recorded in the trial data.
 let abortedWith = null;

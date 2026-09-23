@@ -1886,8 +1886,7 @@ class TimelineBuilder {
 
             if (type === 'block' && paramName === 'stimulus_images' && typeof currentValue === 'string') {
                 currentValue = currentValue
-                    .replace(/,(?=[A-Za-z][\w -]*:(?:(?:https?:\/\/)|asset:\/\/|\/))/g, '\n')
-                    .replace(/(?<!^)(?!(?:https?):\/\/)(?=[A-Za-z][\w -]*:(?:(?:https?:\/\/)|asset:\/\/|\/))/g, '\n');
+                    .replace(/,(?=[A-Za-z][\w -]*:(?:(?:https?:\/\/)|asset:\/\/|\/))/g, '\n');
             }
 
             const shouldDisable = isDrtStart && isoLockedFieldNames.has(paramName) && !overrideIso;
@@ -1993,8 +1992,7 @@ class TimelineBuilder {
 
         if (paramName === 'stimulus_images') {
             const normalized = String(safeVal)
-                .replace(/,(?=[A-Za-z][\w -]*:(?:(?:https?:\/\/)|asset:\/\/|\/))/g, '\n')
-                .replace(/(?<!^)(?!(?:https?):\/\/)(?=[A-Za-z][\w -]*:(?:(?:https?:\/\/)|asset:\/\/|\/))/g, '\n');
+                .replace(/,(?=[A-Za-z][\w -]*:(?:(?:https?:\/\/)|asset:\/\/|\/))/g, '\n');
             return `<textarea class="form-control" id="${this.escapeHtmlAttr(inputId)}" rows="8" ${disabledAttr}>${this.escapeHtml(normalized)}</textarea>`;
         }
 

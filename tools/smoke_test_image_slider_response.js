@@ -54,7 +54,10 @@ function compileSliderTrials(timeline, experimentType = 'trial-based') {
   const t = trials[0];
   assert(t.stimulus === 'img/happy1.png', `Unexpected stimulus: ${t.stimulus}`);
   assert(t.min === 1 && t.max === 10 && t.step === 1, 'Slider range must be passed through');
-  assert(t.prompt === 'How happy is this face?', `Expected category substitution, got: ${t.prompt}`);
+  assert(t.stimulus_width === null, 'Unspecified stimulus width must preserve the image natural size');
+  assert(t.prompt.includes('How happy is this face?'), `Expected category substitution, got: ${t.prompt}`);
+  assert(t.prompt.includes('psy-image-slider-prompt'), 'Slider prompt must include the runtime placement marker');
+  assert(typeof t.on_load === 'function', 'Slider trial must position its prompt when the plugin loads');
   assert(t.data.stimulus_category === 'happy', 'Category must be recorded in trial data');
 }
 
@@ -65,7 +68,7 @@ function compileSliderTrials(timeline, experimentType = 'trial-based') {
     stimulus: 'img/plain.png',
     prompt: 'Rate this image.',
   }]);
-  assert(trials[0].prompt === 'Rate this image.', 'Prompt must be unchanged when there is no category');
+  assert(trials[0].prompt.includes('Rate this image.'), 'Prompt text must be unchanged when there is no category');
   assert(trials[0].data.stimulus_category === undefined, 'No category should be recorded when none is set');
 }
 
@@ -94,10 +97,10 @@ function compileSliderTrials(timeline, experimentType = 'trial-based') {
     seenPaths.add(t.stimulus);
     if (t.stimulus === 'img/happy1.png') {
       assert(t.data.stimulus_category === 'happy', 'happy image must carry the happy category');
-      assert(t.prompt === 'How happy does this face look?', `Unexpected prompt: ${t.prompt}`);
+      assert(t.prompt.includes('How happy does this face look?'), `Unexpected prompt: ${t.prompt}`);
     } else if (t.stimulus === 'img/sad1.png') {
       assert(t.data.stimulus_category === 'sad', 'sad image must carry the sad category');
-      assert(t.prompt === 'How sad does this face look?', `Unexpected prompt: ${t.prompt}`);
+      assert(t.prompt.includes('How sad does this face look?'), `Unexpected prompt: ${t.prompt}`);
     } else if (t.stimulus === 'img/neutral1.png') {
       assert(t.data.stimulus_category === 'neutral', 'neutral image must carry the neutral category');
     } else {
@@ -130,7 +133,11 @@ function compileSliderTrials(timeline, experimentType = 'trial-based') {
   });
   const [accuracyTrial, sliderTrial] = compiled.timeline[0].timeline;
   assert(sliderTrial.prompt.includes('How happy is the face?'), 'Legacy intensity prompt must move to the slider');
+  assert(accuracyTrial.layout === 'image-categorization', 'Accuracy question must use the centered image-categorization layout');
+  assert(accuracyTrial.title === '', 'Accuracy question must not render the generic Survey heading');
   assert(accuracyTrial.questions[0].prompt === 'What is the emotion shown?', 'Legacy accuracy prompt must move to the radio question');
+  assert(Array.isArray(accuracyTrial.questions[0].options), 'Accuracy category options must remain an array');
+  assert(accuracyTrial.questions[0].options[0] === 'happy', 'Category labels must remain whole strings');
 }
 
 // Block usage without categories: plain filename list behaves like image-keyboard-response
@@ -154,6 +161,36 @@ function compileSliderTrials(timeline, experimentType = 'trial-based') {
     assert(t.data.stimulus_category === undefined, 'No category should be set when the list has no prefixes');
   }
   assert(paths.size === 3, `Expected all 3 plain image paths to be sampled, got ${paths.size}`);
+}
+
+// Existing server configs with the old Builder newline bug recover the valid
+// task-level image list instead of treating individual characters as assets.
+{
+  const compiled = window.TimelineCompiler.compileToJsPsychTimeline({
+    task_type: 'image-categorization',
+    experiment_type: 'trial-based',
+    image_categorization_settings: {
+      stimulus_images: 'angry:img/anger.png\nhappy:img/happy.png',
+      accuracy_question_enabled: true,
+      slider_enabled: true,
+    },
+    timeline: [{
+      type: 'block',
+      component_type: 'image-slider-response',
+      block_length: 20,
+      parameter_values: {
+        stimulus_images: 'a\nn\ng\nr\ny:h\nt\nt\np\ns://example.test/anger.png',
+        accuracy_question_enabled: true,
+        slider_enabled: true,
+      },
+    }],
+  });
+  const nodes = compiled.timeline || compiled;
+  const sliderTrials = nodes.flatMap((node) => Array.isArray(node.timeline) ? node.timeline : [node])
+    .filter((node) => node?.type === FakeImageSliderPlugin);
+  assert(sliderTrials.length === 20, `Expected 20 recovered slider trials, got ${sliderTrials.length}`);
+  assert(sliderTrials.every((trial) => ['angry', 'happy'].includes(trial.data.stimulus_category)), 'Recovered trials must use whole category names');
+  assert(sliderTrials.every((trial) => ['img/anger.png', 'img/happy.png'].includes(trial.stimulus)), 'Recovered trials must use valid task-level image URLs');
 }
 
 // Regression: image-keyboard-response Blocks with an unprefixed image list must be

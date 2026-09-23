@@ -473,6 +473,13 @@
 
     if (baseType === 'image-slider-response' && isObject(opts?.imageCategorizationDefaults)) {
       const defaults = opts.imageCategorizationDefaults;
+      const looksCharacterSplit = (raw) => {
+        if (typeof raw !== 'string') return false;
+        const lines = raw.split(/\r?\n/g).map((line) => line.trim()).filter(Boolean);
+        if (lines.length < 8) return false;
+        const singleCharacters = lines.filter((line) => line.length === 1).length;
+        return singleCharacters / lines.length >= 0.35;
+      };
       const fallbackValues = {
         stimulus_images: defaults.stimulus_images,
         prompt: defaults.prompt,
@@ -486,7 +493,8 @@
         slider_step: defaults.slider_step
       };
       for (const [key, value] of Object.entries(fallbackValues)) {
-        if (values[key] === undefined && value !== undefined) values[key] = value;
+        const corruptedImageList = key === 'stimulus_images' && looksCharacterSplit(values[key]);
+        if ((values[key] === undefined || corruptedImageList) && value !== undefined) values[key] = value;
       }
     }
 
@@ -3249,7 +3257,14 @@
       // Consent mode presents a fixed Agree / Don't agree pair and ends the study
       // when the participant declines, so researchers don't have to hand-build an
       // early-exit branch.
-      const consentMode = (item.consent_mode === true || item.consent_mode === 'true');
+      const authoredChoices = normalizeButtonChoices(item.choices !== undefined ? item.choices : item.button_choices);
+      const consentFlag = (item.consent_mode ?? item.parameters?.consent_mode ?? '').toString().trim().toLowerCase();
+      const consentText = `${stimulus ?? ''} ${item.prompt ?? ''}`.replace(/<[^>]*>/g, ' ');
+      const legacyConsent = authoredChoices.length === 0 && /\binformed consent\b|\bclick agree to agree\b/i.test(consentText);
+      const consentMode = item.consent_mode === true
+        || item.parameters?.consent_mode === true
+        || ['true', '1', 'yes', 'on'].includes(consentFlag)
+        || legacyConsent;
       const consentDeclineMessage = (item.consent_decline_message === undefined
         || item.consent_decline_message === null
         || String(item.consent_decline_message).trim() === '')
@@ -3258,14 +3273,17 @@
 
       const choices = consentMode
         ? [CONSENT_AGREE_LABEL, CONSENT_DECLINE_LABEL]
-        : normalizeButtonChoices(item.choices !== undefined ? item.choices : item.button_choices);
+        : authoredChoices;
+      const buttonHtml = (item.button_html === null || item.button_html === undefined)
+        ? ''
+        : String(item.button_html).trim();
 
       return {
         type: HtmlButton,
         stimulus: wrapStimulus(stimulus, item.prompt, PSY_WRAP_BUTTONS_CLASS),
         prompt: null,
         choices,
-        ...(item.button_html !== undefined ? { button_html: item.button_html } : {}),
+        ...(buttonHtml ? { button_html: item.button_html } : {}),
         stimulus_duration: (item.stimulus_duration === undefined ? null : item.stimulus_duration),
         trial_duration: (consentMode ? null : (item.trial_duration === undefined ? null : item.trial_duration)),
         ...(item.button_layout !== undefined ? { button_layout: item.button_layout } : {}),
@@ -3285,7 +3303,7 @@
       const rawStimulus = (item.stimulus !== undefined && item.stimulus !== null) ? item.stimulus : item.stimulus_image;
       const src = resolveUrl(rawStimulus);
 
-      const w = Number.isFinite(Number(item.stimulus_width)) ? Number(item.stimulus_width) : 720;
+      const w = Number.isFinite(Number(item.stimulus_width)) ? Number(item.stimulus_width) : null;
       const h = Number.isFinite(Number(item.stimulus_height)) ? Number(item.stimulus_height) : null;
 
       const minV = Number.isFinite(Number(item.min)) ? Number(item.min) : 0;
@@ -3304,7 +3322,17 @@
 
       const category = (item.stimulus_category ?? '').toString();
       const promptRaw = (item.prompt ?? '').toString();
-      const prompt = (category && promptRaw) ? promptRaw.replace(/%category%/g, category) : (promptRaw || null);
+      const resolvedPrompt = (category && promptRaw) ? promptRaw.replace(/%category%/g, category) : promptRaw;
+      const prompt = resolvedPrompt ? `<div class="psy-image-slider-prompt">${resolvedPrompt}</div>` : null;
+      const authoredOnLoad = typeof item.on_load === 'function' ? item.on_load : null;
+
+      const placePromptAboveSlider = () => {
+        const wrapper = document.querySelector('#jspsych-image-slider-response-wrapper');
+        const slider = wrapper?.querySelector('.jspsych-image-slider-response-container');
+        const promptEl = document.querySelector('.psy-image-slider-prompt');
+        if (wrapper && slider && promptEl) wrapper.insertBefore(promptEl, slider);
+        if (authoredOnLoad) authoredOnLoad();
+      };
 
       return {
         type: ImageSlider,
@@ -3323,6 +3351,7 @@
         stimulus_duration: (item.stimulus_duration === undefined ? null : item.stimulus_duration),
         trial_duration: (item.trial_duration === undefined ? null : item.trial_duration),
         response_ends_trial: (item.response_ends_trial === undefined ? true : item.response_ends_trial),
+        on_load: placePromptAboveSlider,
         data: {
           plugin_type: 'image-slider-response',
           ...(category ? { stimulus_category: category } : {})
@@ -3357,6 +3386,7 @@
       return {
         type: SurveyResponse,
         title: '',
+        layout: 'image-categorization',
         instructions: stimulus ? `<img src="${String(stimulus).replace(/"/g, '&quot;')}" alt="stimulus" style="max-width:100%; max-height:55vh; object-fit:contain;" />` : '',
         submit_label: 'Continue',
         allow_empty_on_timeout: false,
