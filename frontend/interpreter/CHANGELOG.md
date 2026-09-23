@@ -1,5 +1,15 @@
 # CogFlow Interpreter Changelog
 
+## September 23, 2026
+
+### HTML + Button buttons hidden below the fold
+
+- `html-button-response` stimuli are now wrapped in `.psy-wrap.psy-wrap--buttons`, which
+  drops the full-viewport `min-height` so the plugin's button group stays on screen.
+  Previously the stimulus wrapper filled the viewport and the buttons rendered below it
+  with no way to scroll, which made consent screens (fixed Agree / Don't agree buttons)
+  look button-less in the interpreter preview and in generated study links.
+
 ## April 2, 2026
 
 ### SOC MW-Probe, SOC SART Timing/Semantics, DRT Boundaries, MOT Aperture

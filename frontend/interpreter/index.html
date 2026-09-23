@@ -142,6 +142,23 @@
       background: var(--psy-bg);
       color: var(--psy-fg);
     }
+    /* Button trials (incl. consent screens) put the plugin's button group after the
+       stimulus, so the stimulus wrapper must not fill the viewport or the buttons are
+       pushed below the fold with nothing to scroll. */
+    .psy-wrap--buttons {
+      min-height: 0;
+    }
+    .jspsych-display-element:has(.psy-wrap--buttons),
+    #jspsych-content:has(.psy-wrap--buttons) {
+      height: auto;
+    }
+    #jspsych-content:has(.psy-wrap--buttons) {
+      padding-block: clamp(16px, 4vh, 40px);
+    }
+    #jspsych-html-button-response-btngroup {
+      margin-top: 8px;
+    }
+
     .psy-stage {
       width: 100%;
       padding: clamp(18px, 3vw, 32px);

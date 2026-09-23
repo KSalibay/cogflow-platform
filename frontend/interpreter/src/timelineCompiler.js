@@ -3092,11 +3092,16 @@
   function compileToJsPsychTimeline(config) {
     if (!isObject(config)) throw new Error('Config must be an object');
 
-    function wrapPsyScreenHtml(stimulusHtml, promptHtml) {
+    // Button trials render the stimulus and the plugin's button group as siblings, so
+    // their wrapper must not claim the full viewport (see .psy-wrap--buttons).
+    const PSY_WRAP_BUTTONS_CLASS = 'psy-wrap--buttons';
+
+    function wrapPsyScreenHtml(stimulusHtml, promptHtml, extraWrapClass) {
       const stim = (stimulusHtml === null || stimulusHtml === undefined) ? '' : String(stimulusHtml);
       const prm = (promptHtml === null || promptHtml === undefined) ? '' : String(promptHtml);
+      const wrapClass = extraWrapClass ? `psy-wrap ${extraWrapClass}` : 'psy-wrap';
       return `
-        <div class="psy-wrap">
+        <div class="${wrapClass}">
           <div class="psy-stage">
             <div class="psy-text">
               ${stim}
@@ -3107,13 +3112,13 @@
       `;
     }
 
-    function wrapMaybeFunctionStimulus(stimulus, prompt) {
+    function wrapMaybeFunctionStimulus(stimulus, prompt, extraWrapClass) {
       const stimIsFn = typeof stimulus === 'function';
       const promptIsFn = typeof prompt === 'function';
       if (!stimIsFn && !promptIsFn) {
         const s = (stimulus === null || stimulus === undefined) ? '' : stimulus;
         const p = (prompt === undefined ? null : prompt);
-        return wrapPsyScreenHtml(s, p);
+        return wrapPsyScreenHtml(s, p, extraWrapClass);
       }
 
       return function () {
@@ -3123,7 +3128,7 @@
         try { if (typeof p === 'function') p = p(); } catch { /* ignore */ }
         const ss = (s === null || s === undefined) ? '' : s;
         const pp = (p === undefined ? null : p);
-        return wrapPsyScreenHtml(ss, pp);
+        return wrapPsyScreenHtml(ss, pp, extraWrapClass);
       };
     }
 
@@ -3257,7 +3262,7 @@
 
       return {
         type: HtmlButton,
-        stimulus: wrapStimulus(stimulus, item.prompt),
+        stimulus: wrapStimulus(stimulus, item.prompt, PSY_WRAP_BUTTONS_CLASS),
         prompt: null,
         choices,
         ...(item.button_html !== undefined ? { button_html: item.button_html } : {}),
