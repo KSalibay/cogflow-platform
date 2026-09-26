@@ -39,6 +39,7 @@ from apps.studies.models import (
     CourseMembership,
     CourseSection,
     Study,
+    SonaLaunchLink,
     StudyResearcherAccess,
     StudyAnalysisReportArtifact,
     StudyAnalysisReportJob,

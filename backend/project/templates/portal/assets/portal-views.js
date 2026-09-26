@@ -229,7 +229,6 @@
     // per-study but never sent to the backend until "Generate" is clicked, so they
     // are remembered locally per browser and restored when the study is re-selected.
     const INTEGRATION_FORM_FIELD_IDS = [
-      "integrationParticipantId",
       "integrationCompletionUrl",
       "integrationAbortUrl",
       "sonaExpiresHours",
@@ -880,20 +879,6 @@
       }
     }
 
-    function buildSonaStudyUrl(baseLaunchUrl) {
-      const base = absUrl(baseLaunchUrl || "");
-      if (!base || base === "—") return "";
-
-      // SONA replaces %SURVEY_CODE% with a per-participant code before redirecting;
-      // the interpreter reads that back via the survey_code query param.
-      const hashIndex = base.indexOf("#");
-      const hash = hashIndex >= 0 ? base.slice(hashIndex) : "";
-      const noHash = hashIndex >= 0 ? base.slice(0, hashIndex) : base;
-      const sep = noHash.includes("?") ? "&" : "?";
-
-      return `${noHash}${sep}survey_code=%SURVEY_CODE%${hash}`;
-    }
-
     function renderIntegrationsRollout(rollout) {
       const out = document.getElementById("integrationsOutput");
       if (!out) return;
@@ -903,29 +888,15 @@
         return;
       }
 
-      const opts = rollout.launch_options || {};
-      const multi = opts.multi_use || {};
-      const single = opts.single_use || {};
-      const completionRedirect = rollout.completion_redirect_url || multi.completion_redirect_url || "";
-      const abortRedirect = rollout.abort_redirect_url || multi.abort_redirect_url || "";
-      const multiLaunchUrl = absUrl(multi.launch_url || rollout.launch_url || "");
-      const singleLaunchUrl = absUrl(single.launch_url || "");
+      const completionRedirect = rollout.completion_redirect_url || "";
+      const abortRedirect = rollout.abort_redirect_url || "";
 
       out.innerHTML = `
-        <div class="detail-grid">
-          <article class="detail-card">
-            <h3 style="margin:0 0 12px;">Multi-use launch</h3>
-            ${rfRow("Launch URL", multiLaunchUrl)}
-            ${rfRow("Launch token", multi.launch_token || rollout.launch_token || "")}
-            ${rfRow("SONA Study URL (paste into SONA)", buildSonaStudyUrl(multiLaunchUrl))}
-          </article>
-          <article class="detail-card">
-            <h3 style="margin:0 0 12px;">Single-use launch</h3>
-            ${rfRow("Launch URL", singleLaunchUrl)}
-            ${rfRow("Launch token", single.launch_token || "")}
-            ${rfRow("SONA Study URL (paste into SONA)", buildSonaStudyUrl(singleLaunchUrl))}
-          </article>
-        </div>
+        <article class="detail-card">
+          <h3 style="margin:0 0 12px;">SONA Study URL</h3>
+          ${rfRow("Paste into SONA", rollout.sona_study_url || "")}
+          <p class="rollout-meta" style="margin-top:10px;">${completionRedirect ? "Completion redirect is set. The Study URL above remains unchanged." : "Save this Study URL in SONA, then paste SONA's completion URL above and generate again."}</p>
+        </article>
         <article class="detail-card" style="margin-top:12px;">
           <h3 style="margin:0 0 12px;">Redirects</h3>
           ${completionRedirect ? rfRow("Completion redirect", completionRedirect) : '<p class="result-message" style="margin:0 0 8px;">No completion redirect set.</p>'}
@@ -991,7 +962,6 @@
       const statusEl = document.getElementById("integrationsStatus");
       const btn = document.getElementById("generateSonaLinksBtn");
       const slug = (document.getElementById("integrationStudySelect")?.value || "").trim();
-      const pid = (document.getElementById("integrationParticipantId")?.value || "").trim();
       const completionUrl = (document.getElementById("integrationCompletionUrl")?.value || "").trim();
       const abortUrl = (document.getElementById("integrationAbortUrl")?.value || "").trim();
       const useFlowVariants = !!document.getElementById("integrationUseFlowVariants")?.checked;
@@ -1002,19 +972,13 @@
         statusEl.textContent = "Choose a study first.";
         return;
       }
-      if (!completionUrl) {
-        statusEl.className = "status-bar error";
-        statusEl.textContent = "Completion URL is required for SONA link generation.";
-        return;
-      }
-
       btn.disabled = true;
       statusEl.className = "status-bar";
       statusEl.textContent = `Generating SONA links for ${slug}…`;
 
       try {
         const r = await fetch(`${API}/api/v1/studies/${encodeURIComponent(slug)}/participant-links`, postOpts({
-          participant_external_id: pid || null,
+          sona_short_link: true,
           use_flow_variants: useFlowVariants,
           expires_in_hours: sonaExpiresHours,
           completion_redirect_url: completionUrl,
@@ -1032,7 +996,9 @@
         saveIntegrationFormFields(slug);
 
         statusEl.className = "status-bar ok";
-        statusEl.textContent = `SONA links generated for ${slug}.`;
+        statusEl.textContent = completionUrl
+          ? `SONA completion redirect updated for ${slug}. The Study URL is unchanged.`
+          : `SONA Study URL ready for ${slug}. Paste it into SONA, then add the completion URL here.`;
       } catch (err) {
         statusEl.className = "status-bar error";
         statusEl.textContent = `SONA link generation failed: ${err?.message || err}`;

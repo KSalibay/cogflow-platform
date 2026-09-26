@@ -6,6 +6,36 @@
     "description": "OpenAPI schema for CogFlow Platform v1 endpoints."
   },
   "paths": {
+    "/s/{code}": {
+      "get": {
+        "operationId": "retrieveSonaLaunch",
+        "description": "",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "description": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "s"
+        ]
+      }
+    },
     "/healthz": {
       "get": {
         "operationId": "listHealths",
@@ -96,6 +126,116 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/credits/public": {
+      "get": {
+        "operationId": "listCreditsPublics",
+        "description": "Public, read-only CRediT payload for website rendering.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {}
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/courses": {
+      "get": {
+        "operationId": "listCourseSections",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {}
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      },
+      "post": {
+        "operationId": "createCourseSections",
+        "description": "",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/courses/{course_id}/roster": {
+      "get": {
+        "operationId": "listCourseRosters",
+        "description": "",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "description": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {}
+                }
               }
             },
             "description": ""
@@ -597,6 +737,39 @@
         ]
       }
     },
+    "/api/v1/auth/profile": {
+      "post": {
+        "operationId": "createAuthProfile",
+        "description": "Allow authenticated users to update their own public profile fields.",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
     "/api/v1/auth/mfa/setup": {
       "post": {
         "operationId": "createTotpSetup",
@@ -762,10 +935,162 @@
         ]
       }
     },
+    "/api/v1/newsletter/subscribe": {
+      "post": {
+        "operationId": "createNewsletterSubscribe",
+        "description": "Public newsletter subscription endpoint (Resend audience contacts API).",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/courses/enroll": {
+      "post": {
+        "operationId": "createCourseEnroll",
+        "description": "",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/courses/{course_id}/enrollment-code": {
+      "post": {
+        "operationId": "createCourseEnrollmentCode",
+        "description": "",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "description": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
     "/api/v1/admin/users/{user_id}/password": {
       "post": {
         "operationId": "createAdminUserPassword",
         "description": "Allow platform admins to set a new temporary password for any user.",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "description": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/admin/users/{user_id}/profile": {
+      "post": {
+        "operationId": "createAdminUserProfile",
+        "description": "Allow platform admins to update a user's public profile fields.",
         "parameters": [
           {
             "name": "user_id",
@@ -1549,6 +1874,39 @@
       "post": {
         "operationId": "createSubmitResult",
         "description": "",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {}
+            },
+            "multipart/form-data": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/v1/results/checkpoint": {
+      "post": {
+        "operationId": "createSaveCheckpoint",
+        "description": "Store a partial / in-progress result without closing the run session.\n\nCalled by the Interpreter whenever a researcher-placed checkpoint marker\nexecutes in the jsPsych timeline.  The run status stays ``started``; the\nresult envelope and trial rows are upserted so that data is recoverable if\nthe participant drops out before reaching the final submit.",
         "parameters": [],
         "requestBody": {
           "content": {

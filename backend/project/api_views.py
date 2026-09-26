@@ -52,6 +52,7 @@ from .api_views_studies import (
     UploadBuilderAssetView,
     DownloadBuilderAssetView,
     CreateParticipantLinkView,
+    SonaLaunchView,
     AssignStudyOwnerView,
     ShareStudyView,
     ShareStudyValidateUserView,

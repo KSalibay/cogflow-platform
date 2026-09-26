@@ -15,7 +15,7 @@ const compilerSource = fs.readFileSync(
 );
 eval(compilerSource);
 
-function directionsFor(directionTransitionMode) {
+function directionsFor(directionTransitionMode, experimentType = 'trial-based') {
   const block = {
     type: 'block',
     component_type: 'rdm-trial',
@@ -32,7 +32,7 @@ function directionsFor(directionTransitionMode) {
 
   const expanded = window.TimelineCompiler.expandTimeline([block], {
     taskType: 'rdm',
-    experimentType: 'trial-based',
+    experimentType,
   });
   return expanded.filter((t) => t.type === 'rdm-trial').map((t) => t.direction);
 }
@@ -56,6 +56,9 @@ assert(
   new Set(noRepeatDirections).size === 4,
   `Expected all 4 configured directions to be used, got ${new Set(noRepeatDirections).size}`
 );
+const continuousDirections = directionsFor('no_repeat_each_trial', 'continuous');
+assert(countConsecutiveRepeats(continuousDirections) === 0, 'Continuous RDM must never repeat the previous direction');
+assert(new Set(continuousDirections).size === 4, 'Continuous RDM must still sample the configured directions');
 
 // Default mode is unchanged: consecutive repeats remain possible.
 const defaultDirections = directionsFor(null);

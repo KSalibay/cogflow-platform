@@ -33,6 +33,13 @@ class Study(models.Model):
         return self.slug
 
 
+class SonaLaunchLink(models.Model):
+    study = models.OneToOneField(Study, on_delete=models.CASCADE, related_name="sona_launch_link")
+    code = models.CharField(max_length=32, unique=True)
+    launch_token = models.TextField()
+    expires_at = models.DateTimeField()
+
+
 class CourseSection(models.Model):
     course_name = models.CharField(max_length=255)
     section_name = models.CharField(max_length=120)
