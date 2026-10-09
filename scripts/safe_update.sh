@@ -149,6 +149,48 @@ else
   docker compose run --rm api python manage.py migrate users 0007_alter_userprofile_role --noinput
 fi
 
+echo "==> Applying studies migrations through 0008"
+docker compose run --rm api python manage.py migrate studies 0008_grant_course_instructors_full_access --noinput
+
+echo "==> Reconciling studies.0009 (SONA launch-link table)"
+SONA_MIGRATION_STATE="$(docker compose run --rm -T api python manage.py shell -v 0 -c '
+from django.db import connection
+from django.db.migrations.loader import MigrationLoader
+
+loader = MigrationLoader(connection)
+migration = loader.get_migration("studies", "0009_sonalaunchlink")
+if ("studies", "0009_sonalaunchlink") in loader.applied_migrations:
+    print("already_applied")
+elif len(migration.operations) != 1 or migration.operations[0].__class__.__name__ != "CreateModel" or migration.operations[0].name.lower() != "sonalaunchlink":
+    raise SystemExit("Refusing to reconcile studies.0009: expected only CreateModel(SonaLaunchLink)")
+else:
+    table_name = migration.operations[0].options.get("db_table", "studies_sonalaunchlink")
+    if table_name != "studies_sonalaunchlink":
+      raise SystemExit("Refusing to reconcile studies.0009: unexpected SONA table name")
+    print("table_exists" if table_name in connection.introspection.table_names() else "table_missing")
+')" || {
+  echo "ERROR: Could not safely inspect studies.0009; no migration was applied."
+  exit 1
+}
+
+case "$SONA_MIGRATION_STATE" in
+  already_applied)
+    echo "    studies.0009 already recorded; skipping"
+    ;;
+  table_exists)
+    echo "    Existing SONA launch-link table detected; recording studies.0009 without schema changes"
+    docker compose run --rm api python manage.py migrate studies 0009_sonalaunchlink --fake --noinput
+    ;;
+  table_missing)
+    echo "    SONA launch-link table not present; applying studies.0009 normally"
+    docker compose run --rm api python manage.py migrate studies 0009_sonalaunchlink --noinput
+    ;;
+  *)
+    echo "ERROR: Unexpected studies.0009 inspection result: $SONA_MIGRATION_STATE"
+    exit 1
+    ;;
+esac
+
 echo "==> Applying remaining migrations"
 docker compose run --rm api python manage.py migrate --noinput
 
