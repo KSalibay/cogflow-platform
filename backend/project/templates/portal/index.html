@@ -1830,17 +1830,12 @@
 
               <div class="panel panel-pad" style="margin-bottom:14px;">
                 <h3 style="margin:0 0 10px;">SONA Link Generator</h3>
-                <p class="inline-note" style="margin:0 0 12px;">Create SONA-friendly launch links that return participants to SONA after completion.</p>
-
-                <div class="account-field">
-                  <label for="integrationParticipantId">Participant ID (optional)</label>
-                  <input type="text" id="integrationParticipantId" placeholder="participant code or leave blank" />
-                </div>
+                <p class="inline-note" style="margin:0 0 12px;">Generate a short Study URL, paste it into SONA, then paste SONA's completion URL here and generate again. The Study URL stays the same.</p>
 
                 <div class="account-field">
                   <label for="integrationCompletionUrl">SONA completion URL</label>
                   <input type="text" id="integrationCompletionUrl" placeholder="https://.../webstudy_credit.aspx?survey_code={participant_external_id}" />
-                  <div class="inline-note" style="margin-top:4px;">This is SONA's own credit-granting URL, copied from your SONA study's Timed Study / external-study settings — not something CogFlow generates. Replace SONA's own code placeholder (often <span class="mono">%SURVEY_CODE%</span>) with <span class="mono">{participant_external_id}</span> so CogFlow can fill it in.</div>
+                  <div class="inline-note" style="margin-top:4px;">Paste SONA's server-side credit URL as supplied. CogFlow replaces <span class="mono">%SURVEY_CODE%</span> with each participant's survey code automatically.</div>
                 </div>
 
                 <div class="account-field">
@@ -1855,10 +1850,10 @@
                 </div>
 
                 <div class="inline-note" style="margin:2px 0 12px;">Supported placeholders: <span class="mono">{participant_external_id}</span>, <span class="mono">{participant_key}</span>, <span class="mono">{run_session_id}</span></div>
-                <div class="inline-note" style="margin:2px 0 12px;">After generating, paste the <b>SONA Study URL</b> shown below into SONA's own "Study URL" field for this study.</div>
+                <div class="inline-note" style="margin:2px 0 12px;">Paste the generated <b>SONA Study URL</b> into SONA without altering or shortening it.</div>
 
                 <div class="account-actions">
-                  <button class="btn btn-primary btn-sm" id="generateSonaLinksBtn">Generate SONA Links</button>
+                  <button class="btn btn-primary btn-sm" id="generateSonaLinksBtn">Generate SONA Study URL</button>
                 </div>
               </div>
 

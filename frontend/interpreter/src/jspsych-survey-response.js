@@ -27,6 +27,7 @@
       allow_empty_on_timeout: { type: PT.BOOL, default: false },
       timeout_ms: { type: PT.INT, default: null },
       questions: { type: PT.OBJECT, array: true, default: [] },
+      layout: { type: PT.STRING, default: 'default' },
       detection_response_task_enabled: { type: PT.BOOL, default: false }
     },
     data: {
@@ -226,7 +227,7 @@
             const v = esc(opt);
             const inputId = `q_${esc(id)}_${idx}`;
             return `
-              <label for="${inputId}" style="display:flex; gap:10px; align-items:flex-start; margin:6px 0;">
+              <label class="sr-option" for="${inputId}">
                 <input id="${inputId}" type="radio" name="${esc(id)}" value="${v}" ${required ? 'required' : ''} />
                 <span>${v}</span>
               </label>
@@ -236,7 +237,7 @@
           return `
             <div class="sr-q" data-question-id="${esc(id)}" data-visible="true" style="margin: 14px 0;">
               <div style="font-weight:600; margin-bottom:6px;">${prompt} ${requiredMark}</div>
-              <div>${inputs}</div>
+              <div class="sr-options">${inputs}</div>
             </div>
           `;
         }
@@ -299,15 +300,18 @@
       const instructionsHtml = (trial.instructions === null || trial.instructions === undefined)
         ? ''
         : String(trial.instructions);
+      const centeredImageLayout = trial.layout === 'image-categorization';
+      const shellClass = centeredImageLayout ? 'sr-shell sr-shell--image-categorization' : 'sr-shell';
+      const titleHtml = trial.title === '' ? '' : `<h2 style="margin: 0 0 8px 0;">${esc(trial.title || 'Survey')}</h2>`;
 
       display_element.innerHTML = `
-        <div style="max-width: 900px; margin: 0 auto; text-align:left;">
-          <h2 style="margin: 0 0 8px 0;">${esc(trial.title || 'Survey')}</h2>
-          ${instructionsHtml ? `<div style="opacity:0.85; margin-bottom: 14px;">${instructionsHtml}</div>` : ''}
+        <div class="${shellClass}">
+          ${titleHtml}
+          ${instructionsHtml ? `<div class="sr-instructions" style="opacity:0.85; margin-bottom: 14px;">${instructionsHtml}</div>` : ''}
           <div id="sr-error" style="display:none; margin: 10px 0; padding: 10px; border-radius: 10px; border: 1px solid rgba(255,92,92,0.45); color: #ffd2d2; background: rgba(255,92,92,0.12);"></div>
           <form id="sr-form">
             ${questions.map(renderQuestion).join('')}
-            <div style="margin-top: 18px; display:flex; justify-content:flex-end;">
+            <div class="sr-submit-row" style="margin-top: 18px; display:flex; justify-content:flex-end;">
               <button type="submit" class="btn btn-primary">${esc(trial.submit_label || 'Continue')}</button>
             </div>
           </form>

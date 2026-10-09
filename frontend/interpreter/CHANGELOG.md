@@ -2,6 +2,25 @@
 
 ## September 23, 2026
 
+### Image categorization and response layout
+
+- Image-categorization radio labels now retain normal whole-word wrapping instead of
+  collapsing into character-wide columns.
+- Image-slider stimuli preserve their natural size when no width is configured and are
+  capped against the actual jsPsych stimulus element on narrow or short viewports.
+- Image-slider trials center the stimulus and place the researcher-authored question
+  immediately above the slider control.
+- Image-categorization accuracy questions now use the same centered composition as the
+  slider screen, without the generic Survey heading.
+- HTML + Button trials now use a scrollable content column and a wrapping button row so
+  consent controls remain visible on short and mobile viewports.
+- Legacy informed-consent components with missing mode metadata recover the fixed Agree /
+  Don't agree controls when their consent text and empty choices identify the old format.
+- Empty `button_html` values from existing published configs are ignored instead of
+  replacing jsPsych's default controls with blank markup.
+- Existing image-categorization configs affected by character-split asset lists fall
+  back to their valid task-level image settings at runtime.
+
 ### HTML + Button buttons hidden below the fold
 
 - `html-button-response` stimuli are now wrapped in `.psy-wrap.psy-wrap--buttons`, which

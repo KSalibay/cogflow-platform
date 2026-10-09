@@ -1,5 +1,16 @@
 # CogFlow Builder & Interpreter Changelog
 
+## September 23, 2026
+
+### Informed Consent Publishing
+
+- HTML + Button consent controls are now available in every task-scoped component
+  definition, ensuring `consent_mode` and the decline message survive publishing.
+- Blank custom button templates are omitted from exported HTML + Button components so
+  jsPsych retains its default button markup.
+- Image-categorization asset lists no longer insert newlines inside category names or
+  URL schemes when a Block is opened and saved.
+
 ## September 11, 2026
 
 ### HTML + Button: Rich Text Editing and Informed Consent Mode

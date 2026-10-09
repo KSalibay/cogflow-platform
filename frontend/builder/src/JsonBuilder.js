@@ -8564,7 +8564,9 @@ class JsonBuilder {
                         prompt: { type: 'string', default: '' },
                         stimulus_duration: { type: 'number', default: null, min: 0, max: 30000 },
                         trial_duration: { type: 'number', default: null, min: 0, max: 60000 },
-                        response_ends_trial: { type: 'boolean', default: true }
+                        response_ends_trial: { type: 'boolean', default: true },
+                        consent_mode: { type: 'boolean', default: false, description: 'Informed consent form: show fixed Agree / Don\'t agree buttons and end the study if the participant declines.' },
+                        consent_decline_message: { type: 'string', default: '<p>You have chosen not to take part. You may now close this window.</p>', description: 'Message shown after the participant declines consent.' }
                     }
                 },
                 {
@@ -11791,6 +11793,9 @@ class JsonBuilder {
         // consent fields when it is actually enabled.
         if (baseComponent.type === 'html-button-response') {
             const consentOn = (baseComponent.consent_mode === true || baseComponent.consent_mode === 'true');
+            if (baseComponent.button_html === null || baseComponent.button_html === undefined || String(baseComponent.button_html).trim() === '') {
+                delete baseComponent.button_html;
+            }
             if (consentOn) {
                 baseComponent.consent_mode = true;
                 delete baseComponent.choices;

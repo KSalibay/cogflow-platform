@@ -1804,6 +1804,34 @@ class DownloadBuilderAssetView(APIView):
         return response
 
 
+class SonaLaunchView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def get(self, request, code: str):
+        link = SonaLaunchLink.objects.select_related("study").filter(code=code, study__is_active=True).first()
+        if not link:
+            return Response({"error": "SONA link not found"}, status=status.HTTP_404_NOT_FOUND)
+        if timezone.now() >= link.expires_at:
+            return Response({"error": "SONA link expired"}, status=status.HTTP_410_GONE)
+        survey_code = (request.query_params.get("survey_code") or "").strip()
+        if not survey_code or survey_code.upper() == "%SURVEY_CODE%" or len(survey_code) > 128:
+            return Response({"error": "A SONA survey code is required"}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            payload = _read_launch_token(link.launch_token)
+        except signing.BadSignature:
+            return Response({"error": "SONA link expired or invalid"}, status=status.HTTP_410_GONE)
+        if payload.get("study_slug") != link.study.slug or payload.get("launch_mode") != "multi_use":
+            return Response({"error": "SONA link invalid"}, status=status.HTTP_400_BAD_REQUEST)
+
+        response = HttpResponseRedirect(
+            "/interpreter/index.html?" + urlencode({"launch": link.launch_token, "survey_code": survey_code})
+        )
+        response["Cache-Control"] = "no-store"
+        response["Referrer-Policy"] = "no-referrer"
+        return response
+
+
 class CreateParticipantLinkView(APIView):
     """Generate signed participant launch links for a researcher-owned study."""
 
@@ -1843,13 +1871,14 @@ class CreateParticipantLinkView(APIView):
         serializer = CreateParticipantLinkRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+        sona_short_link = data.get("sona_short_link", False)
 
         config_versions = list(study.config_versions.all())
         study_properties = _normalize_study_launch_properties(study, config_versions)
         known_ids = {str(cv.id) for cv in config_versions}
 
         expires_at = timezone.now() + timedelta(hours=data.get("expires_in_hours", 72))
-        participant_external_id = _normalize_runtime_placeholder_identifier(data.get("participant_external_id"))
+        participant_external_id = "" if sona_short_link else _normalize_runtime_placeholder_identifier(data.get("participant_external_id"))
         counterbalance_enabled = bool(data.get("counterbalance_enabled", True))
         use_flow_variants = bool(data.get("use_flow_variants", False))
         task_order_strict = bool(data.get("task_order_strict", False))
@@ -1863,6 +1892,8 @@ class CreateParticipantLinkView(APIView):
         if use_flow_variants and not study_properties.get("flow_variants"):
             return Response({"error": "No saved study variants are available for this study"}, status=status.HTTP_400_BAD_REQUEST)
         completion_redirect_url = (data.get("completion_redirect_url") or "").strip()
+        if sona_short_link:
+            completion_redirect_url = completion_redirect_url.replace("%SURVEY_CODE%", "{participant_external_id}")
         abort_redirect_url = (data.get("abort_redirect_url") or "").strip()
         prolific_completion_mode = (data.get("prolific_completion_mode") or "default").strip() or "default"
         prolific_completion_code = (data.get("prolific_completion_code") or "").strip()
@@ -1892,6 +1923,21 @@ class CreateParticipantLinkView(APIView):
                 "launch_mode": "multi_use",
             }
         )
+        sona_study_url = None
+        if sona_short_link:
+            link, _ = SonaLaunchLink.objects.get_or_create(
+                study=study,
+                defaults={
+                    "code": secrets.token_urlsafe(18),
+                    "launch_token": multi_use_token,
+                    "expires_at": expires_at,
+                },
+            )
+            if link.launch_token != multi_use_token or link.expires_at != expires_at:
+                link.launch_token = multi_use_token
+                link.expires_at = expires_at
+                link.save(update_fields=["launch_token", "expires_at"])
+            sona_study_url = request.build_absolute_uri(f"/s/{link.code}?survey_code=%SURVEY_CODE%")
 
         record_audit(
             action="create_participant_link",
@@ -1920,6 +1966,7 @@ class CreateParticipantLinkView(APIView):
         return Response(
             {
                 "study_slug": study.slug,
+                **({"sona_study_url": sona_study_url} if sona_short_link else {}),
                 "launch_token": multi_use_token,
                 "launch_url": launch_url_multi,
                 "counterbalance_enabled": counterbalance_enabled,

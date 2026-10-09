@@ -43,6 +43,22 @@ This document lists researcher-facing authenticated endpoints.
 - `POST /api/v1/studies/<study_slug>/properties`
 - `POST /api/v1/studies/<study_slug>/take-to-go`
 
+### SONA External Study
+
+In the portal's Integrations view, choose the study and generate its SONA Study URL.
+Paste that URL, including the literal `%SURVEY_CODE%`, into SONA's Study URL field.
+Once SONA provides its server-side completion URL, paste it into CogFlow and
+generate again. The Study URL stays the same; only its signed launch policy is
+refreshed. Regenerate before expiry to extend the link without updating SONA.
+
+API clients can send `sona_short_link: true` to `participant-links` to receive
+`sona_study_url` (a short multi-use URL). `completion_redirect_url` is optional
+on the first request. CogFlow replaces `%SURVEY_CODE%` in a supplied SONA
+completion URL with the participant's code at run completion. The public
+`GET /s/<code>?survey_code=<participant-code>` endpoint resolves the alias to
+the signed, expiring launch token; it rejects missing survey codes and expired
+links. Do not truncate a signed `launch` token to meet SONA's URL limit.
+
 ## Assets
 
 - `POST /api/v1/assets/upload`

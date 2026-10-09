@@ -19,6 +19,9 @@ from django.contrib.auth.models import User
 from django.core import signing
 from django.core.management import call_command
 from django.urls import reverse
+from django.utils import timezone
+from datetime import timedelta
+from urllib.parse import parse_qs, urlsplit
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -26,7 +29,7 @@ from apps.audit.models import AuditEvent
 from apps.configs.models import ConfigVersion
 from apps.results.models import ResultEnvelope, TrialResult
 from apps.runs.models import RunSession
-from apps.studies.models import CourseMembership, CourseSection, Study, StudyResearcherAccess
+from apps.studies.models import CourseMembership, CourseSection, SonaLaunchLink, Study, StudyResearcherAccess
 from apps.users.services import get_or_create_profile
 
 
@@ -1004,6 +1007,65 @@ class Day7PortalMvpLinkPipelineTests(APITestCase):
             format="json",
         )
         self.assertEqual(second_start.status_code, status.HTTP_201_CREATED)
+
+    def test_sona_short_url_stays_stable_and_preserves_participant_code(self):
+        self._publish_as(self.researcher, slug="sona-study")
+        link_endpoint = reverse("studies-participant-links", kwargs={"study_slug": "sona-study"})
+        self.client.force_authenticate(user=self.researcher)
+        first = self.client.post(link_endpoint, {"sona_short_link": True}, format="json")
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+        sona_url = first.data["sona_study_url"]
+        self.assertLessEqual(len(sona_url), 200)
+        self.assertTrue(sona_url.endswith("survey_code=%SURVEY_CODE%"))
+        self.assertNotIn("launch=", sona_url)
+
+        completion_url = "https://sona.example/webstudy_credit.aspx?survey_code=%SURVEY_CODE%"
+        second = self.client.post(
+            link_endpoint,
+            {"sona_short_link": True, "completion_redirect_url": completion_url},
+            format="json",
+        )
+        self.client.force_authenticate(user=None)
+        self.assertEqual(second.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(second.data["sona_study_url"], sona_url)
+        self.assertEqual(
+            second.data["completion_redirect_url"],
+            "https://sona.example/webstudy_credit.aspx?survey_code={participant_external_id}",
+        )
+
+        path = urlsplit(sona_url).path
+        self.assertEqual(self.client.get("/s/unknown-code", {"survey_code": "SONA-123"}).status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(self.client.get(path).status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(self.client.get(path, {"survey_code": "%SURVEY_CODE%"}).status_code, status.HTTP_400_BAD_REQUEST)
+        redirected = self.client.get(path, {"survey_code": "SONA-123"})
+        self.assertEqual(redirected.status_code, status.HTTP_302_FOUND)
+        params = parse_qs(urlsplit(redirected["Location"]).query)
+        self.assertEqual(params["survey_code"], ["SONA-123"])
+        self.assertEqual(redirected["Referrer-Policy"], "no-referrer")
+
+        start = self.client.post(
+            reverse("runs-start"),
+            {"launch_token": params["launch"][0], "participant_external_id": params["survey_code"][0]},
+            format="json",
+        )
+        self.assertEqual(start.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(start.data["study_slug"], "sona-study")
+        self.assertEqual(start.data["completion_redirect_url"], completion_url.replace("%SURVEY_CODE%", "SONA-123"))
+
+        encoded = self.client.get(path, {"survey_code": "SONA 12&34"})
+        self.assertEqual(parse_qs(urlsplit(encoded["Location"]).query)["survey_code"], ["SONA 12&34"])
+
+        study = Study.objects.get(slug="sona-study")
+        study.is_active = False
+        study.save(update_fields=["is_active"])
+        self.assertEqual(self.client.get(path, {"survey_code": "SONA-123"}).status_code, status.HTTP_404_NOT_FOUND)
+        study.is_active = True
+        study.save(update_fields=["is_active"])
+
+        link = SonaLaunchLink.objects.get(study__slug="sona-study")
+        link.expires_at = timezone.now() - timedelta(seconds=1)
+        link.save(update_fields=["expires_at"])
+        self.assertEqual(self.client.get(path, {"survey_code": "SONA-456"}).status_code, status.HTTP_410_GONE)
 
     def test_prolific_runtime_placeholders_are_treated_as_blank_participant_ids(self):
         self._publish_as(self.researcher, slug="prolific-placeholder-study")

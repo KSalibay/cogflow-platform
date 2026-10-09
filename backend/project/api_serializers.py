@@ -116,6 +116,7 @@ class TotpVerifyRequestSerializer(serializers.Serializer):
 
 class CreateParticipantLinkRequestSerializer(serializers.Serializer):
     participant_external_id = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    sona_short_link = serializers.BooleanField(required=False, default=False)
     counterbalance_enabled = serializers.BooleanField(required=False, default=True)
     use_flow_variants = serializers.BooleanField(required=False, default=False)
     task_order = serializers.ListField(
