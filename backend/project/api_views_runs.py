@@ -211,6 +211,11 @@ class StartRunView(APIView):
             (token_payload.get("prolific_completion_code") if launch_token else None)
             or ""
         )
+        sona_server_credit = _is_sona_server_credit_url(completion_redirect_url)
+        if sona_server_credit:
+            run_session.sona_credit_url_encrypted = encrypt_payload(completion_redirect_url)
+            run_session.save(update_fields=["sona_credit_url_encrypted"])
+            completion_redirect_url = None
 
         record_audit(
             action="start_run",
@@ -232,6 +237,7 @@ class StartRunView(APIView):
                 "task_order_strict": task_order_strict,
                 "task_order_count": len(requested_ids),
                 "has_completion_redirect": bool(completion_redirect_url),
+                "has_sona_server_credit": sona_server_credit,
                 "has_abort_redirect": bool(abort_redirect_url),
                 "prolific_completion_mode": prolific_completion_mode,
                 "has_prolific_completion_code": bool(prolific_completion_code),
@@ -260,6 +266,7 @@ class StartRunView(APIView):
                 "participant_key": participant_key,
                 "owner_username": owner_name_response,
                 "completion_redirect_url": completion_redirect_url,
+                "sona_server_credit": sona_server_credit,
                 "abort_redirect_url": abort_redirect_url,
                 "prolific_completion_mode": prolific_completion_mode,
                 "prolific_completion_code": prolific_completion_code,
@@ -297,6 +304,20 @@ class SubmitResultView(APIView):
             run_session.completed_at = timezone.now()
         run_session.save(update_fields=["status", "completed_at"])
 
+        sona_credit = None
+        if run_session.status == RUN_STATUS_COMPLETED and run_session.sona_credit_url_encrypted:
+            granted, error = _grant_sona_server_credit(decrypt_payload(run_session.sona_credit_url_encrypted))
+            if granted:
+                run_session.sona_credit_url_encrypted = ""
+                run_session.save(update_fields=["sona_credit_url_encrypted"])
+            sona_credit = {"granted": granted, "error": error}
+            record_audit(
+                action="sona_credit",
+                resource_type="run_session",
+                resource_id=run_session.id,
+                metadata=sona_credit,
+            )
+
         record_audit(
             action="submit_result",
             resource_type="run_session",
@@ -315,6 +336,7 @@ class SubmitResultView(APIView):
                 "status": run_session.status,
                 "stored": True,
                 "trial_records_stored": trial_records_stored,
+                **({"sona_credit": sona_credit} if sona_credit else {}),
             },
             status=status.HTTP_201_CREATED,
         )

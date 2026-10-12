@@ -1893,7 +1893,7 @@ class CreateParticipantLinkView(APIView):
             return Response({"error": "No saved study variants are available for this study"}, status=status.HTTP_400_BAD_REQUEST)
         completion_redirect_url = (data.get("completion_redirect_url") or "").strip()
         if sona_short_link:
-            completion_redirect_url = completion_redirect_url.replace("%SURVEY_CODE%", "{participant_external_id}")
+            completion_redirect_url = _normalize_sona_completion_url(completion_redirect_url)
         abort_redirect_url = (data.get("abort_redirect_url") or "").strip()
         prolific_completion_mode = (data.get("prolific_completion_mode") or "default").strip() or "default"
         prolific_completion_code = (data.get("prolific_completion_code") or "").strip()

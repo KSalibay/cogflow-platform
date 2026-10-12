@@ -20,6 +20,7 @@ class RunSession(models.Model):
     flow_variant_label = models.CharField(max_length=255, blank=True, default="")
     has_flow_variant = models.BooleanField(default=False)
     participant_key = models.CharField(max_length=128)
+    sona_credit_url_encrypted = models.TextField(blank=True, default="")
     status = models.CharField(max_length=20, choices=RUN_STATUS_CHOICES, default=RUN_STATUS_STARTED)
     started_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(null=True, blank=True)

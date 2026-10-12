@@ -5,9 +5,10 @@ import hashlib
 import secrets
 import math
 import mimetypes
+import xml.etree.ElementTree as ET
 from datetime import timedelta
 from uuid import uuid4
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urlsplit
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
@@ -514,6 +515,49 @@ def _resolve_redirect_url(
         resolved = resolved.replace("{" + key + "}", encoded_value)
 
     return resolved
+
+
+_SONA_SURVEY_CODE_PLACEHOLDER = re.compile(r"([?&]survey_code=)(?:XXXX|%SURVEY_CODE%)(?=&|#|$)", re.IGNORECASE)
+
+
+def _normalize_sona_completion_url(url: str | None) -> str:
+    return _SONA_SURVEY_CODE_PLACEHOLDER.sub(r"\1{participant_external_id}", (url or "").strip())
+
+
+def _is_sona_server_credit_url(url: str | None) -> bool:
+    try:
+        parts = urlsplit(url or "")
+    except ValueError:
+        return False
+    host = (parts.hostname or "").lower()
+    return (
+        parts.scheme == "https"
+        and (host == "sona-systems.com" or host.endswith(".sona-systems.com"))
+        and "/services/sonaapi.svc/webstudycredit" in parts.path.lower()
+    )
+
+
+def _grant_sona_server_credit(url: str) -> tuple[bool, str]:
+    if not _is_sona_server_credit_url(url):
+        return False, "Unsupported SONA credit URL"
+    try:
+        with urlopen(Request(url, headers={"Accept": "application/xml"}), timeout=10) as response:
+            body = response.read(65536)
+    except (HTTPError, URLError, TimeoutError, OSError) as exc:
+        return False, f"SONA credit request failed ({exc.__class__.__name__})"
+    try:
+        root = ET.fromstring(body)
+    except ET.ParseError:
+        return False, "SONA returned an unreadable credit response"
+
+    errors = [
+        (node.text or "").strip()
+        for errors_node in root.iter()
+        if errors_node.tag.endswith("Errors")
+        for node in errors_node.iter()
+        if node is not errors_node and (node.text or "").strip()
+    ]
+    return (not errors), "; ".join(errors)[:300]
 
 
 def _extract_config_task_type(config_json: dict | None) -> str | None:

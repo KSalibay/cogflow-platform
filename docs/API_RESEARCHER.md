@@ -53,8 +53,12 @@ refreshed. Regenerate before expiry to extend the link without updating SONA.
 
 API clients can send `sona_short_link: true` to `participant-links` to receive
 `sona_study_url` (a short multi-use URL). `completion_redirect_url` is optional
-on the first request. CogFlow replaces `%SURVEY_CODE%` in a supplied SONA
-completion URL with the participant's code at run completion. The public
+on the first request. CogFlow replaces SONA's `XXXX` or `%SURVEY_CODE%`
+survey-code placeholder in a supplied completion URL with the participant's code.
+Client-side `webstudy_credit.aspx` URLs redirect the participant to SONA;
+server-side `SonaAPI.svc/WebstudyCredit` URLs are called by CogFlow after the
+run is saved, so participants never see SONA's XML response. A researcher
+preview without a real SONA sign-up can still return `Invalid survey_code`. The public
 `GET /s/<code>?survey_code=<participant-code>` endpoint resolves the alias to
 the signed, expiring launch token; it rejects missing survey codes and expired
 links. Do not truncate a signed `launch` token to meet SONA's URL limit.

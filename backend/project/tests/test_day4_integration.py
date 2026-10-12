@@ -13,6 +13,7 @@ Verifies that:
 import io
 import zipfile
 import json
+from unittest.mock import patch
 
 import pyotp
 from django.contrib.auth.models import User
@@ -1066,6 +1067,68 @@ class Day7PortalMvpLinkPipelineTests(APITestCase):
         link.expires_at = timezone.now() - timedelta(seconds=1)
         link.save(update_fields=["expires_at"])
         self.assertEqual(self.client.get(path, {"survey_code": "SONA-456"}).status_code, status.HTTP_410_GONE)
+
+    def _start_sona_run(self, slug, completion_url, survey_code):
+        self._publish_as(self.researcher, slug=slug)
+        self.client.force_authenticate(user=self.researcher)
+        link_resp = self.client.post(
+            reverse("studies-participant-links", kwargs={"study_slug": slug}),
+            {"sona_short_link": True, "completion_redirect_url": completion_url},
+            format="json",
+        )
+        self.client.force_authenticate(user=None)
+        launch = self.client.get(urlsplit(link_resp.data["sona_study_url"]).path, {"survey_code": survey_code})
+        params = parse_qs(urlsplit(launch["Location"]).query)
+        return self.client.post(
+            reverse("runs-start"),
+            {"launch_token": params["launch"][0], "participant_external_id": params["survey_code"][0]},
+            format="json",
+        )
+
+    def _submit_completed_run(self, run_session_id):
+        return self.client.post(
+            reverse("results-submit"),
+            {
+                "run_session_id": run_session_id,
+                "status": "completed",
+                "trial_count": 0,
+                "result_payload": {"trials": []},
+                "trials": [],
+            },
+            format="json",
+        )
+
+    def test_sona_server_credit_uses_survey_code_without_redirecting_to_xml(self):
+        completion_url = (
+            "https://newcastle.sona-systems.com/services/SonaAPI.svc/WebstudyCredit"
+            "?experiment_id=123&credit_token=secret&survey_code=XXXX"
+        )
+        start = self._start_sona_run("sona-server-credit", completion_url, "ABC 12&34")
+        self.assertEqual(start.status_code, status.HTTP_201_CREATED)
+        self.assertIsNone(start.data["completion_redirect_url"])
+        self.assertTrue(start.data["sona_server_credit"])
+        self.assertNotIn(b"secret", start.content)
+
+        with patch("project.api_views_runs._grant_sona_server_credit", return_value=(True, "")) as grant:
+            submit = self._submit_completed_run(start.data["run_session_id"])
+
+        self.assertEqual(submit.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(submit.data["sona_credit"], {"granted": True, "error": ""})
+        credit_url = grant.call_args.args[0]
+        self.assertIn("survey_code=ABC%2012%2634", credit_url)
+        self.assertNotIn("XXXX", credit_url)
+        run = RunSession.objects.get(id=start.data["run_session_id"])
+        self.assertEqual(run.sona_credit_url_encrypted, "")
+
+    def test_sona_client_completion_replaces_xxxx_placeholder(self):
+        completion_url = (
+            "https://newcastle.sona-systems.com/webstudy_credit.aspx"
+            "?experiment_id=123&credit_token=abc&survey_code=XXXX"
+        )
+        start = self._start_sona_run("sona-client-credit", completion_url, "ABC123")
+        self.assertEqual(start.status_code, status.HTTP_201_CREATED)
+        self.assertFalse(start.data["sona_server_credit"])
+        self.assertEqual(start.data["completion_redirect_url"], completion_url.replace("XXXX", "ABC123"))
 
     def test_prolific_runtime_placeholders_are_treated_as_blank_participant_ids(self):
         self._publish_as(self.researcher, slug="prolific-placeholder-study")

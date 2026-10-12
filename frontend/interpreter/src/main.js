@@ -443,7 +443,18 @@
     }
   }
 
-  function handlePlatformCompletionAfterSubmit() {
+  function handlePlatformCompletionAfterSubmit(submitResponse) {
+    const sonaCredit = submitResponse && submitResponse.sona_credit;
+    if (sonaCredit) {
+      renderBlockingStatus(
+        'Study complete',
+        sonaCredit.granted
+          ? 'Your SONA credit has been granted. You may now close this window.'
+          : `Your responses were saved, but SONA could not confirm credit${sonaCredit.error ? `: ${sonaCredit.error}` : ''}. Please contact the researcher.`
+      );
+      return;
+    }
+
     const backend = window.DjangoRuntimeBackend;
     const runInfo = (backend && typeof backend.getRunInfo === 'function') ? (backend.getRunInfo() || {}) : {};
 
@@ -464,7 +475,8 @@
     }
 
     if (redirectUrl) {
-      renderBlockingStatus('Study complete', 'Redirecting to Prolific...');
+      const targetLabel = /sona-systems\.com/i.test(redirectUrl) ? 'SONA' : 'Prolific';
+      renderBlockingStatus('Study complete', `Redirecting to ${targetLabel}...`);
       try {
         window.location.assign(redirectUrl);
       } catch {
@@ -476,10 +488,10 @@
         try {
           const stillHere = !!document && document.visibilityState !== 'hidden';
           if (stillHere) {
-            renderPlatformRedirectFallback(redirectUrl, 'Prolific');
+            renderPlatformRedirectFallback(redirectUrl, targetLabel);
           }
         } catch {
-          renderPlatformRedirectFallback(redirectUrl, 'Prolific');
+          renderPlatformRedirectFallback(redirectUrl, targetLabel);
         }
       }, 1500);
       return;
@@ -2227,8 +2239,8 @@
                 participantExternalId: participantId,
               });
             }
-            await window.DjangoRuntimeBackend.submitResult(payload);
-            handlePlatformCompletionAfterSubmit();
+            const submitResponse = await window.DjangoRuntimeBackend.submitResult(payload);
+            handlePlatformCompletionAfterSubmit(submitResponse);
           } catch (e) {
             console.error('[DjangoRuntimeBackend]', e);
             renderBlockingStatus('Platform submit failed', e && e.message ? e.message : String(e));
@@ -2723,8 +2735,8 @@
                 participantExternalId: participantId,
               });
             }
-            await window.DjangoRuntimeBackend.submitResult(payload);
-            handlePlatformCompletionAfterSubmit();
+            const submitResponse = await window.DjangoRuntimeBackend.submitResult(payload);
+            handlePlatformCompletionAfterSubmit(submitResponse);
           } catch (e) {
             console.error('[DjangoRuntimeBackend]', e);
             renderBlockingStatus('Platform submit failed', e && e.message ? e.message : String(e));

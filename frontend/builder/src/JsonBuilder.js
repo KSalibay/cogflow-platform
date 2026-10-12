@@ -2219,7 +2219,7 @@ class JsonBuilder {
 
         const taskType = (config?.task_type || config?.taskType || this.currentTaskType || 'rdm').toString();
         const importedTimeline = Array.isArray(config.timeline) ? config.timeline : [];
-        const builderComponents = this.convertImportedTimelineToBuilderComponents(importedTimeline, taskType);
+        const builderComponents = this.convertImportedTimelineToBuilderComponents(importedTimeline, taskType, config.response_parameters);
         const rebuiltCount = this.rebuildTimelineDOMFromImportedComponents(builderComponents);
 
         this.updateJSON();
@@ -2318,7 +2318,69 @@ class JsonBuilder {
         return '';
     }
 
-    convertImportedTimelineToBuilderComponents(timeline, taskTypeForDefs) {
+    inflateRDMResponseOverride(rawOverride, rawDefaults = {}) {
+        const override = (rawOverride && typeof rawOverride === 'object') ? rawOverride : null;
+        if (!override) return {};
+
+        const defaults = (rawDefaults && typeof rawDefaults === 'object') ? rawDefaults : {};
+        const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+        const out = {};
+        const deviceFrom = (rp) => rp.response_device
+            || (rp.mouse_response ? 'mouse' : (rp.touch_response ? 'touch' : (rp.voice_response ? 'voice' : 'keyboard')));
+
+        const device = deviceFrom(override);
+        if (!same(device, deviceFrom(defaults))) out.response_device = device;
+        if (Array.isArray(override.choices) && !same(override.choices, defaults.choices)) out.response_keys = override.choices.join(',');
+        if (typeof override.require_response === 'boolean' && !same(override.require_response, defaults.require_response)) {
+            out.require_response_mode = override.require_response ? 'true' : 'false';
+        }
+        if (typeof override.end_condition_on_response === 'boolean' && !same(override.end_condition_on_response, defaults.end_condition_on_response)) {
+            out.end_condition_on_response_mode = override.end_condition_on_response ? 'true' : 'false';
+        }
+
+        const feedback = override.feedback?.enabled ? override.feedback : null;
+        const defaultFeedback = defaults.feedback?.enabled ? defaults.feedback : null;
+        const feedbackType = feedback ? feedback.type : 'off';
+        if (!same(feedbackType, defaultFeedback ? defaultFeedback.type : 'off')) out.feedback_mode = feedbackType;
+        if (feedback && !same(feedback.duration_ms, defaultFeedback?.duration_ms)) out.feedback_duration_ms = feedback.duration_ms;
+        const feedbackFields = {
+            arrow_color_mode: 'feedback_arrow_color_mode',
+            arrow_neutral_color: 'feedback_arrow_neutral_color',
+            arrow_custom_color: 'feedback_arrow_custom_color',
+            arrow_correct_color: 'feedback_arrow_correct_color',
+            arrow_incorrect_color: 'feedback_arrow_incorrect_color',
+            arrow_size_px: 'feedback_arrow_size_px',
+            arrow_line_width_px: 'feedback_arrow_line_width_px'
+        };
+        for (const [source, target] of Object.entries(feedbackFields)) {
+            if (feedback?.[source] !== undefined && !same(feedback[source], defaultFeedback?.[source])) out[target] = feedback[source];
+        }
+
+        const mouse = override.mouse_response || {};
+        const defaultMouse = defaults.mouse_response || {};
+        const mouseFields = {
+            segments: 'mouse_segments',
+            start_angle_deg: 'mouse_start_angle_deg',
+            selection_mode: 'mouse_selection_mode',
+            accuracy_mode: 'mouse_accuracy_mode',
+            accuracy_tolerance_deg: 'mouse_accuracy_tolerance_deg',
+            accuracy_slack_deg: 'mouse_accuracy_slack_deg'
+        };
+        for (const [source, target] of Object.entries(mouseFields)) {
+            if (mouse[source] !== undefined && !same(mouse[source], defaultMouse[source])) out[target] = mouse[source];
+        }
+
+        if (override.target_group) out.response_target_group = override.target_group;
+        if (override.cue_border?.enabled) {
+            out.cue_border_mode = override.cue_border.mode;
+            out.cue_border_color = override.cue_border.color;
+            out.cue_border_width = override.cue_border.width;
+        }
+
+        return out;
+    }
+
+    convertImportedTimelineToBuilderComponents(timeline, taskTypeForDefs, responseDefaults = {}) {
         const defs = this.getComponentDefinitions({ taskTypeOverride: taskTypeForDefs });
         const defById = new Map((Array.isArray(defs) ? defs : []).map((d) => [d.id, d]));
 
@@ -2719,7 +2781,11 @@ class JsonBuilder {
                 params[k] = v;
             }
 
-            const inflatedParams = (type === 'block') ? inflateBlockImportedParams(params) : params;
+            const inflatedParams = (type === 'block') ? inflateBlockImportedParams(params) : { ...params };
+            if (params.response_parameters_override) {
+                Object.assign(inflatedParams, this.inflateRDMResponseOverride(params.response_parameters_override, responseDefaults));
+                delete inflatedParams.response_parameters_override;
+            }
 
             const explicitName = (item.name ?? '').toString();
             const hasGenericName = isGenericImportedName(explicitName, type);
@@ -2962,13 +3028,12 @@ class JsonBuilder {
         }
 
         if (t === 'rdm') {
-            const ds = (config?.display_settings && typeof config.display_settings === 'object') ? config.display_settings : {};
-            setFrom('canvasWidth', ds.canvas_width);
-            setFrom('canvasHeight', ds.canvas_height);
-            setFrom('backgroundColor', ds.background_color);
-            setFrom('fixationDuration', config?.fixation_duration);
-            setFrom('defaultResponseDevice', config?.data_collection?.default_response_device);
-            setFrom('responseKeys', csv(config?.response_keys));
+            const display = config?.display_parameters || config?.display_settings || {};
+            this.currentExperiment = { ...config, display_parameters: display };
+            this.populateRDMUI();
+            setFrom('backgroundColor', display.background_color);
+            if (config?.data_collection?.default_response_device) setFrom('defaultResponseDevice', config.data_collection.default_response_device);
+            if (config?.response_keys !== undefined) setFrom('responseKeys', csv(config.response_keys));
             return;
         }
 
@@ -14337,6 +14402,8 @@ class JsonBuilder {
             this.setElementValue('defaultFeedbackArrowIncorrectColor', exp.response_parameters.feedback.arrow_incorrect_color);
             this.setElementValue('defaultFeedbackArrowSizePx', exp.response_parameters.feedback.arrow_size_px);
             this.setElementValue('defaultFeedbackArrowLineWidthPx', exp.response_parameters.feedback.arrow_line_width_px);
+        } else if (exp.response_parameters) {
+            this.setElementValue('defaultFeedbackType', 'off');
         }
 
         // Mouse response (optional)
