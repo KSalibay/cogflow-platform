@@ -2028,6 +2028,8 @@ class ComponentPreview {
     }
 
     showGaborPreview(componentData) {
+        const geometryDefaults = window.jsonBuilderInstance?.getGaborGeometryDefaults?.() || {};
+        componentData = { prefer_visual_angle: document.getElementById('gaborPreferVisualAngle')?.checked !== false, ...geometryDefaults, ...componentData };
         const previewModal = this.getPreviewModal();
         if (!previewModal) return;
         const { modal } = previewModal;
@@ -2142,7 +2144,8 @@ class ComponentPreview {
                     spatialFrequency,
                     gratingWaveform,
                     contrast,
-                    patchBorder
+                    patchBorder,
+                    geometry: componentData
                 });
             }
 
@@ -2165,7 +2168,7 @@ class ComponentPreview {
         modal.show();
     }
 
-    renderGaborTrialToCanvas(canvas, { spatialCue, leftFrameColor, rightFrameColor, leftAngle, rightAngle, spatialFrequency, gratingWaveform, contrast, patchBorder }) {
+    renderGaborTrialToCanvas(canvas, { spatialCue, leftFrameColor, rightFrameColor, leftAngle, rightAngle, spatialFrequency, gratingWaveform, contrast, patchBorder, geometry = {} }) {
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
 
@@ -2179,21 +2182,50 @@ class ComponentPreview {
 
         // Layout
         const pad = 24;
-        const patchSize = Math.min(200, Math.floor((w - pad * 2) / 3));
-        const cy = Math.floor(h * 0.60);
-        const leftCx = Math.floor(w * 0.30);
-        const rightCx = Math.floor(w * 0.70);
+        const calibration = window.__psy_visual_angle || {};
+        const pxPerCm = Number(geometry.fallback_px_per_cm) || 96 / 2.54;
+        const distance = Number(geometry.normal_viewing_distance_cm) || 50;
+        const calibrated = Number(calibration.px_per_deg) || (Number(calibration.px_per_cm) > 0 && Number(calibration.viewing_distance_cm) > 0
+            ? 2 * Number(calibration.viewing_distance_cm) * Math.tan(Math.PI / 360) * Number(calibration.px_per_cm) : 0);
+        const override = geometry.prefer_visual_angle !== false && geometry.prefer_visual_angle !== 'false'
+            ? Number(geometry.visual_angle_px_per_deg) || calibrated : 0;
+        const scale = override || 2 * distance * Math.tan(Math.PI / 360) * pxPerCm;
+        const size = (degrees, pixels, fallback) => override && Number(degrees) > 0
+            ? Number(degrees) * scale : (Number(pixels) > 0 ? Number(pixels) : (Number(degrees) > 0 ? Number(degrees) * scale : fallback));
+        if (Number(geometry.spatial_frequency_cyc_per_deg) > 0) spatialFrequency = geometry.spatial_frequency_cyc_per_deg / scale;
+        const angular = Number(geometry.patch_horizontal_offset_deg) > 0;
+        const patchSize = size(geometry.patch_diameter_deg, geometry.patch_diameter_px, Math.min(200, Math.floor((w - pad * 2) / 3)));
+        const fixationY = h / 2;
+        const cy = angular ? fixationY + (Number(geometry.patch_vertical_offset_deg) || 0) * scale : h * 0.60;
+        const leftCx = angular ? w / 2 - Number(geometry.patch_horizontal_offset_deg) * scale : w * 0.30;
+        const rightCx = angular ? w / 2 + Number(geometry.patch_horizontal_offset_deg) * scale : w * 0.70;
+        patchBorder = { ...patchBorder, widthPx: size(geometry.patch_border_width_deg, geometry.patch_border_width_px, patchBorder?.widthPx ?? 2) };
+        const pixelGeometry = {
+            ...geometry,
+            cue_diamond_size_px: size(geometry.cue_diamond_size_deg, geometry.cue_diamond_size_px, 56),
+            cue_indicator_size_px: size(geometry.cue_indicator_size_deg, geometry.cue_indicator_size_px, 56),
+            cue_diamond_line_width_px: size(geometry.cue_diamond_line_width_deg, geometry.cue_diamond_line_width_px, 2),
+            fixation_size_px: size(geometry.fixation_size_deg, geometry.fixation_size_px, 16),
+            fixation_line_width_px: size(geometry.fixation_line_width_deg, geometry.fixation_line_width_px, 2)
+        };
 
         // Cue — diamond shape matching the interpreter (drawCueDiamond)
         const hasCue = (spatialCue === 'left' || spatialCue === 'right' || spatialCue === 'both');
         if (hasCue) {
-            this.drawCueDiamond(ctx, Math.floor(w / 2), cy, spatialCue);
+            this.drawCueDiamond(ctx, w / 2, angular ? fixationY : cy, spatialCue, pixelGeometry, scale);
         } else {
-            ctx.fillStyle = 'rgba(255,255,255,0.35)';
-            ctx.font = '14px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText('(no spatial cue)', Math.floor(w / 2), Math.floor(h * 0.18));
+            const halfSize = pixelGeometry.fixation_size_px / 2;
+            const crossY = angular ? fixationY : cy;
+            ctx.save();
+            ctx.strokeStyle = geometry.initial_fixation_color || '#ffffff';
+            ctx.lineWidth = pixelGeometry.fixation_line_width_px;
+            ctx.beginPath();
+            ctx.moveTo(w / 2 - halfSize, crossY);
+            ctx.lineTo(w / 2 + halfSize, crossY);
+            ctx.moveTo(w / 2, crossY - halfSize);
+            ctx.lineTo(w / 2, crossY + halfSize);
+            ctx.stroke();
+            ctx.restore();
         }
 
         // Gabor patches — draw first so value cue rings are painted on top
@@ -2203,7 +2235,7 @@ class ComponentPreview {
         // Circular value cue rings drawn AFTER patches so putImageData doesn't overwrite them
         const outlineRadius = Math.floor(patchSize / 2) - 1;
         ctx.save();
-        ctx.lineWidth = Math.max(2, patchBorder?.widthPx ?? 6);
+        ctx.lineWidth = size(geometry.value_ring_width_deg, geometry.value_ring_width_px, Math.max(2, patchBorder?.widthPx ?? 6));
         ctx.strokeStyle = leftFrameColor;
         ctx.beginPath();
         ctx.arc(leftCx, cy, outlineRadius, 0, Math.PI * 2);
@@ -2216,10 +2248,11 @@ class ComponentPreview {
 
     }
 
-    drawCueDiamond(ctx, x, y, spatialCue) {
+    drawCueDiamond(ctx, x, y, spatialCue, geometry = {}, scale = 1) {
         // Mirrors drawCueDiamond() in jspsych-gabor.js exactly.
         const cue = (spatialCue || 'none').toString().toLowerCase();
-        const half = 28;
+        const half = Number(geometry.cue_diamond_size_px) > 0 ? geometry.cue_diamond_size_px / 2 : 28;
+        const cueHalf = Number(geometry.cue_indicator_size_px) > 0 ? Math.min(half, geometry.cue_indicator_size_px / 2) : half;
         const fillLeft  = (cue === 'left'  || cue === 'both');
         const fillRight = (cue === 'right' || cue === 'both');
 
@@ -2231,7 +2264,7 @@ class ComponentPreview {
         ctx.lineTo(x, y + half);
         ctx.lineTo(x - half, y);
         ctx.closePath();
-        ctx.fillStyle = fillLeft ? 'rgba(255,255,255,0.82)' : 'rgba(255,255,255,0.08)';
+        ctx.fillStyle = 'rgb(191,191,191)';
         ctx.fill();
 
         // Right half fill
@@ -2240,8 +2273,26 @@ class ComponentPreview {
         ctx.lineTo(x + half, y);
         ctx.lineTo(x, y + half);
         ctx.closePath();
-        ctx.fillStyle = fillRight ? 'rgba(255,255,255,0.82)' : 'rgba(255,255,255,0.08)';
+        ctx.fillStyle = 'rgb(191,191,191)';
         ctx.fill();
+
+        ctx.fillStyle = 'rgb(114,114,114)';
+        if (fillLeft) {
+            ctx.beginPath();
+            ctx.moveTo(x, y - cueHalf);
+            ctx.lineTo(x - cueHalf, y);
+            ctx.lineTo(x, y + cueHalf);
+            ctx.closePath();
+            ctx.fill();
+        }
+        if (fillRight) {
+            ctx.beginPath();
+            ctx.moveTo(x, y - cueHalf);
+            ctx.lineTo(x + cueHalf, y);
+            ctx.lineTo(x, y + cueHalf);
+            ctx.closePath();
+            ctx.fill();
+        }
 
         // Outline on top
         ctx.beginPath();
@@ -2251,17 +2302,18 @@ class ComponentPreview {
         ctx.lineTo(x - half, y);
         ctx.closePath();
         ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = Number(geometry.cue_diamond_line_width_px) || 2;
         ctx.stroke();
 
         // Fixation cross inside the cue (matches interpreter)
         ctx.strokeStyle = 'rgba(16,16,16,0.95)';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = Number(geometry.fixation_line_width_px) || 2;
+        const fixationHalf = Number(geometry.fixation_size_px) > 0 ? geometry.fixation_size_px / 2 : 8;
         ctx.beginPath();
-        ctx.moveTo(x - 8, y);
-        ctx.lineTo(x + 8, y);
-        ctx.moveTo(x, y - 8);
-        ctx.lineTo(x, y + 8);
+        ctx.moveTo(x - fixationHalf, y);
+        ctx.lineTo(x + fixationHalf, y);
+        ctx.moveTo(x, y - fixationHalf);
+        ctx.lineTo(x, y + fixationHalf);
         ctx.stroke();
 
         ctx.restore();
@@ -4136,6 +4188,12 @@ class ComponentPreview {
             const iti = randInt(src.emostroop_iti_min, src.emostroop_iti_max);
             if (iti !== null) sampled.iti_ms = iti;
         } else if (componentType === 'gabor-trial' || componentType === 'gabor-quest' || componentType === 'gabor-learning') {
+            for (const key of Object.keys(window.jsonBuilderInstance?.getGaborGeometryFields?.() || {})) {
+                const value = src[`gabor_${key}`] ?? src[key];
+                if (value !== null && value !== undefined && value !== '') sampled[key] = Number(value);
+            }
+            const diameter = randFloat(blockData.gabor_patch_diameter_deg_min, blockData.gabor_patch_diameter_deg_max);
+            if (diameter !== null) sampled.patch_diameter_deg = diameter;
             const locs = parseStringList(blockData.gabor_target_location_options);
             sampled.target_location = pickFromList(locs, 'left');
 

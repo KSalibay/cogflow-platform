@@ -54,6 +54,33 @@ class JSPsychSchemas {
         return {};
     }
 
+    getGaborGeometryParameters() {
+        const field = (description, min, max) => ({ type: this.parameterTypes.FLOAT, default: null, min, max, description });
+        return {
+            visual_angle_px_per_deg: field('Known visual-angle conversion for all participants (pixels/deg; optional)', 0.01, 1000),
+            patch_diameter_px: field('Preset patch/placeholder diameter (px)', 1, 2000),
+            fixation_size_px: field('Preset fixation cross full span (px)', 0.1, 500),
+            fixation_line_width_px: field('Preset fixation cross stroke (px)', 0.1, 100),
+            cue_diamond_size_px: field('Preset central diamond full span (px)', 1, 500),
+            cue_indicator_size_px: field('Preset spatial cue full height (px)', 1, 500),
+            cue_diamond_line_width_px: field('Preset diamond border width (px)', 0.1, 100),
+            value_ring_width_px: field('Preset coloured ring width (px)', 0.1, 100),
+            patch_border_width_px: field('Preset patch border width (px)', 0.1, 100),
+            spatial_frequency_cyc_per_deg: field('Grating spatial frequency (cycles/deg)', 0.01, 30),
+            patch_horizontal_offset_deg: field('Horizontal distance from fixation to each patch centre (deg); equal left/right offsets', 0.1, 40),
+            patch_vertical_offset_deg: field('Vertical distance from fixation to both patch centres (deg; positive down, negative up)', -40, 40),
+            value_ring_width_deg: field('Coloured placeholder/value ring width (deg)', 0.01, 5),
+            patch_border_width_deg: field('Stimulus and mask border width (deg)', 0.01, 5),
+            fixation_size_deg: field('Fixation cross full span (deg), including inside the cue diamond', 0.01, 10),
+            fixation_line_width_deg: field('Fixation cross stroke width (deg)', 0.01, 2),
+            cue_diamond_size_deg: field('Central diamond full width and height (deg)', 0.1, 10),
+            cue_indicator_size_deg: field('Spatial cue full height (deg); constrained to the central diamond', 0.1, 10),
+            cue_diamond_line_width_deg: field('Central diamond border width (deg)', 0.01, 2),
+            normal_viewing_distance_cm: field('Fallback normal viewing distance when distance calibration is unavailable (cm)', 10, 200),
+            fallback_px_per_cm: field('Estimated screen scale without screen calibration (CSS pixels/cm; default 96 dpi)', 1, 200)
+        };
+    }
+
     /**
      * Initialize plugin schemas based on jsPsych plugins
      */
@@ -1702,6 +1729,7 @@ class JSPsychSchemas {
                         default: 6,
                         description: 'Patch diameter in degrees of visual angle (requires Visual Angle Calibration for true deg-based sizing)'
                     },
+                    ...this.getGaborGeometryParameters(),
                     patch_left_x_ratio: {
                         type: this.parameterTypes.FLOAT,
                         default: 0.3,
@@ -3804,6 +3832,9 @@ class JSPsychSchemas {
                         blockTarget: 'gabor-trial,gabor-quest,gabor-learning',
                         description: 'Gabor: patch diameter max (degrees of visual angle)'
                     },
+                    ...Object.fromEntries(Object.entries(this.getGaborGeometryParameters()).map(([key, definition]) => [
+                        `gabor_${key}`, { ...definition, blockTarget: 'gabor-trial,gabor-quest,gabor-learning' }
+                    ])),
                     gabor_patch_left_x_ratio: {
                         type: this.parameterTypes.FLOAT,
                         default: 0.3,

@@ -248,6 +248,10 @@ class JsonBuilder {
     }
 
     applyGaborPatchBorderVisibility() {
+        for (const id of ['gaborFixationOffsetXPx', 'gaborFixationOffsetYPx', 'gaborPatchBorderWidthPx', 'gaborSpatialFrequency']) {
+            const row = document.getElementById(id)?.closest('.parameter-row');
+            if (row) row.hidden = true;
+        }
         const enabled = !!document.getElementById('gaborPatchBorderEnabled')?.checked;
         const details = document.getElementById('gaborPatchBorderDetails');
         if (!details) return;
@@ -2468,6 +2472,11 @@ class JsonBuilder {
             Object.entries(values).forEach(([k, v]) => {
                 if (out[k] === undefined) out[k] = v;
             });
+            if (innerType.startsWith('gabor-')) {
+                for (const key of Object.keys(this.getGaborGeometryFields())) {
+                    if (values[key] !== undefined) out[`gabor_${key}`] = values[key];
+                }
+            }
 
             if (innerType === 'rdm-trial') {
                 if (Array.isArray(values.direction)) out.direction_options = csv(values.direction);
@@ -3094,6 +3103,8 @@ class JsonBuilder {
 
         if (t === 'gabor') {
             const s = (config?.gabor_settings && typeof config.gabor_settings === 'object') ? config.gabor_settings : {};
+            setFrom('gaborPreferVisualAngle', s.prefer_visual_angle !== false, 'checked');
+            for (const [key, [id]] of Object.entries(this.getGaborGeometryFields())) setFrom(id, s[key]);
             setFrom('gaborResponseTask', s.response_task);
             setFrom('gaborLeftKey', s.left_key);
             setFrom('gaborRightKey', s.right_key);
@@ -5217,6 +5228,7 @@ class JsonBuilder {
                     <div class="parameter-help">Carrier waveform; envelope remains Gaussian</div>
                 </div>
 
+                ${this.renderGaborGeometrySettings()}
                 <div class="parameter-row">
                     <label class="parameter-label">Patch Diameter (deg):</label>
                     <input type="number" class="form-control parameter-input" id="gaborPatchDiameterDeg" value="6" min="0.1" max="60" step="0.1">
@@ -6518,6 +6530,7 @@ class JsonBuilder {
                     <input type="color" class="form-control parameter-input" id="gaborLowValueColor" value="#0066ff">
                 </div>
 
+                ${this.renderGaborGeometrySettings()}
                 <div class="parameter-row">
                     <label class="parameter-label">Patch Border:</label>
                     <div class="parameter-input">
@@ -7418,6 +7431,9 @@ class JsonBuilder {
             };
 
             const gaborOnlyParams = {
+                ...Object.fromEntries(Object.entries(this.schemaValidator.getGaborGeometryParameters()).map(([key, definition]) => [
+                    `gabor_${key}`, { ...definition, type: 'number', default: null, step: 0.01 }
+                ])),
                 // Gabor task-wide settings (copyable to blocks so multiple blocks can co-exist)
                 gabor_response_task: { type: 'select', default: 'discriminate_tilt', options: ['detect_target', 'discriminate_tilt'] },
                 gabor_left_key: { type: 'string', default: 'f' },
@@ -9591,9 +9607,9 @@ class JsonBuilder {
                 : 6;
 
             const patchBorderEnabled = !!document.getElementById('gaborPatchBorderEnabled')?.checked;
-            const patchBorderWidthRaw = document.getElementById('gaborPatchBorderWidthPx')?.value;
+            const patchBorderWidthRaw = document.getElementById('gaborPresetBorderWidthPx')?.value;
             const patchBorderWidth = (patchBorderWidthRaw !== undefined && patchBorderWidthRaw !== null && `${patchBorderWidthRaw}` !== '')
-                ? Number.parseInt(patchBorderWidthRaw, 10)
+                ? Number.parseFloat(patchBorderWidthRaw)
                 : 2;
             const patchBorderColor = (document.getElementById('gaborPatchBorderColor')?.value || '#ffffff').toString();
             const patchBorderOpacityRaw = document.getElementById('gaborPatchBorderOpacity')?.value;
@@ -9602,6 +9618,8 @@ class JsonBuilder {
                 : 0.22;
 
             config.gabor_settings = {
+                prefer_visual_angle: document.getElementById('gaborPreferVisualAngle')?.checked !== false,
+                ...this.getGaborGeometryDefaults(),
                 response_task: responseTask,
                 left_key: leftKey,
                 right_key: rightKey,
@@ -11071,13 +11089,15 @@ class JsonBuilder {
         const patchDiameterDeg = Number.parseFloat(document.getElementById('gaborPatchDiameterDeg')?.value || '6');
 
         const patchBorderEnabled = !!document.getElementById('gaborPatchBorderEnabled')?.checked;
-        const patchBorderWidth = Number.parseInt(document.getElementById('gaborPatchBorderWidthPx')?.value || '2', 10);
+        const patchBorderWidth = Number.parseFloat(document.getElementById('gaborPresetBorderWidthPx')?.value || '2');
         const patchBorderColor = (document.getElementById('gaborPatchBorderColor')?.value || '#ffffff').toString();
         const patchBorderOpacity = Number.parseFloat(document.getElementById('gaborPatchBorderOpacity')?.value || '0.22');
 
         return {
             type: 'gabor-trial',
             name: 'Gabor Defaults',
+            prefer_visual_angle: document.getElementById('gaborPreferVisualAngle')?.checked !== false,
+            ...this.getGaborGeometryDefaults(),
 
             response_task: responseTask,
             left_key: leftKey,
@@ -11354,10 +11374,67 @@ class JsonBuilder {
         this._cipPreviewTimeouts = timeouts;
     }
 
+    getGaborGeometryFields() {
+        return {
+            visual_angle_px_per_deg: ['gaborKnownPxPerDeg', null],
+            patch_diameter_px: ['gaborPresetPatchDiameterPx', 200],
+            fixation_size_px: ['gaborPresetFixationSizePx', 24],
+            fixation_line_width_px: ['gaborPresetFixationLineWidthPx', 2],
+            cue_diamond_size_px: ['gaborPresetDiamondSizePx', 64],
+            cue_indicator_size_px: ['gaborPresetCueSizePx', 48],
+            cue_diamond_line_width_px: ['gaborPresetDiamondLineWidthPx', 2.5],
+            value_ring_width_px: ['gaborPresetRingWidthPx', 5],
+            patch_border_width_px: ['gaborPresetBorderWidthPx', 2],
+            spatial_frequency_cyc_per_deg: ['gaborSpatialFrequencyCpd', 2],
+            patch_horizontal_offset_deg: ['gaborHorizontalOffsetDeg', 6],
+            patch_vertical_offset_deg: ['gaborVerticalOffsetDeg', 0],
+            value_ring_width_deg: ['gaborValueRingWidthDeg', 0.15],
+            patch_border_width_deg: ['gaborBorderWidthDeg', 0.06],
+            fixation_size_deg: ['gaborFixationSizeDeg', 0.5],
+            fixation_line_width_deg: ['gaborFixationLineWidthDeg', 0.06],
+            cue_diamond_size_deg: ['gaborDiamondSizeDeg', 2],
+            cue_indicator_size_deg: ['gaborCueSizeDeg', 1.5],
+            cue_diamond_line_width_deg: ['gaborDiamondLineWidthDeg', 0.06],
+            normal_viewing_distance_cm: ['gaborNormalDistanceCm', 50],
+            fallback_px_per_cm: ['gaborFallbackPxPerCm', 96 / 2.54]
+        };
+    }
+
+    getGaborGeometryDefaults() {
+        return Object.fromEntries(Object.entries(this.getGaborGeometryFields()).map(([key, [id, fallback]]) => {
+            const raw = document.getElementById(id)?.value;
+            const value = raw === undefined || raw === '' ? fallback : Number(raw);
+            return [key, Number.isFinite(value) ? value : fallback];
+        }).filter(([, value]) => value !== null));
+    }
+
+    renderGaborGeometrySettings() {
+        const definitions = this.schemaValidator.getGaborGeometryParameters();
+        const diameter = this.experimentType === 'continuous' ? `
+            <div class="parameter-row">
+                <label class="parameter-label" for="gaborPatchDiameterDeg">Patch diameter (deg)</label>
+                <input type="number" class="form-control parameter-input" id="gaborPatchDiameterDeg" value="6" min="0.1" max="60" step="0.1">
+            </div>` : '';
+        const preference = `
+            <div class="parameter-row">
+                <label class="parameter-label" for="gaborPreferVisualAngle">Prefer visual-angle sizes over presets</label>
+                <div class="form-check form-switch">
+                    <input type="checkbox" class="form-check-input parameter-input" id="gaborPreferVisualAngle" title="Use calibrated or known visual-angle conversion when available; otherwise retain preset sizes" checked>
+                </div>
+            </div>`;
+        return preference + diameter + Object.entries(this.getGaborGeometryFields()).map(([key, [id, fallback]]) => `
+            <div class="parameter-row">
+                <label class="parameter-label" for="${id}">${definitions[key].description}</label>
+                <input type="number" class="form-control parameter-input" id="${id}" value="${fallback ?? ''}" min="${definitions[key].min}" max="${definitions[key].max}" step="0.01">
+            </div>
+        `).join('');
+    }
+
     getGaborDefaultsForNewComponent() {
         // Defaults panel values; used when adding new Gabor timeline items.
         const patchDiameterDeg = Number.parseFloat(document.getElementById('gaborPatchDiameterDeg')?.value || '6');
         return {
+            ...this.getGaborGeometryDefaults(),
             response_task: document.getElementById('gaborResponseTask')?.value || 'discriminate_tilt',
             left_key: document.getElementById('gaborLeftKey')?.value || 'f',
             right_key: document.getElementById('gaborRightKey')?.value || 'j',
@@ -11371,7 +11448,7 @@ class JsonBuilder {
             patch_diameter_deg: Number.isFinite(patchDiameterDeg) ? Math.max(0.1, patchDiameterDeg) : 6,
 
             patch_border_enabled: !!document.getElementById('gaborPatchBorderEnabled')?.checked,
-            patch_border_width_px: Number.parseInt(document.getElementById('gaborPatchBorderWidthPx')?.value || '2', 10),
+            patch_border_width_px: Number.parseFloat(document.getElementById('gaborPresetBorderWidthPx')?.value || '2'),
             patch_border_color: (document.getElementById('gaborPatchBorderColor')?.value || '#ffffff').toString(),
             patch_border_opacity: Number.parseFloat(document.getElementById('gaborPatchBorderOpacity')?.value || '0.22')
         };
@@ -11391,6 +11468,7 @@ class JsonBuilder {
 
         return {
             gabor_response_task: document.getElementById('gaborResponseTask')?.value || 'discriminate_tilt',
+            ...Object.fromEntries(Object.entries(this.getGaborGeometryDefaults()).map(([key, value]) => [`gabor_${key}`, value])),
             gabor_left_key: document.getElementById('gaborLeftKey')?.value || 'f',
             gabor_right_key: document.getElementById('gaborRightKey')?.value || 'j',
             gabor_yes_key: document.getElementById('gaborYesKey')?.value || 'f',
@@ -11404,7 +11482,7 @@ class JsonBuilder {
             gabor_patch_diameter_deg_max: safePd,
 
             gabor_patch_border_enabled: !!document.getElementById('gaborPatchBorderEnabled')?.checked,
-            gabor_patch_border_width_px: Number.parseInt(document.getElementById('gaborPatchBorderWidthPx')?.value || '2', 10),
+            gabor_patch_border_width_px: Number.parseFloat(document.getElementById('gaborPresetBorderWidthPx')?.value || '2'),
             gabor_patch_border_color: (document.getElementById('gaborPatchBorderColor')?.value || '#ffffff').toString(),
             gabor_patch_border_opacity: Number.parseFloat(document.getElementById('gaborPatchBorderOpacity')?.value || '0.22'),
 
@@ -12622,6 +12700,10 @@ class JsonBuilder {
             }
             if (blockComponent.gabor_cue_fixation_color !== undefined) {
                 values.cue_fixation_color = (blockComponent.gabor_cue_fixation_color ?? '#727272').toString();
+            }
+            for (const key of Object.keys(this.getGaborGeometryFields())) {
+                const raw = blockParams[`gabor_${key}`] ?? blockParams[key];
+                if (raw !== null && raw !== undefined && raw !== '' && Number.isFinite(Number(raw))) values[key] = Number(raw);
             }
             if (blockComponent.gabor_show_fixation_in_fixation_phase !== undefined) {
                 values.show_fixation_in_fixation_phase = !!blockComponent.gabor_show_fixation_in_fixation_phase;

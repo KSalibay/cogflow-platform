@@ -48,6 +48,7 @@
 
       // Gabor grating parameters
       spatial_frequency_cyc_per_px: { type: PT.FLOAT, default: 0.06 },
+      spatial_frequency_cyc_per_deg: { type: PT.FLOAT, default: null },
       grating_waveform: { type: PT.STRING, default: 'sinusoidal' },
 
       // Value cue colors
@@ -62,8 +63,24 @@
       cue_indicator_color: { type: PT.STRING, default: 'rgb(114,114,114)' },
       cue_fixation_color: { type: PT.STRING, default: 'rgb(114,114,114)' },
       initial_fixation_color: { type: PT.STRING, default: '#ffffff' },
-      fixation_size_deg: { type: PT.FLOAT, default: 2 },
-      fixation_line_width_deg: { type: PT.FLOAT, default: 1 },
+      prefer_visual_angle: { type: PT.BOOL, default: true },
+      visual_angle_px_per_deg: { type: PT.FLOAT, default: null },
+      patch_diameter_px: { type: PT.FLOAT, default: null },
+      cue_diamond_size_px: { type: PT.FLOAT, default: null },
+      cue_indicator_size_px: { type: PT.FLOAT, default: null },
+      cue_diamond_line_width_px: { type: PT.FLOAT, default: null },
+      value_ring_width_px: { type: PT.FLOAT, default: null },
+      patch_horizontal_offset_deg: { type: PT.FLOAT, default: null },
+      patch_vertical_offset_deg: { type: PT.FLOAT, default: 0 },
+      value_ring_width_deg: { type: PT.FLOAT, default: null },
+      patch_border_width_deg: { type: PT.FLOAT, default: null },
+      cue_diamond_size_deg: { type: PT.FLOAT, default: null },
+      cue_indicator_size_deg: { type: PT.FLOAT, default: null },
+      cue_diamond_line_width_deg: { type: PT.FLOAT, default: null },
+      normal_viewing_distance_cm: { type: PT.FLOAT, default: 50 },
+      fallback_px_per_cm: { type: PT.FLOAT, default: 37.7952755906 },
+      fixation_size_deg: { type: PT.FLOAT, default: null },
+      fixation_line_width_deg: { type: PT.FLOAT, default: null },
       fixation_size_px: { type: PT.FLOAT, default: null },
       fixation_line_width_px: { type: PT.FLOAT, default: null },
       fixation_offset_x_px: { type: PT.FLOAT, default: 0 },
@@ -169,26 +186,65 @@
   }
 
   function toFiniteNumberOrNull(v) {
+    if (v === null || v === undefined || v === '') return null;
     const n = Number(v);
     return Number.isFinite(n) ? n : null;
   }
 
-  function getVisualAnglePxPerDeg() {
+  function getVisualAngleOverrideScale(trial = {}) {
+    if (trial.prefer_visual_angle === false || trial.prefer_visual_angle === 'false') return null;
+    const positive = (value) => Number.isFinite(Number(value)) && Number(value) > 0 ? Number(value) : null;
+    const known = positive(trial.visual_angle_px_per_deg);
+    if (known) return known;
+    const calibration = window.__psy_visual_angle;
+    const calibrated = positive(calibration?.px_per_deg);
+    if (calibrated) return calibrated;
+    const screen = positive(calibration?.px_per_cm);
+    const distance = positive(calibration?.viewing_distance_cm);
+    return screen && distance ? 2 * distance * Math.tan(Math.PI / 360) * screen : null;
+  }
+
+  function getVisualAnglePxPerDeg(trial = {}) {
     try {
-      const v = window.__psy_visual_angle;
-      const pxPerDeg = v && Number.isFinite(Number(v.px_per_deg)) ? Number(v.px_per_deg) : null;
-      return (pxPerDeg && pxPerDeg > 0) ? pxPerDeg : null;
+      const override = getVisualAngleOverrideScale(trial);
+      if (override) return override;
+      const positive = (value, fallback) => Number.isFinite(Number(value)) && Number(value) > 0 ? Number(value) : fallback;
+      const pxPerCm = positive(trial.fallback_px_per_cm, 96 / 2.54);
+      const distance = positive(trial.normal_viewing_distance_cm, 50);
+      return 2 * distance * Math.tan(Math.PI / 360) * pxPerCm;
     } catch {
-      return null;
+      return 2 * 50 * Math.tan(Math.PI / 360) * (96 / 2.54);
     }
   }
 
-  function degToPx(deg) {
+  function degToPx(deg, trial = {}) {
     const d = Number(deg);
     if (!Number.isFinite(d) || d <= 0) return null;
-    const pxPerDeg = getVisualAnglePxPerDeg();
+    const pxPerDeg = getVisualAnglePxPerDeg(trial);
     if (!pxPerDeg) return null;
     return d * pxPerDeg;
+  }
+
+  function resolveVisualSize(degrees, presetPixels, trial) {
+    const angular = degToPx(degrees, trial);
+    const preset = toFiniteNumberOrNull(presetPixels);
+    if (getVisualAngleOverrideScale(trial) && angular !== null) return angular;
+    return preset > 0 ? preset : angular;
+  }
+
+  function resolveVisualGeometry(trial) {
+    const scale = getVisualAnglePxPerDeg(trial);
+    const size = (value) => value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value)) && Number(value) > 0 ? Number(value) * scale : null;
+    return {
+      pxPerDeg: scale,
+      horizontalOffsetPx: size(trial.patch_horizontal_offset_deg),
+      verticalOffsetPx: (Number(trial.patch_vertical_offset_deg) || 0) * scale,
+      ringWidthPx: resolveVisualSize(trial.value_ring_width_deg, trial.value_ring_width_px, trial),
+      borderWidthPx: resolveVisualSize(trial.patch_border_width_deg, trial.patch_border_width_px, trial),
+      diamondSizePx: resolveVisualSize(trial.cue_diamond_size_deg, trial.cue_diamond_size_px, trial),
+      indicatorSizePx: resolveVisualSize(trial.cue_indicator_size_deg, trial.cue_indicator_size_px, trial),
+      diamondLineWidthPx: resolveVisualSize(trial.cue_diamond_line_width_deg, trial.cue_diamond_line_width_px, trial)
+    };
   }
 
   function parseRgbLikeColor(color) {
@@ -261,8 +317,8 @@
     halfSizePx = 10,
     lineWidthPx = 2
   } = {}) {
-    const safeHalfSize = Math.max(1, Number(halfSizePx) || 10);
-    const safeLineWidth = Math.max(0.5, Number(lineWidthPx) || 2);
+    const safeHalfSize = Math.max(0.05, Number(halfSizePx) || 10);
+    const safeLineWidth = Math.max(0.1, Number(lineWidthPx) || 2);
 
     ctx.save();
     ctx.strokeStyle = color;
@@ -282,9 +338,14 @@
     indicatorColor = 'rgb(114,114,114)',
     fixationColor = 'rgb(114,114,114)',
     showBackground = true,
-    showFixation = true
+    showFixation = true,
+    sizePx = 64,
+    indicatorSizePx = sizePx,
+    lineWidthPx = 2.5,
+    fixationHalfSizePx = 8,
+    fixationLineWidthPx = 2
   } = {}) {
-    const size = 64;
+    const size = sizePx;
     const half = size / 2;
 
     ctx.save();
@@ -306,13 +367,32 @@
     // Fill left/right/both regions.
     if (spatialCue === 'left') {
       ctx.fillStyle = toSolidRgb(indicatorColor, 'rgb(114,114,114)');
-      ctx.fillRect(x - half, y - half, half, size);
+      const cueHalf = Math.min(indicatorSizePx, size) / 2;
+      ctx.beginPath();
+      ctx.moveTo(x, y - cueHalf);
+      ctx.lineTo(x - cueHalf, y);
+      ctx.lineTo(x, y + cueHalf);
+      ctx.closePath();
+      ctx.fill();
     } else if (spatialCue === 'right') {
       ctx.fillStyle = toSolidRgb(indicatorColor, 'rgb(114,114,114)');
-      ctx.fillRect(x, y - half, half, size);
+      const cueHalf = Math.min(indicatorSizePx, size) / 2;
+      ctx.beginPath();
+      ctx.moveTo(x, y - cueHalf);
+      ctx.lineTo(x + cueHalf, y);
+      ctx.lineTo(x, y + cueHalf);
+      ctx.closePath();
+      ctx.fill();
     } else if (spatialCue === 'both') {
       ctx.fillStyle = toSolidRgb(indicatorColor, 'rgb(114,114,114)');
-      ctx.fillRect(x - half, y - half, size, size);
+      const cueHalf = Math.min(indicatorSizePx, size) / 2;
+      ctx.beginPath();
+      ctx.moveTo(x, y - cueHalf);
+      ctx.lineTo(x + cueHalf, y);
+      ctx.lineTo(x, y + cueHalf);
+      ctx.lineTo(x - cueHalf, y);
+      ctx.closePath();
+      ctx.fill();
     }
 
     ctx.restore();
@@ -320,7 +400,7 @@
     // Diamond border
     ctx.save();
     ctx.strokeStyle = toSolidRgb(backgroundColor, 'rgb(191,191,191)');
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = lineWidthPx;
     ctx.beginPath();
     ctx.moveTo(x, y - half);
     ctx.lineTo(x + half, y);
@@ -331,12 +411,12 @@
 
     if (showFixation) {
       ctx.strokeStyle = toSolidRgb(fixationColor, 'rgb(114,114,114)');
-      ctx.lineWidth = 2;
+      ctx.lineWidth = fixationLineWidthPx;
       ctx.beginPath();
-      ctx.moveTo(x - 8, y);
-      ctx.lineTo(x + 8, y);
-      ctx.moveTo(x, y - 8);
-      ctx.lineTo(x, y + 8);
+      ctx.moveTo(x - fixationHalfSizePx, y);
+      ctx.lineTo(x + fixationHalfSizePx, y);
+      ctx.moveTo(x, y - fixationHalfSizePx);
+      ctx.lineTo(x, y + fixationHalfSizePx);
       ctx.stroke();
     }
     ctx.restore();
@@ -387,14 +467,14 @@
     };
 
     if (freqSpec && typeof freqSpec === 'object') {
-      const cycPerPx = toFiniteNumberOrNull(freqSpec.cycPerPx ?? freqSpec.spatial_frequency_cyc_per_px);
-      if (cycPerPx > 0) return cycPerPx;
-
       const cycPerDeg = toFiniteNumberOrNull(freqSpec.cycPerDeg ?? freqSpec.spatial_frequency_cyc_per_deg);
       if (cycPerDeg > 0) {
-        const pxPerDeg = getVisualAnglePxPerDeg();
+        const pxPerDeg = freqSpec.pxPerDeg || getVisualAnglePxPerDeg();
         if (pxPerDeg && pxPerDeg > 0) return cycPerDeg / pxPerDeg;
       }
+
+      const cycPerPx = toFiniteNumberOrNull(freqSpec.cycPerPx ?? freqSpec.spatial_frequency_cyc_per_px);
+      if (cycPerPx > 0) return cycPerPx;
 
       const cycPerPatch = toFiniteNumberOrNull(freqSpec.cycPerPatch ?? freqSpec.spatial_frequency_cyc_per_patch);
       if (cycPerPatch > 0) return cycPerPatch / size;
@@ -615,6 +695,7 @@
     patchCenterYRatio,
     patchCenterOffsetXPx,
     patchCenterOffsetYPx,
+    visualGeometry,
     debug
   }) {
     const ctx = canvas.getContext('2d');
@@ -633,9 +714,8 @@
     const defaultPatchSize = clamp(Math.floor(minDim * 0.34), 160, 420);
     const provided = Number.isFinite(Number(patchDiameterPx)) ? Number(patchDiameterPx) : null;
 
-    // Use researcher-controlled diameter when available; clamp to keep it on-screen.
     const patchSize = (provided && provided > 0)
-      ? clamp(Math.round(provided), 40, Math.max(60, Math.floor(minDim * 0.85)))
+      ? provided
       : defaultPatchSize;
     const safeLeftRatioRaw = Number.isFinite(Number(patchLeftXRatio)) ? Number(patchLeftXRatio) : 0.30;
     const safeRightRatioRaw = Number.isFinite(Number(patchRightXRatio)) ? Number(patchRightXRatio) : 0.70;
@@ -651,16 +731,21 @@
     const rightRatio = clamp(Math.max(safeLeftRatioRaw, safeRightRatioRaw), rightMinRatio, 0.9);
 
     // Center stimulus vertically within the canvas.
-    const cy = Math.floor(h * safeYRatio) + centerOffsetY;
-    const leftCx = Math.floor(w * leftRatio) + centerOffsetX;
-    const rightCx = Math.floor(w * rightRatio) + centerOffsetX;
-    const fixationX = Math.floor(w / 2) + Math.round(Number(fixationOffsetXPx) || 0);
-    const fixationY = cy + Math.round(Number(fixationOffsetYPx) || 0);
+    let cy = Math.floor(h * safeYRatio) + centerOffsetY;
+    let leftCx = Math.floor(w * leftRatio) + centerOffsetX;
+    let rightCx = Math.floor(w * rightRatio) + centerOffsetX;
+    const fixationX = visualGeometry?.horizontalOffsetPx ? w / 2 : Math.floor(w / 2) + Math.round(Number(fixationOffsetXPx) || 0);
+    const fixationY = visualGeometry?.horizontalOffsetPx ? h / 2 : cy + Math.round(Number(fixationOffsetYPx) || 0);
+    if (visualGeometry?.horizontalOffsetPx) {
+      cy = fixationY + visualGeometry.verticalOffsetPx;
+      leftCx = fixationX - visualGeometry.horizontalOffsetPx;
+      rightCx = fixationX + visualGeometry.horizontalOffsetPx;
+    }
 
     // Circular value outlines directly around each patch (no padded square frame).
     // Draw as filled annulus rings to guarantee fully solid cue color at onset.
     const outlineRadius = Math.floor(patchSize / 2) - 1;
-    const ringWidth = Math.max(5, Math.round(patchSize * 0.055));
+    const ringWidth = visualGeometry?.ringWidthPx || Math.max(5, Math.round(patchSize * 0.055));
     const drawValueRing = (cx, color) => {
       const outerR = Math.max(1, outlineRadius + ringWidth / 2);
       const innerR = Math.max(0, outlineRadius - ringWidth / 2);
@@ -689,6 +774,11 @@
         backgroundColor: cueBackgroundColor,
         indicatorColor: cueIndicatorColor,
         fixationColor: fixationColor ?? cueFixationColor,
+        sizePx: visualGeometry?.diamondSizePx || 64,
+        indicatorSizePx: visualGeometry?.indicatorSizePx || visualGeometry?.diamondSizePx || 64,
+        lineWidthPx: visualGeometry?.diamondLineWidthPx || 2.5,
+        fixationHalfSizePx,
+        fixationLineWidthPx,
         showBackground: true,
         showFixation: showFixation === true
       });
@@ -763,8 +853,10 @@
       const rightValue = (trial.right_value ?? 'neutral').toString();
 
       const spatialFrequency = {
+        pxPerDeg: getVisualAnglePxPerDeg(trial),
         cycPerPx: toFiniteNumberOrNull(trial.spatial_frequency_cyc_per_px),
-        cycPerDeg: toFiniteNumberOrNull(trial.spatial_frequency_cyc_per_deg),
+        cycPerDeg: (trial.data?.adaptive_parameter ?? trial.adaptive?.parameter) === 'spatial_frequency_cyc_per_px'
+          ? null : toFiniteNumberOrNull(trial.spatial_frequency_cyc_per_deg),
         cycPerPatch: toFiniteNumberOrNull(trial.spatial_frequency_cyc_per_patch),
         raw: toFiniteNumberOrNull(trial.spatial_frequency ?? trial.gabor_spatial_frequency),
         unit: (trial.spatial_frequency_unit ?? '').toString().trim().toLowerCase()
@@ -819,16 +911,12 @@
       const isLearningBlock = !!(trial && trial.data && trial.data.gabor_learning_block === true);
       const fixationSizeDeg = Number(trial.fixation_size_deg);
       const fixationLineWidthDeg = Number(trial.fixation_line_width_deg);
-      const fixationSizePxDirect = Number(trial.fixation_size_px);
-      const fixationLineWidthPxDirect = Number(trial.fixation_line_width_px);
+      const fixationSizePxDirect = toFiniteNumberOrNull(trial.fixation_size_px);
+      const fixationLineWidthPxDirect = toFiniteNumberOrNull(trial.fixation_line_width_px);
       const fixationFallbackPx = (isQuestAdaptive || isLearningBlock) ? 30 : 24;
       const fixationLineFallbackPx = (isQuestAdaptive || isLearningBlock) ? 3 : 2;
-      const fixationSizePx = Number.isFinite(fixationSizePxDirect)
-        ? fixationSizePxDirect
-        : (Number.isFinite(fixationSizeDeg) ? degToPx(fixationSizeDeg) : null);
-      const fixationLineWidthPx = Number.isFinite(fixationLineWidthPxDirect)
-        ? fixationLineWidthPxDirect
-        : (Number.isFinite(fixationLineWidthDeg) ? degToPx(fixationLineWidthDeg) : null);
+      const fixationSizePx = resolveVisualSize(fixationSizeDeg, fixationSizePxDirect, trial);
+      const fixationLineWidthPx = resolveVisualSize(fixationLineWidthDeg, fixationLineWidthPxDirect, trial);
       const fixationOffsetXPx = Number.isFinite(Number(trial.fixation_offset_x_px)) ? Number(trial.fixation_offset_x_px) : 0;
       const fixationOffsetYPx = Number.isFinite(Number(trial.fixation_offset_y_px)) ? Number(trial.fixation_offset_y_px) : 0;
       const phaseFixationFlag = (value, fallback) => (value === undefined ? fallback : value === true);
@@ -839,15 +927,14 @@
       const showFixationInStimulusPhase = phaseFixationFlag(trial.show_fixation_in_stimulus_phase, false);
       const showFixationInMaskPhase = phaseFixationFlag(trial.show_fixation_in_mask_phase, false);
       const showFixationInResponsePhase = phaseFixationFlag(trial.show_fixation_in_response_phase, false);
-      const enforceFixationMinimums = isQuestAdaptive || isLearningBlock;
       const fixationSizePxResolved = Number.isFinite(fixationSizePx)
-        ? (enforceFixationMinimums ? Math.max(fixationFallbackPx, fixationSizePx) : fixationSizePx)
+        ? fixationSizePx
         : fixationFallbackPx;
       const fixationLineWidthPxResolved = Number.isFinite(fixationLineWidthPx)
-        ? (enforceFixationMinimums ? Math.max(fixationLineFallbackPx, fixationLineWidthPx) : fixationLineWidthPx)
+        ? fixationLineWidthPx
         : fixationLineFallbackPx;
-      const fixationHalfSizePx = clamp(Math.round(fixationSizePxResolved / 2), 1, 180);
-      const fixationStrokeWidthPx = clamp(fixationLineWidthPxResolved, 0.5, 80);
+      const fixationHalfSizePx = Math.max(0.1, fixationSizePxResolved / 2);
+      const fixationStrokeWidthPx = Math.max(0.1, fixationLineWidthPxResolved);
       const patchLeftXRatio = Number.isFinite(Number(trial.patch_left_x_ratio))
         ? Number(trial.patch_left_x_ratio)
         : (Number.isFinite(Number(trial.left_patch_x_ratio)) ? Number(trial.left_patch_x_ratio) : 0.30);
@@ -883,10 +970,9 @@
       // Fallback: pixel diameter via trial.patch_diameter_px.
       const patchDiameterDeg = Number(trial.patch_diameter_deg);
       const patchDiameterPxDirect = Number(trial.patch_diameter_px);
-      const patchDiameterPxFromDeg = Number.isFinite(patchDiameterDeg) ? degToPx(patchDiameterDeg) : null;
-      const patchDiameterPx = Number.isFinite(patchDiameterPxFromDeg)
-        ? patchDiameterPxFromDeg
-        : (Number.isFinite(patchDiameterPxDirect) ? patchDiameterPxDirect : null);
+      const visualGeometry = resolveVisualGeometry(trial);
+      if (visualGeometry.borderWidthPx) patchBorder.widthPx = visualGeometry.borderWidthPx;
+      const patchDiameterPx = resolveVisualSize(patchDiameterDeg, patchDiameterPxDirect, trial);
 
       const fixationMs = Math.max(0, Number(trial.fixation_ms ?? 1000) || 0);
       const placeholdersMs = Math.max(0, Number(trial.placeholders_ms ?? 400) || 0);
@@ -1032,6 +1118,9 @@
 
         const trialData = {
           plugin_type: 'gabor-trial',
+          visual_angle_px_per_deg: visualGeometry.pxPerDeg,
+          visual_angle_override_applied: getVisualAngleOverrideScale(trial) !== null,
+          visual_angle_calibrated: Number(window.__psy_visual_angle?.px_per_deg) > 0,
           end_reason: reason || (responded ? 'response' : 'deadline'),
 
           response_task: responseTask,
@@ -1226,8 +1315,13 @@
           cssW = Math.floor(cssH * 2);
         }
 
-        cssW = clamp(cssW, 520, 2000);
-        cssH = clamp(cssH, 260, 1400);
+        if (visualGeometry.horizontalOffsetPx) {
+          cssW = Math.max(1, vw - 48);
+          cssH = Math.max(1, vh - 100);
+        } else {
+          cssW = Math.min(vw, Math.max(1, cssW));
+          cssH = Math.min(vh, Math.max(1, cssH));
+        }
 
         canvas.style.width = `${Math.round(cssW)}px`;
         canvas.style.height = `${Math.round(cssH)}px`;
@@ -1276,6 +1370,7 @@
             patchCenterYRatio,
             patchCenterOffsetXPx,
             patchCenterOffsetYPx,
+            visualGeometry,
             debug: debugGabor
           });
         } catch (err) {

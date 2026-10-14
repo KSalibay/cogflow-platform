@@ -1868,6 +1868,7 @@ class TimelineBuilder {
 
         let formHtml = '';
         for (const [paramName, paramDef] of Object.entries(parameters)) {
+            if (this.isLegacyGaborGeometryField(type, paramName)) continue;
             if (paramDef && typeof paramDef === 'object' && paramDef.blockTarget && type !== 'block' && type !== paramDef.blockTarget) {
                 continue;
             }
@@ -2055,6 +2056,18 @@ class TimelineBuilder {
             .replace(/'/g, '&#39;');
     }
 
+    isLegacyGaborGeometryField(componentType, paramName) {
+        const name = paramName.replace(/^gabor_/, '');
+        const legacy = [
+            'patch_left_x_ratio', 'patch_right_x_ratio', 'patch_center_y_ratio',
+            'patch_center_offset_x_px', 'patch_center_offset_y_px',
+            'fixation_offset_x_px', 'fixation_offset_y_px',
+            'fixation_size_px', 'fixation_line_width_px', 'patch_border_width_px',
+            'spatial_frequency_cyc_per_px', 'spatial_frequency_min', 'spatial_frequency_max'
+        ];
+        return (componentType.startsWith('gabor-') || paramName.startsWith('gabor_')) && legacy.includes(name);
+    }
+
     generateParameterForm(component, schema) {
         if (!schema) {
             return '<p class="text-muted">No schema available for this component type.</p>';
@@ -2067,6 +2080,7 @@ class TimelineBuilder {
         const parameters = schema.parameters;
 
         for (const [paramName, paramDef] of Object.entries(parameters)) {
+            if (this.isLegacyGaborGeometryField(componentType, paramName)) continue;
             if (paramDef.blockTarget && componentType !== 'block' && componentType !== paramDef.blockTarget) {
                 continue;
             }

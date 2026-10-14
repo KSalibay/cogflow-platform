@@ -5553,7 +5553,15 @@
                 k === 'reward_availability_high' || k === 'reward_availability_low' ||
                 k === 'reward_availability_neutral'
               ) continue;
-              if (trial[k] === undefined) trial[k] = pickOne(v);
+              const angularGeometry = [
+                'patch_horizontal_offset_deg', 'patch_vertical_offset_deg', 'patch_diameter_deg',
+                'patch_border_width_deg', 'value_ring_width_deg', 'fixation_size_deg', 'fixation_line_width_deg',
+                'cue_diamond_size_deg', 'cue_indicator_size_deg', 'cue_diamond_line_width_deg',
+                'normal_viewing_distance_cm', 'fallback_px_per_cm', 'spatial_frequency_cyc_per_deg',
+                'visual_angle_px_per_deg', 'patch_diameter_px', 'fixation_size_px', 'fixation_line_width_px',
+                'cue_diamond_size_px', 'cue_indicator_size_px', 'cue_diamond_line_width_px', 'value_ring_width_px', 'patch_border_width_px'
+              ];
+              if (trial[k] === undefined || angularGeometry.includes(k)) trial[k] = pickOne(v);
             }
 
             for (const [k, w] of Object.entries(learningWindows)) {
