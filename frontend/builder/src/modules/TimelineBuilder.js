@@ -1882,7 +1882,8 @@ class TimelineBuilder {
             } else if (Object.prototype.hasOwnProperty.call(component, paramName)) {
                 currentValue = component[paramName];
             } else {
-                currentValue = (paramDef && typeof paramDef === 'object') ? paramDef.default : undefined;
+                const experimentDefault = this.getExperimentDefault(paramName);
+                currentValue = experimentDefault !== undefined ? experimentDefault : ((paramDef && typeof paramDef === 'object') ? paramDef.default : undefined);
             }
 
             if (type === 'block' && paramName === 'stimulus_images' && typeof currentValue === 'string') {
@@ -6197,6 +6198,25 @@ class TimelineBuilder {
 
     getExperimentDefault(paramName) {
         const taskType = (document.getElementById('taskType')?.value || '').toString().trim().toLowerCase();
+
+        if (taskType === 'rdm') {
+            const response = this.jsonBuilder.getRDMResponseParameters();
+            const responseFields = {
+                feedback_duration_ms: response.feedback?.duration_ms,
+                feedback_arrow_neutral_color: response.feedback?.arrow_neutral_color,
+                feedback_arrow_custom_color: response.feedback?.arrow_custom_color,
+                feedback_arrow_correct_color: response.feedback?.arrow_correct_color,
+                feedback_arrow_incorrect_color: response.feedback?.arrow_incorrect_color,
+                feedback_arrow_size_px: response.feedback?.arrow_size_px,
+                feedback_arrow_line_width_px: response.feedback?.arrow_line_width_px,
+                mouse_segments: response.mouse_response?.segments,
+                mouse_start_angle_deg: response.mouse_response?.start_angle_deg,
+                mouse_selection_mode: response.mouse_response?.selection_mode,
+                mouse_accuracy_tolerance_deg: response.mouse_response?.accuracy_tolerance_deg,
+                mouse_accuracy_slack_deg: response.mouse_response?.accuracy_slack_deg
+            };
+            if (responseFields[paramName] !== undefined) return responseFields[paramName];
+        }
 
         if (taskType === 'continuous-image' && this.jsonBuilder && typeof this.jsonBuilder.getCurrentContinuousImageDefaults === 'function') {
             const cipDefaults = this.jsonBuilder.getCurrentContinuousImageDefaults() || {};

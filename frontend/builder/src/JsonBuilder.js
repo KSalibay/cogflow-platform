@@ -2411,7 +2411,9 @@ class JsonBuilder {
             }
 
             const mapWindow = (sourceKey, minKey, maxKey) => {
-                const w = windows[sourceKey];
+                const fixed = values[sourceKey];
+                const w = windows[sourceKey] || (innerType.startsWith('rdm-') && typeof fixed === 'number' && Number.isFinite(fixed)
+                    ? { min: fixed, max: fixed } : null);
                 if (!w || typeof w !== 'object') return;
                 if (w.min !== undefined) out[minKey] = w.min;
                 if (w.max !== undefined) out[maxKey] = w.max;
@@ -2425,7 +2427,19 @@ class JsonBuilder {
             });
 
             // Task-specific block window aliases used by Builder editors.
-            if (innerType === 'flanker-trial') {
+            if (innerType.startsWith('rdm-')) {
+                const mappings = {
+                    lifetime_frames: 'lifetime_frames', stimulus_duration: 'stimulus_duration',
+                    response_deadline: 'response_deadline', inter_trial_interval: 'inter_trial_interval'
+                };
+                if (innerType === 'rdm-trial') Object.assign(mappings, { coherence: 'coherence', speed: 'speed' });
+                if (innerType === 'rdm-practice') Object.assign(mappings, { coherence: 'practice_coherence', feedback_duration: 'practice_feedback_duration' });
+                if (innerType === 'rdm-adaptive') Object.assign(mappings, { initial_coherence: 'adaptive_initial_coherence', step_size: 'adaptive_step_size' });
+                if (innerType === 'rdm-dot-groups') {
+                    for (const key of ['group_1_percentage', 'group_1_coherence', 'group_1_speed', 'group_2_coherence', 'group_2_speed']) mappings[key] = key;
+                }
+                for (const [source, prefix] of Object.entries(mappings)) mapWindow(source, `${prefix}_min`, `${prefix}_max`);
+            } else if (innerType === 'flanker-trial') {
                 mapWindow('stimulus_duration_ms', 'flanker_stimulus_duration_min', 'flanker_stimulus_duration_max');
                 mapWindow('trial_duration_ms', 'flanker_trial_duration_min', 'flanker_trial_duration_max');
                 mapWindow('iti_ms', 'flanker_iti_min', 'flanker_iti_max');
@@ -2479,10 +2493,10 @@ class JsonBuilder {
             }
 
             if (innerType === 'rdm-trial') {
-                if (Array.isArray(values.direction)) out.direction_options = csv(values.direction);
+                if (values.direction !== undefined) out.direction_options = Array.isArray(values.direction) ? csv(values.direction) : String(values.direction);
                 if (values.dot_color !== undefined) out.dot_color = values.dot_color;
             } else if (innerType === 'rdm-practice') {
-                if (Array.isArray(values.direction)) out.practice_direction_options = csv(values.direction);
+                if (values.direction !== undefined) out.practice_direction_options = Array.isArray(values.direction) ? csv(values.direction) : String(values.direction);
                 if (values.dot_color !== undefined) out.dot_color = values.dot_color;
             } else if (innerType === 'rdm-adaptive') {
                 if (values.algorithm !== undefined) out.adaptive_algorithm = values.algorithm;
@@ -13373,7 +13387,8 @@ class JsonBuilder {
                 segments: parseInt(componentParams.mouse_segments ?? merged.mouse_response?.segments ?? 2),
                 start_angle_deg: parseFloat(componentParams.mouse_start_angle_deg ?? merged.mouse_response?.start_angle_deg ?? 0),
                 selection_mode: componentParams.mouse_selection_mode ?? merged.mouse_response?.selection_mode ?? 'click',
-                accuracy_mode: componentParams.mouse_accuracy_mode ?? merged.mouse_response?.accuracy_mode,
+                accuracy_mode: (componentParams.mouse_accuracy_mode && componentParams.mouse_accuracy_mode !== 'inherit')
+                    ? componentParams.mouse_accuracy_mode : merged.mouse_response?.accuracy_mode,
                 accuracy_tolerance_deg: (componentParams.mouse_accuracy_tolerance_deg !== undefined && componentParams.mouse_accuracy_tolerance_deg !== null && componentParams.mouse_accuracy_tolerance_deg !== '')
                     ? parseFloat(componentParams.mouse_accuracy_tolerance_deg)
                     : merged.mouse_response?.accuracy_tolerance_deg,
