@@ -276,40 +276,51 @@ class StartRunView(APIView):
 
 
 class SubmitResultView(APIView):
-    @transaction.atomic
     def post(self, request):
         serializer = SubmitResultRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        # Serialize writes against the same run to avoid checkpoint/final races.
-        run_session = RunSession.objects.select_for_update().filter(id=data["run_session_id"]).first()
-        if not run_session:
-            return Response({"error": "Run session not found"}, status=status.HTTP_404_NOT_FOUND)
+        with transaction.atomic():
+            # Serialize writes against the same run to avoid checkpoint/final races.
+            run_session = RunSession.objects.select_for_update().filter(id=data["run_session_id"]).first()
+            if not run_session:
+                return Response({"error": "Run session not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        envelope = store_result_envelope(
-            run_session=run_session,
-            trial_count=data["trial_count"],
-            summary_json=data.get("result_summary", {}),
-            result_payload=data["result_payload"],
-        )
+            envelope = store_result_envelope(
+                run_session=run_session,
+                trial_count=data["trial_count"],
+                summary_json=data.get("result_summary", {}),
+                result_payload=data["result_payload"],
+            )
 
-        trial_records_stored = store_trial_results(
-            run_session=run_session,
-            trials=data.get("trials", []),
-        )
+            trial_records_stored = store_trial_results(
+                run_session=run_session,
+                trials=data.get("trials", []),
+            )
 
-        run_session.status = data["status"]
-        if data["status"] == RUN_STATUS_COMPLETED:
-            run_session.completed_at = timezone.now()
-        run_session.save(update_fields=["status", "completed_at"])
+            run_session.status = data["status"]
+            if data["status"] == RUN_STATUS_COMPLETED:
+                run_session.completed_at = timezone.now()
+            run_session.save(update_fields=["status", "completed_at"])
 
+            record_audit(
+                action="submit_result",
+                resource_type="run_session",
+                resource_id=run_session.id,
+                metadata={
+                    "status": run_session.status,
+                    "trial_count": data["trial_count"],
+                    "trial_records_stored": trial_records_stored,
+                },
+            )
+
+        # External SONA call runs after commit so it never holds the run row lock.
         sona_credit = None
         if run_session.status == RUN_STATUS_COMPLETED and run_session.sona_credit_url_encrypted:
             granted, error = _grant_sona_server_credit(decrypt_payload(run_session.sona_credit_url_encrypted))
             if granted:
-                run_session.sona_credit_url_encrypted = ""
-                run_session.save(update_fields=["sona_credit_url_encrypted"])
+                RunSession.objects.filter(id=run_session.id).update(sona_credit_url_encrypted="")
             sona_credit = {"granted": granted, "error": error}
             record_audit(
                 action="sona_credit",
@@ -317,17 +328,6 @@ class SubmitResultView(APIView):
                 resource_id=run_session.id,
                 metadata=sona_credit,
             )
-
-        record_audit(
-            action="submit_result",
-            resource_type="run_session",
-            resource_id=run_session.id,
-            metadata={
-                "status": run_session.status,
-                "trial_count": data["trial_count"],
-                "trial_records_stored": trial_records_stored,
-            },
-        )
 
         return Response(
             {

@@ -220,10 +220,23 @@
           });
         };
 
-        resp = await sendRequest();
-        if (resp && resp.status === 403) {
-          await this._refreshCsrfCookie();
-          resp = await sendRequest();
+        const retryDelaysMs = [1000, 3000, 6000];
+        for (let attempt = 0; ; attempt++) {
+          try {
+            resp = await sendRequest();
+            if (resp && resp.status === 403) {
+              await this._refreshCsrfCookie();
+              resp = await sendRequest();
+            }
+          } catch (attemptErr) {
+            if (attempt >= retryDelaysMs.length) throw attemptErr;
+            console.warn('[DjangoRuntimeBackend] submitResult network error, retrying:', attemptErr);
+            await new Promise((resolve) => setTimeout(resolve, retryDelaysMs[attempt]));
+            continue;
+          }
+          if (![502, 503, 504].includes(resp.status) || attempt >= retryDelaysMs.length) break;
+          console.warn('[DjangoRuntimeBackend] submitResult returned ' + resp.status + ', retrying');
+          await new Promise((resolve) => setTimeout(resolve, retryDelaysMs[attempt]));
         }
       } catch (networkErr) {
         throw new Error(
