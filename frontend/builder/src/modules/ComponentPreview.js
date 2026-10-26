@@ -1741,6 +1741,10 @@ class ComponentPreview {
     }
 
     showSartPreview(componentData) {
+        componentData = { ...componentData };
+        for (const key of ['mask_text', 'background_color', 'show_instructions']) {
+            if (componentData[`sart_${key}`] !== undefined) componentData[key] = componentData[`sart_${key}`];
+        }
         const previewModal = this.getPreviewModal();
         if (!previewModal) return;
         const { modal } = previewModal;
@@ -1779,14 +1783,14 @@ class ComponentPreview {
                         </div>
                     </div>
 
-                    <div class="border rounded mt-3 p-4 d-flex justify-content-center align-items-center" style="background:#111; color:#fff; min-height: 180px;">
+                    <div class="border rounded mt-3 p-4 d-flex justify-content-center align-items-center" style="background:${escape(componentData.background_color || '#303047')}; color:#fff; min-height: 180px;">
                         <div class="text-center">
                             <div style="font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; font-size: 96px; line-height: 1;">
                                 ${escape(digit)}
                             </div>
-                            <div class="mt-3 small ${isNoGo ? 'text-warning' : 'text-muted'}">
+                            ${componentData.show_instructions !== false ? `<div class="mt-3 small ${isNoGo ? 'text-warning' : 'text-muted'}">
                                 ${isNoGo ? 'NO-GO (withhold response)' : `GO (press ${escape(goKey)})`}
-                            </div>
+                            </div>` : ''}
                         </div>
                     </div>
 
@@ -3999,6 +4003,11 @@ class ComponentPreview {
 
             const iti = randInt(blockData.sart_iti_min, blockData.sart_iti_max);
             if (iti !== null) sampled.iti_ms = iti;
+            for (const key of ['mask_text', 'background_color', 'show_instructions', 'show_feedback', 'feedback_text_correct', 'feedback_text_incorrect', 'feedback_color_correct', 'feedback_color_incorrect']) {
+                if (blockData[`sart_${key}`] !== undefined) sampled[key] = blockData[`sart_${key}`];
+            }
+            const feedbackMs = randInt(blockData.sart_feedback_duration_min, blockData.sart_feedback_duration_max);
+            if (feedbackMs !== null) sampled.feedback_duration_ms = feedbackMs;
         } else if (componentType === 'simon-trial') {
             const colors = parseStringList(src.simon_color_options);
             sampled.stimulus_color_name = pickFromList(colors, 'BLUE');

@@ -2448,6 +2448,7 @@ class JsonBuilder {
                 mapWindow('mask_duration_ms', 'sart_mask_duration_min', 'sart_mask_duration_max');
                 mapWindow('trial_duration_ms', 'sart_trial_duration_min', 'sart_trial_duration_max');
                 mapWindow('iti_ms', 'sart_iti_min', 'sart_iti_max');
+                mapWindow('feedback_duration_ms', 'sart_feedback_duration_min', 'sart_feedback_duration_max');
             } else if (innerType === 'mot-trial') {
                 mapWindow('speed_px_per_s', 'mot_speed_px_per_s_min', 'mot_speed_px_per_s_max');
                 mapWindow('tracking_duration_ms', 'mot_tracking_duration_ms_min', 'mot_tracking_duration_ms_max');
@@ -2528,6 +2529,9 @@ class JsonBuilder {
                 if (values.nogo_digit !== undefined) out.sart_nogo_digit = values.nogo_digit;
                 if (values.nogo_probability !== undefined) out.sart_nogo_probability = values.nogo_probability;
                 if (values.go_key !== undefined) out.sart_go_key = values.go_key;
+                for (const key of ['mask_text', 'background_color', 'show_instructions', 'show_feedback', 'feedback_text_correct', 'feedback_text_incorrect', 'feedback_color_correct', 'feedback_color_incorrect']) {
+                    if (values[key] !== undefined) out[`sart_${key}`] = values[key];
+                }
             } else if (innerType === 'mot-trial') {
                 if (Array.isArray(values.num_objects)) out.mot_num_objects_options = csv(values.num_objects);
                 if (Array.isArray(values.num_targets)) out.mot_num_targets_options = csv(values.num_targets);
@@ -3112,6 +3116,11 @@ class JsonBuilder {
             setFrom('sartStimulusDurationMs', s.stimulus_duration_ms);
             setFrom('sartMaskDurationMs', s.mask_duration_ms);
             setFrom('sartItiMs', s.iti_ms);
+            setFrom('sartMaskText', s.mask_text);
+            setFrom('sartBackgroundColor', s.background_color);
+            if (s.show_instructions !== undefined) setFrom('sartShowInstructions', s.show_instructions, 'checked');
+            if (s.show_feedback !== undefined) setFrom('sartShowFeedback', s.show_feedback, 'checked');
+            setFrom('sartFeedbackDurationMs', s.feedback_duration_ms);
             return;
         }
 
@@ -4714,6 +4723,7 @@ class JsonBuilder {
                     <input type="number" class="form-control parameter-input" id="sartItiMs" value="0" min="0" max="10000">
                     <div class="parameter-help">Default inter-trial interval</div>
                 </div>
+                ${this.renderSartDisplaySettings()}
             </div>
             `
             : (taskType === 'simon')
@@ -6287,6 +6297,7 @@ class JsonBuilder {
                     <input type="number" class="form-control parameter-input" id="sartItiMs" value="0" min="0" max="10000">
                     <div class="parameter-help">Default inter-trial interval</div>
                 </div>
+                ${this.renderSartDisplaySettings()}
             </div>
             `
             : (taskType === 'pvt')
@@ -7427,6 +7438,9 @@ class JsonBuilder {
                 sart_nogo_digit: { type: 'number', default: 3, min: 0, max: 9 },
                 sart_nogo_probability: { type: 'number', default: null, min: 0, max: 1, step: 0.01, description: 'Probability [0–1] of a no-go trial. Overrides digit-frequency weighting when set. Leave blank to use digit options directly.' },
                 sart_go_key: { type: 'string', default: 'space' },
+                sart_mask_text: { type: 'string', default: '#', description: 'Between-stimulus content; leave empty for blank.' },
+                sart_background_color: { type: 'COLOR', default: '#303047' },
+                sart_show_instructions: { type: 'boolean', default: true, description: 'Show GO/no-go key reminder.' },
                 sart_stimulus_duration_min: { type: 'number', default: 150, min: 0, max: 10000 },
                 sart_stimulus_duration_max: { type: 'number', default: 400, min: 0, max: 10000 },
                 sart_mask_duration_min: { type: 'number', default: 600, min: 0, max: 10000 },
@@ -7435,7 +7449,7 @@ class JsonBuilder {
                 sart_trial_duration_max: { type: 'number', default: 2000, min: 0, max: 60000 },
                 sart_iti_min: { type: 'number', default: 200, min: 0, max: 10000 },
                 sart_iti_max: { type: 'number', default: 800, min: 0, max: 10000 },
-                sart_show_feedback: { type: 'boolean', default: false, description: 'Show correctness feedback after each response.' },
+                sart_show_feedback: { type: 'boolean', default: false, description: 'Show correctness feedback after the response window, including withheld and missed responses.' },
                 sart_feedback_duration_min: { type: 'number', default: 300, min: 0, max: 30000, description: 'Minimum feedback duration in ms.' },
                 sart_feedback_duration_max: { type: 'number', default: 300, min: 0, max: 30000, description: 'Maximum feedback duration in ms.' },
                 sart_feedback_text_correct: { type: 'string', default: 'Correct', description: 'Feedback text after a correct response.' },
@@ -9544,6 +9558,7 @@ class JsonBuilder {
             const itiMs = document.getElementById('sartItiMs')?.value;
 
             config.sart_settings = {
+                ...this.getSartDisplayDefaults(),
                 go_key: goKey || 'space',
                 nogo_digit: nogoDigit !== undefined && nogoDigit !== null && `${nogoDigit}` !== '' ? parseInt(nogoDigit) : 3,
                 stimulus_duration_ms: stimulusDuration ? parseInt(stimulusDuration) : 250,
@@ -10069,8 +10084,44 @@ class JsonBuilder {
     /**
      * Build a preview payload for the current SART defaults.
      */
+    renderSartDisplaySettings() {
+        return `
+            <div class="parameter-row">
+                <label class="parameter-label" for="sartMaskText">Between-Stimulus Content:</label>
+                <input type="text" class="form-control parameter-input" id="sartMaskText" value="#">
+                <div class="parameter-help">Leave empty for a blank interval.</div>
+            </div>
+            <div class="parameter-row">
+                <label class="parameter-label" for="sartBackgroundColor">Background Color:</label>
+                <input type="color" class="form-control form-control-color parameter-input" id="sartBackgroundColor" value="#303047">
+            </div>
+            <div class="parameter-row form-check">
+                <input type="checkbox" class="form-check-input parameter-input" id="sartShowInstructions" checked>
+                <label class="form-check-label" for="sartShowInstructions">Show GO/no-go key reminder</label>
+            </div>
+            <div class="parameter-row form-check">
+                <input type="checkbox" class="form-check-input parameter-input" id="sartShowFeedback">
+                <label class="form-check-label" for="sartShowFeedback">Show correctness feedback</label>
+            </div>
+            <div class="parameter-row">
+                <label class="parameter-label" for="sartFeedbackDurationMs">Feedback Duration (ms):</label>
+                <input type="number" class="form-control parameter-input" id="sartFeedbackDurationMs" value="300" min="0" max="30000">
+            </div>`;
+    }
+
+    getSartDisplayDefaults() {
+        return {
+            mask_text: document.getElementById('sartMaskText')?.value ?? '#',
+            background_color: document.getElementById('sartBackgroundColor')?.value || '#303047',
+            show_instructions: document.getElementById('sartShowInstructions')?.checked ?? true,
+            show_feedback: document.getElementById('sartShowFeedback')?.checked ?? false,
+            feedback_duration_ms: Number.parseInt(document.getElementById('sartFeedbackDurationMs')?.value ?? '300', 10),
+        };
+    }
+
     getCurrentSartDefaults() {
         return {
+            ...this.getSartDisplayDefaults(),
             type: 'sart-trial',
             name: 'SART Defaults',
             digit: 1,
@@ -10080,7 +10131,6 @@ class JsonBuilder {
             mask_duration_ms: parseInt(document.getElementById('sartMaskDurationMs')?.value || '900', 10),
             trial_duration_ms: 1150,
             iti_ms: parseInt(document.getElementById('sartItiMs')?.value || '0', 10),
-            show_feedback: false,
             feedback_duration_min: 300,
             feedback_duration_max: 300,
             feedback_text_correct: 'Correct',
@@ -10597,6 +10647,7 @@ class JsonBuilder {
     }
 
     getSartDefaultsForNewBlock() {
+        const displayDefaults = this.getSartDisplayDefaults();
         const nogoDigit = Number.parseInt(document.getElementById('sartNoGoDigit')?.value || '3', 10);
         const goKey = (document.getElementById('sartGoKey')?.value || 'space').toString();
         const stimMs = Number.parseInt(document.getElementById('sartStimulusDurationMs')?.value || '250', 10);
@@ -10613,9 +10664,12 @@ class JsonBuilder {
             sart_mask_duration_max: Number.isFinite(maskMs) ? maskMs : 900,
             sart_iti_min: Number.isFinite(itiMs) ? itiMs : 0,
             sart_iti_max: Number.isFinite(itiMs) ? itiMs : 0,
-            sart_show_feedback: false,
-            sart_feedback_duration_min: 300,
-            sart_feedback_duration_max: 300,
+            sart_mask_text: displayDefaults.mask_text,
+            sart_background_color: displayDefaults.background_color,
+            sart_show_instructions: displayDefaults.show_instructions,
+            sart_show_feedback: displayDefaults.show_feedback,
+            sart_feedback_duration_min: displayDefaults.feedback_duration_ms,
+            sart_feedback_duration_max: displayDefaults.feedback_duration_ms,
             sart_feedback_text_correct: 'Correct',
             sart_feedback_text_incorrect: 'Incorrect',
             sart_feedback_color_correct: '#86efac',
@@ -12432,6 +12486,10 @@ class JsonBuilder {
             addWindow('mask_duration_ms', blockComponent.sart_mask_duration_min, blockComponent.sart_mask_duration_max);
             addWindow('trial_duration_ms', blockComponent.sart_trial_duration_min, blockComponent.sart_trial_duration_max);
             addWindow('iti_ms', blockComponent.sart_iti_min, blockComponent.sart_iti_max);
+
+            for (const key of ['mask_text', 'background_color', 'show_instructions']) {
+                if (blockComponent[`sart_${key}`] !== undefined) values[key] = blockComponent[`sart_${key}`];
+            }
 
             if (blockComponent.sart_show_feedback !== undefined) {
                 values.show_feedback = !!blockComponent.sart_show_feedback;

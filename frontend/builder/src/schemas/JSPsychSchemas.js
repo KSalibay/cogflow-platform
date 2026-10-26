@@ -1010,6 +1010,24 @@ class JSPsychSchemas {
                 name: 'sart-trial',
                 description: 'SART trial/frame (go/no-go logic implemented by interpreter)',
                 parameters: {
+                    sart_mask_text: {
+                        type: this.parameterTypes.STRING,
+                        default: '#',
+                        blockTarget: 'sart-trial',
+                        description: 'Between-stimulus content (leave empty for a blank screen)'
+                    },
+                    sart_background_color: {
+                        type: this.parameterTypes.COLOR,
+                        default: '#303047',
+                        blockTarget: 'sart-trial',
+                        description: 'Task background color'
+                    },
+                    sart_show_instructions: {
+                        type: this.parameterTypes.BOOL,
+                        default: true,
+                        blockTarget: 'sart-trial',
+                        description: 'Show the GO/no-go key reminder during the task'
+                    },
                     digit: {
                         type: this.parameterTypes.INT,
                         default: 1,

@@ -5078,9 +5078,18 @@
       // SART task
       if (type === 'sart-trial') {
         const Sart = requirePlugin('sart (window.jsPsychSart)', window.jsPsychSart);
+        const sartParameters = { ...(config.sart_settings || {}), ...item };
+        for (const key of ['mask_text', 'background_color', 'show_instructions', 'show_feedback', 'feedback_text_correct', 'feedback_text_incorrect', 'feedback_color_correct', 'feedback_color_incorrect']) {
+          if (item[`sart_${key}`] !== undefined) sartParameters[key] = item[`sart_${key}`];
+        }
+        if (item.sart_feedback_duration_min !== undefined || item.sart_feedback_duration_max !== undefined) {
+          const minimum = Number(item.sart_feedback_duration_min ?? item.sart_feedback_duration_max);
+          const maximum = Number(item.sart_feedback_duration_max ?? minimum);
+          sartParameters.feedback_duration_ms = Math.round(minimum + Math.random() * Math.max(0, maximum - minimum));
+        }
         const onFinish = maybeWrapOnFinishWithRewards(typeof item.on_finish === 'function' ? item.on_finish : null, type);
         const trial = {
-          ...item,
+          ...sartParameters,
           type: Sart,
           post_trial_gap: Number.isFinite(Number(item.iti_ms)) ? Number(item.iti_ms) : 0,
           ...(onFinish ? { on_finish: onFinish } : {}),

@@ -28,6 +28,9 @@
       stimulus_duration_ms: { type: PT.INT, default: 250 },
       mask_duration_ms: { type: PT.INT, default: 900 },
       trial_duration_ms: { type: PT.INT, default: 1150 },
+      mask_text: { type: PT.STRING, default: '#' },
+      background_color: { type: PT.STRING, default: '' },
+      show_instructions: { type: PT.BOOL, default: true },
 
       show_fixation_dot: { type: PT.BOOL, default: false },
       show_fixation_cross_between_trials: { type: PT.BOOL, default: false },
@@ -111,6 +114,9 @@
       const stimMs = Number.isFinite(Number(trial.stimulus_duration_ms)) ? Number(trial.stimulus_duration_ms) : 250;
       const maskMs = Number.isFinite(Number(trial.mask_duration_ms)) ? Number(trial.mask_duration_ms) : 900;
       const trialMs = Number.isFinite(Number(trial.trial_duration_ms)) ? Number(trial.trial_duration_ms) : (stimMs + maskMs);
+      const maskText = (trial.mask_text ?? '#').toString();
+      const previousBackground = display_element.style.backgroundColor;
+      if (trial.background_color) display_element.style.backgroundColor = trial.background_color;
 
       const fixationHtml = (trial.show_fixation_dot || trial.show_fixation_cross_between_trials)
         ? `<div style="height:40px; display:flex; align-items:center; justify-content:center; opacity:0.9;">${trial.show_fixation_dot ? '•' : '+'}</div>`
@@ -123,7 +129,7 @@
             <div id="sart-stim" style="font-size:72px; line-height:1; width:1.2ch; min-width:1.2ch; min-height:1em; font-weight:800; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; font-variant-numeric: tabular-nums; text-align:center;">${esc(String(digit))}</div>
           </div>
           <div id="sart-feedback" style="height:22px; min-height:22px; width:min(100%, 420px); overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font-size:14px; line-height:22px; font-weight:700; opacity:0.95; visibility:hidden;"></div>
-          <div style="opacity:0.65; font-size: 12px;">Press ${esc(goKey === ' ' ? 'space' : goKey)} for GO (do not press for ${esc(String(nogoDigit))})</div>
+          ${trial.show_instructions !== false ? `<div style="opacity:0.65; font-size: 12px;">Press ${esc(goKey === ' ' ? 'space' : goKey)} for GO (do not press for ${esc(String(nogoDigit))})</div>` : ''}
         </div>
       `;
 
@@ -141,6 +147,7 @@
 
       const endTrial = (reason) => {
         this.jsPsych.pluginAPI.cancelAllKeyboardResponses();
+        display_element.style.backgroundColor = previousBackground;
 
         const correct = (() => {
           if (!responded) {
@@ -186,26 +193,12 @@
         responseKey = k;
         rt = Number.isFinite(info && info.rt) ? Math.round(info.rt) : null;
 
-        if (showFeedback && feedbackEl) {
-          const isCorrect = (!isNoGo && k === goKey);
-          feedbackEl.textContent = isCorrect ? feedbackTextCorrect : feedbackTextIncorrect;
-          feedbackEl.style.color = isCorrect ? feedbackColorCorrect : feedbackColorIncorrect;
-          feedbackEl.style.visibility = 'visible';
-          if (feedbackDurationMs > 0) {
-            this.jsPsych.pluginAPI.setTimeout(() => {
-              if (feedbackEl) {
-                feedbackEl.textContent = '';
-                feedbackEl.style.visibility = 'hidden';
-              }
-            }, feedbackDurationMs);
-          }
-        }
       };
 
       // Stimulus -> mask transition
       if (Number.isFinite(stimMs) && stimMs > 0) {
         this.jsPsych.pluginAPI.setTimeout(() => {
-          if (stimEl) stimEl.textContent = '#';
+          if (stimEl) stimEl.textContent = maskText || '\u00A0';
         }, stimMs);
       }
 
@@ -256,7 +249,17 @@
       // Deadline
       if (Number.isFinite(trialMs) && trialMs > 0) {
         this.jsPsych.pluginAPI.setTimeout(() => {
-          endTrial('deadline');
+          this.jsPsych.pluginAPI.cancelAllKeyboardResponses();
+          if (showFeedback && feedbackDurationMs > 0 && feedbackEl) {
+            const correct = isNoGo ? !responded : responded;
+            if (stimEl) stimEl.textContent = '\u00A0';
+            feedbackEl.textContent = correct ? feedbackTextCorrect : feedbackTextIncorrect;
+            feedbackEl.style.color = correct ? feedbackColorCorrect : feedbackColorIncorrect;
+            feedbackEl.style.visibility = 'visible';
+            this.jsPsych.pluginAPI.setTimeout(() => endTrial('deadline'), feedbackDurationMs);
+          } else {
+            endTrial('deadline');
+          }
         }, trialMs);
       }
 
