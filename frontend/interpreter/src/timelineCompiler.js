@@ -3239,9 +3239,16 @@
     }
 
     function enableAnyKeyTaps(trials) {
+      const acceptsTap = trial => trial && trial.response_ends_trial !== false && (
+        trial.choices === 'ALL_KEYS' || (
+          trial.data?.plugin_type === 'miniblock-break'
+          && trial.data.miniblock_forced_wait !== true
+          && trial.choices !== 'NO_KEYS'
+        )
+      );
       for (const trial of trials) {
         if (Array.isArray(trial.timeline)) enableAnyKeyTaps(trial.timeline);
-        if (trial.type !== HtmlKeyboard || trial.choices !== 'ALL_KEYS' || trial.response_ends_trial === false) continue;
+        if (trial.type !== HtmlKeyboard || !acceptsTap(trial)) continue;
         const authoredOnLoad = trial.on_load;
         const authoredOnFinish = trial.on_finish;
         let cleanup = () => {};
@@ -3251,7 +3258,7 @@
           const instance = window.__psy_jsPsych;
           const display = instance?.getDisplayElement?.();
           const current = instance?.getCurrentTrial?.();
-          if (!display || current?.choices !== 'ALL_KEYS' || current.response_ends_trial === false) return;
+          if (!display || !acceptsTap(current)) return;
           const startTime = performance.now();
           let gesture = null;
           const pointerDown = event => {
@@ -4273,7 +4280,7 @@
             stimulus_duration: (item.stimulus_duration === undefined ? null : item.stimulus_duration),
             trial_duration: (item.trial_duration === undefined ? null : item.trial_duration),
             response_ends_trial: (item.response_ends_trial === undefined ? true : item.response_ends_trial),
-            data: { plugin_type: type }
+            data: { ...item.data, plugin_type: item.data?.plugin_type === 'miniblock-break' ? 'miniblock-break' : type }
           });
           continue;
         }
@@ -4741,7 +4748,7 @@
           stimulus_duration: (item.stimulus_duration === undefined ? null : item.stimulus_duration),
           trial_duration: (item.trial_duration === undefined ? null : item.trial_duration),
           response_ends_trial: (item.response_ends_trial === undefined ? true : item.response_ends_trial),
-          data: { plugin_type: type }
+          data: { ...item.data, plugin_type: item.data?.plugin_type === 'miniblock-break' ? 'miniblock-break' : type }
         });
         continue;
       }

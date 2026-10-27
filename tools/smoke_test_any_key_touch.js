@@ -105,7 +105,46 @@ async function main() {
       assert.equal(result.restricted, false);
       assert.equal(result.space, ' ');
     }
-    console.log('Mobile any-key taps, keyboard responses, restricted screens and swipe filtering passed');
+    for (const mode of ['touch', 'keyboard', 'forced']) {
+      const eligibility = await page.evaluate(({ mode }) => {
+        window.__psy_jsPsych = initJsPsych({ display_element: 'experiment' });
+        const compiled = window.TimelineCompiler.compileToJsPsychTimeline({
+          task_type: 'custom', experiment_type: 'trial-based', timeline: [{
+            type: 'block', component_type: 'html-keyboard-response', length: 4,
+            parameter_values: { stimulus: '<p>Block trial</p>', choices: 'NO_KEYS', trial_duration: 1, response_ends_trial: false },
+            miniblock_structure: {
+              enabled: true, num_blocks: 2, break_escape_keys: 'space',
+              break_message: 'Press Space to resume.', force_wait_for_break: mode === 'forced', break_duration_sec: 1,
+            },
+          }],
+        });
+        const pause = compiled.timeline.find(trial => trial.data?.plugin_type === 'miniblock-break');
+        const acceptsTouch = typeof pause?.on_load === 'function';
+        window.__psy_jsPsych.run(compiled.timeline);
+        return { acceptsTouch, breakCount: compiled.timeline.filter(trial => trial.data?.plugin_type === 'miniblock-break').length };
+      }, { mode });
+      assert.equal(eligibility.breakCount, 1, 'Generated mini-break metadata must survive compilation');
+      assert.equal(eligibility.acceptsTouch, mode !== 'forced');
+      const message = page.getByText('Press Space to resume.', { exact: true });
+      await message.waitFor();
+      if (mode === 'keyboard') {
+        await page.keyboard.press('Space');
+      } else {
+        await message.tap();
+        if (mode === 'forced') {
+          assert.equal(await message.count(), 1, 'Forced-wait mini-break must ignore taps');
+          await page.keyboard.press('Space');
+          assert.equal(await message.count(), 1, 'Forced-wait mini-break must ignore Space too');
+        }
+      }
+      await page.waitForFunction(() => window.__psy_jsPsych.data.get().count() === 5);
+      const pause = await page.evaluate(() => window.__psy_jsPsych.data.get().values().find(row => row.plugin_type === 'miniblock-break'));
+      assert.equal(pause.miniblock_forced_wait, mode === 'forced');
+      if (mode === 'touch') assert.equal(pause.response_device, 'touch');
+      if (mode === 'keyboard') assert.equal(pause.response, ' ');
+      if (mode === 'forced') assert.equal(pause.response_device, undefined);
+    }
+    console.log('Mobile taps, mini-block breaks, forced waits and keyboard protections passed');
   } finally {
     await browser.close();
   }
