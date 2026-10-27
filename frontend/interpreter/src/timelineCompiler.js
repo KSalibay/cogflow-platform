@@ -3153,7 +3153,10 @@
 
     function normalizeKeyChoices(raw) {
       if (raw === undefined || raw === null) return 'ALL_KEYS';
-      if (Array.isArray(raw)) return raw;
+      const aliases = { space: ' ', spacebar: ' ', enter: 'Enter', escape: 'Escape', esc: 'Escape' };
+      const normalize = key => aliases[String(key).toLowerCase()] ?? key;
+      if (Array.isArray(raw)) return raw.map(normalize);
+      if (raw === ' ') return [' '];
       const s = String(raw).trim();
       if (!s) return 'ALL_KEYS';
       const upper = s.toUpperCase();
@@ -3162,7 +3165,7 @@
         .split(/[\s,]+/)
         .map(x => x.trim())
         .filter(Boolean);
-      return parts.length > 0 ? parts : 'ALL_KEYS';
+      return parts.length > 0 ? parts.map(normalize) : 'ALL_KEYS';
     }
 
     const CONSENT_AGREE_LABEL = 'Agree';
@@ -3233,6 +3236,64 @@
         response_ends_trial: (item.response_ends_trial === undefined ? true : item.response_ends_trial),
         data: { plugin_type: 'debriefing' }
       };
+    }
+
+    function enableAnyKeyTaps(trials) {
+      for (const trial of trials) {
+        if (Array.isArray(trial.timeline)) enableAnyKeyTaps(trial.timeline);
+        if (trial.type !== HtmlKeyboard || trial.choices !== 'ALL_KEYS' || trial.response_ends_trial === false) continue;
+        const authoredOnLoad = trial.on_load;
+        const authoredOnFinish = trial.on_finish;
+        let cleanup = () => {};
+        trial.on_load = function (...args) {
+          cleanup();
+          if (typeof authoredOnLoad === 'function') authoredOnLoad.apply(this, args);
+          const instance = window.__psy_jsPsych;
+          const display = instance?.getDisplayElement?.();
+          const current = instance?.getCurrentTrial?.();
+          if (!display || current?.choices !== 'ALL_KEYS' || current.response_ends_trial === false) return;
+          const startTime = performance.now();
+          let gesture = null;
+          const pointerDown = event => {
+            gesture = null;
+            if (!['touch', 'pen'].includes(event.pointerType) || !event.isPrimary) return;
+            if (event.target.closest?.('a, button, input, textarea, select, summary, [contenteditable], [role="button"], audio, video')) return;
+            gesture = { id: event.pointerId, x: event.clientX, y: event.clientY };
+          };
+          const pointerMove = event => {
+            if (gesture && event.pointerId === gesture.id && Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) > 10) gesture = null;
+          };
+          const cancelGesture = () => { gesture = null; };
+          const pointerUp = event => {
+            if (!gesture || event.pointerId !== gesture.id) return;
+            const distance = Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y);
+            gesture = null;
+            if (distance > 10) return;
+            event.preventDefault();
+            cleanup();
+            instance.pluginAPI.cancelAllKeyboardResponses();
+            instance.pluginAPI.clearAllTimeouts();
+            instance.finishTrial({ stimulus: current.stimulus, rt: Math.round(performance.now() - startTime), response: null, response_device: 'touch' });
+          };
+          display.addEventListener('pointerdown', pointerDown);
+          display.addEventListener('pointermove', pointerMove);
+          display.addEventListener('pointerup', pointerUp);
+          display.addEventListener('pointercancel', cancelGesture);
+          display.addEventListener('scroll', cancelGesture, true);
+          cleanup = () => {
+            gesture = null;
+            display.removeEventListener('pointerdown', pointerDown);
+            display.removeEventListener('pointermove', pointerMove);
+            display.removeEventListener('pointerup', pointerUp);
+            display.removeEventListener('pointercancel', cancelGesture);
+            display.removeEventListener('scroll', cancelGesture, true);
+          };
+        };
+        trial.on_finish = function (...args) {
+          cleanup();
+          if (typeof authoredOnFinish === 'function') return authoredOnFinish.apply(this, args);
+        };
+      }
     }
 
     // Groups everything between the consent screen and the debriefing screen into a
@@ -4351,6 +4412,7 @@
       pushRdmContinuousSegment();
 
       applyConsentSkipToDebriefing(timeline);
+      enableAnyKeyTaps(timeline);
 
       return { experimentType, timeline };
     }
@@ -4675,7 +4737,7 @@
           type: HtmlKeyboard,
           stimulus: wrapMaybeFunctionStimulus(item.stimulus, item.prompt),
           prompt: null,
-          choices: item.choices === 'ALL_KEYS' ? 'ALL_KEYS' : (Array.isArray(item.choices) ? item.choices : 'ALL_KEYS'),
+          choices: normalizeKeyChoices(item.choices),
           stimulus_duration: (item.stimulus_duration === undefined ? null : item.stimulus_duration),
           trial_duration: (item.trial_duration === undefined ? null : item.trial_duration),
           response_ends_trial: (item.response_ends_trial === undefined ? true : item.response_ends_trial),
@@ -6393,6 +6455,7 @@
     }
 
     applyConsentSkipToDebriefing(timeline);
+    enableAnyKeyTaps(timeline);
 
     return { experimentType, timeline };
   }
