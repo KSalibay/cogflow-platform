@@ -4864,7 +4864,22 @@ class JSPsychSchemas {
                     consent_mode: {
                         type: this.parameterTypes.BOOL,
                         default: false,
-                        description: 'Informed consent form: show fixed Agree / Don\'t agree buttons and end the study if the participant declines'
+                        description: 'Informed consent form: show agree/decline buttons and end the study if the participant declines'
+                    },
+                    consent_different_language: {
+                        type: this.parameterTypes.BOOL,
+                        default: false,
+                        description: 'Different language'
+                    },
+                    consent_agree_label: {
+                        type: this.parameterTypes.STRING,
+                        default: 'Agree',
+                        description: 'Agree button text'
+                    },
+                    consent_decline_label: {
+                        type: this.parameterTypes.STRING,
+                        default: "Don't agree",
+                        description: 'Decline button text'
                     },
                     consent_decline_message: {
                         type: this.parameterTypes.HTML_STRING,
@@ -5454,7 +5469,10 @@ class JSPsychSchemas {
         if (normalized.type === 'html-button-response'
             && (normalized.consent_mode === true || normalized.consent_mode === 'true')
             && normalized.choices === undefined) {
-            normalized.choices = ['Agree', "Don't agree"];
+            const translated = normalized.consent_different_language === true || normalized.consent_different_language === 'true';
+            normalized.choices = translated
+                ? [String(normalized.consent_agree_label ?? '').trim() || 'Agree', String(normalized.consent_decline_label ?? '').trim() || "Don't agree"]
+                : ['Agree', "Don't agree"];
         }
 
         // Builder text inputs store list-valued parameters as comma/newline separated

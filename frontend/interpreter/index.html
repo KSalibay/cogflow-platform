@@ -158,6 +158,13 @@
       overflow-y: auto;
       padding-block: clamp(16px, 4vh, 40px);
     }
+    #jspsych-content:has(.psy-wrap--consent) {
+      justify-content: flex-start;
+      padding-top: max(20px, env(safe-area-inset-top));
+    }
+    #jspsych-content:has(.psy-wrap--consent) > * {
+      flex-shrink: 0;
+    }
     #jspsych-html-button-response-btngroup {
       display: flex;
       flex-wrap: wrap;
@@ -438,7 +445,7 @@
   <script src="src/jspsych-sart.js?v=20261026-sart-1"></script>
   <script src="src/jspsych-continuous-image-presentation.js?v=20260307-1"></script>
   <script src="src/jspsych-gabor.js?v=20260224b"></script>
-  <script src="src/jspsych-stroop.js?v=20260305-1"></script>
+  <script src="src/jspsych-stroop.js?v=20261027-stroop-consent-1"></script>
   <script src="src/jspsych-simon.js?v=20260218"></script>
   <script src="src/jspsych-task-switching.js?v=20260306-3"></script>
   <script src="src/jspsych-pvt.js?v=20260219"></script>
@@ -449,7 +456,7 @@
   <script src="src/jspsych-soc-dashboard.js?v=20260511o"></script>
   <script src="src/eyeTrackingWebgazer.js?v=20260207"></script>
   <script src="src/configLoader.js?v=20260207"></script>
-  <script src="src/timelineCompiler.js?v=20261026-sart-1"></script>
+  <script src="src/timelineCompiler.js?v=20261027-emostroop-inherit-4"></script>
   <script src="src/djangoRuntimeBackend.js"></script>
   <script src="src/main.js?v=20260324-2"></script>
 </body>

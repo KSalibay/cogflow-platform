@@ -234,11 +234,9 @@
         const safeStimuli = Array.isArray(stimuli) ? stimuli : [];
         const btns = safeStimuli.map((s, idx) => {
           const label = norm(s && s.name) || `Choice ${idx + 1}`;
-          const color = norm(s && (s.color || s.hex || s.color_hex)) || '#666666';
           return `
             <button class="btn btn-outline-light" data-stroop-choice-index="${idx}" data-stroop-choice-name="${esc(label)}"
               style="min-width: 140px; border-color: rgba(255,255,255,0.35);">
-              <span style="display:inline-block; width: 12px; height: 12px; border-radius: 50%; background:${esc(color)}; margin-right:8px; vertical-align:middle;"></span>
               <span>${esc(label)}</span>
             </button>
           `;
@@ -265,8 +263,8 @@
 
       display_element.innerHTML = `
         <div id="stroop-wrap" style="position:relative; width:100%; min-height:100vh; padding:24px 12px; box-sizing:border-box; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; text-align:center;">
-          <div id="stroop-stim" style="font-size:${Math.max(10, fontSizePx)}px; font-weight:800; letter-spacing: 0.08em; color:${esc(inkColorHex)};">${esc(word)}</div>
-          ${buttonsHtml}
+          <div id="stroop-stim" style="font-size:${Math.max(10, fontSizePx)}px; font-weight:800; letter-spacing: 0.08em; color:${esc(inkColorHex)}; line-height:1.2; max-width:100%; overflow-wrap:anywhere;">${esc(word)}</div>
+          ${buttonsHtml ? `<div style="width:100%; padding-top:32px;">${buttonsHtml}</div>` : ''}
           ${keyboardHintHtml}
         </div>
       `;

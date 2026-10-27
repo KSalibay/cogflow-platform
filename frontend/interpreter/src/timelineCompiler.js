@@ -471,6 +471,17 @@
       ...(isObject(block.parameter_values) ? { ...block.parameter_values } : {})
     };
 
+    if (baseType === 'emotional-stroop-trial' && isObject(opts?.emotionalStroopDefaults)) {
+      const hasWords = words => Array.isArray(words) && words.some(word => String(word ?? '').trim() !== '');
+      const hasLists = Array.isArray(values.word_lists) && values.word_lists.some(list => hasWords(Array.isArray(list) ? list : list?.words));
+      const hasPool = Array.isArray(values.word) ? hasWords(values.word) : String(values.word ?? '').trim() !== '';
+      const hasDefaultLists = Array.isArray(opts.emotionalStroopDefaults.word_lists) && opts.emotionalStroopDefaults.word_lists.some(list => hasWords(Array.isArray(list) ? list : list?.words));
+      if (!hasLists && !hasPool && (hasDefaultLists || hasWords(opts.emotionalStroopDefaults.word_options))) {
+        values.word_lists = opts.emotionalStroopDefaults.word_lists;
+        values.word = opts.emotionalStroopDefaults.word_options;
+      }
+    }
+
     if (baseType === 'image-slider-response' && isObject(opts?.imageCategorizationDefaults)) {
       const defaults = opts.imageCategorizationDefaults;
       const looksCharacterSplit = (raw) => {
@@ -3254,7 +3265,7 @@
     function buildHtmlButtonTrial(item, type, HtmlButton, wrapStimulus) {
       const stimulus = (item.stimulus !== undefined && item.stimulus !== null) ? item.stimulus : item.stimulus_html;
 
-      // Consent mode presents a fixed Agree / Don't agree pair and ends the study
+      // Consent mode presents an agree/decline pair and ends the study
       // when the participant declines, so researchers don't have to hand-build an
       // early-exit branch.
       const authoredChoices = normalizeButtonChoices(item.choices !== undefined ? item.choices : item.button_choices);
@@ -3271,8 +3282,16 @@
         ? '<p>You have chosen not to take part. You may now close this window.</p>'
         : String(item.consent_decline_message);
 
+      const differentLanguage = (item.consent_different_language ?? item.parameters?.consent_different_language) === true
+        || (item.consent_different_language ?? item.parameters?.consent_different_language) === 'true';
+      const agreeLabel = differentLanguage
+        ? String(item.consent_agree_label ?? item.parameters?.consent_agree_label ?? '').trim() || CONSENT_AGREE_LABEL
+        : CONSENT_AGREE_LABEL;
+      const declineLabel = differentLanguage
+        ? String(item.consent_decline_label ?? item.parameters?.consent_decline_label ?? '').trim() || CONSENT_DECLINE_LABEL
+        : CONSENT_DECLINE_LABEL;
       const choices = consentMode
-        ? [CONSENT_AGREE_LABEL, CONSENT_DECLINE_LABEL]
+        ? [agreeLabel, declineLabel]
         : authoredChoices;
       const buttonHtml = (item.button_html === null || item.button_html === undefined)
         ? ''
@@ -3280,7 +3299,7 @@
 
       return {
         type: HtmlButton,
-        stimulus: wrapStimulus(stimulus, item.prompt, PSY_WRAP_BUTTONS_CLASS),
+        stimulus: wrapStimulus(stimulus, item.prompt, consentMode ? `${PSY_WRAP_BUTTONS_CLASS} psy-wrap--consent` : PSY_WRAP_BUTTONS_CLASS),
         prompt: null,
         choices,
         ...(buttonHtml ? { button_html: item.button_html } : {}),
@@ -3597,6 +3616,7 @@
       globalRandomizeOrder: config.randomize_order === true,
       nbackDefaults,
       imageCategorizationDefaults,
+      emotionalStroopDefaults,
       taskSwitchingDefaults,
       ...blockLengthOpts
     });
@@ -5790,8 +5810,10 @@
         delete itemCopy.on_finish;
 
         const stimuli = Array.isArray(emotionalStroopDefaults.stimuli) ? emotionalStroopDefaults.stimuli : [];
-        const wordOptions = Array.isArray(emotionalStroopDefaults.word_options) ? emotionalStroopDefaults.word_options : [];
         const wordListsDefaults = Array.isArray(emotionalStroopDefaults.word_lists) ? emotionalStroopDefaults.word_lists : [];
+        const wordOptions = Array.isArray(emotionalStroopDefaults.word_options) && emotionalStroopDefaults.word_options.length > 0
+          ? emotionalStroopDefaults.word_options
+          : wordListsDefaults.flatMap(list => Array.isArray(list) ? list : (Array.isArray(list?.words) ? list.words : []));
 
         const toStr = (v) => (v === undefined || v === null) ? '' : v.toString();
         const norm = (v) => toStr(v).trim();
@@ -5880,6 +5902,8 @@
 
           ...itemCopy,
 
+          word,
+          ink_color_name: inkName,
           stimuli,
           response_mode: responseMode,
           response_device: responseDevice,

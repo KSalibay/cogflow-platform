@@ -6411,6 +6411,14 @@ class TimelineBuilder {
         const choicesRow = modalBody.querySelector('[data-param-name="choices"]');
         const choicesInput = modalBody.querySelector('#param_choices');
         const declineRow = modalBody.querySelector('[data-param-name="consent_decline_message"]');
+        const languageToggle = modalBody.querySelector('#param_consent_different_language');
+        const languageRow = modalBody.querySelector('[data-param-name="consent_different_language"]');
+        const agreeInput = modalBody.querySelector('#param_consent_agree_label');
+        const declineInput = modalBody.querySelector('#param_consent_decline_label');
+        const agreeRow = modalBody.querySelector('[data-param-name="consent_agree_label"]');
+        const declineLabelRow = modalBody.querySelector('[data-param-name="consent_decline_label"]');
+        const languageLabel = languageRow?.querySelector('label');
+        if (languageLabel) languageLabel.textContent = 'Different language';
 
         let hint = modalBody.querySelector('#cf-consent-hint');
         if (!hint && choicesRow) {
@@ -6422,6 +6430,10 @@ class TimelineBuilder {
 
         const sync = () => {
             const on = !!consentToggle.checked;
+            const translated = on && !!languageToggle?.checked;
+            if (languageRow) languageRow.style.display = on ? '' : 'none';
+            if (agreeRow) agreeRow.style.display = translated ? '' : 'none';
+            if (declineLabelRow) declineLabelRow.style.display = translated ? '' : 'none';
 
             if (choicesInput) {
                 // Show the labels consent mode will actually use, keeping the authored
@@ -6430,7 +6442,9 @@ class TimelineBuilder {
                     if (choicesInput.dataset.cfAuthoredChoices === undefined) {
                         choicesInput.dataset.cfAuthoredChoices = choicesInput.value;
                     }
-                    choicesInput.value = "Agree, Don't agree";
+                    const agree = translated ? agreeInput?.value.trim() || 'Agree' : 'Agree';
+                    const decline = translated ? declineInput?.value.trim() || "Don't agree" : "Don't agree";
+                    choicesInput.value = `${agree}, ${decline}`;
                 } else if (choicesInput.dataset.cfAuthoredChoices !== undefined) {
                     choicesInput.value = choicesInput.dataset.cfAuthoredChoices;
                     delete choicesInput.dataset.cfAuthoredChoices;
@@ -6442,12 +6456,15 @@ class TimelineBuilder {
             if (declineRow) declineRow.style.display = on ? '' : 'none';
             if (hint) {
                 hint.textContent = on
-                    ? 'Consent form is on: buttons are fixed to "Agree" and "Don\'t agree". Declining jumps to your Debriefing component, or ends the study if there isn\'t one.'
+                    ? 'Declining jumps to your Debriefing component, or ends the study if there is not one.'
                     : '';
             }
         };
 
         consentToggle.addEventListener('change', sync);
+        languageToggle?.addEventListener('change', sync);
+        agreeInput?.addEventListener('input', sync);
+        declineInput?.addEventListener('input', sync);
         sync();
     }
 

@@ -2223,7 +2223,7 @@ class JsonBuilder {
 
         const taskType = (config?.task_type || config?.taskType || this.currentTaskType || 'rdm').toString();
         const importedTimeline = Array.isArray(config.timeline) ? config.timeline : [];
-        const builderComponents = this.convertImportedTimelineToBuilderComponents(importedTimeline, taskType, config.response_parameters);
+        const builderComponents = this.convertImportedTimelineToBuilderComponents(importedTimeline, taskType, config.response_parameters, config.emotional_stroop_settings);
         const rebuiltCount = this.rebuildTimelineDOMFromImportedComponents(builderComponents);
 
         this.updateJSON();
@@ -2384,7 +2384,7 @@ class JsonBuilder {
         return out;
     }
 
-    convertImportedTimelineToBuilderComponents(timeline, taskTypeForDefs, responseDefaults = {}) {
+    convertImportedTimelineToBuilderComponents(timeline, taskTypeForDefs, responseDefaults = {}, emotionalStroopDefaults = {}) {
         const defs = this.getComponentDefinitions({ taskTypeOverride: taskTypeForDefs });
         const defById = new Map((Array.isArray(defs) ? defs : []).map((d) => [d.id, d]));
 
@@ -2395,7 +2395,7 @@ class JsonBuilder {
             const out = { ...src };
 
             const windows = (src.parameter_windows && typeof src.parameter_windows === 'object') ? src.parameter_windows : {};
-            const values = (src.parameter_values && typeof src.parameter_values === 'object') ? src.parameter_values : {};
+            const values = (src.parameter_values && typeof src.parameter_values === 'object') ? { ...src.parameter_values } : {};
 
             const innerType = (
                 src.block_component_type
@@ -2565,6 +2565,37 @@ class JsonBuilder {
                 if (values.congruent_key !== undefined) out.stroop_congruent_key = values.congruent_key;
                 if (values.incongruent_key !== undefined) out.stroop_incongruent_key = values.incongruent_key;
             } else if (innerType === 'emotional-stroop-trial') {
+                const hasWords = words => Array.isArray(words) && words.some(word => String(word ?? '').trim() !== '');
+                const hasLists = Array.isArray(values.word_lists) && values.word_lists.some(list => hasWords(Array.isArray(list) ? list : list?.words));
+                const hasPool = Array.isArray(values.word) ? hasWords(values.word) : String(values.word ?? '').trim() !== '';
+                const hasDefaultLists = Array.isArray(emotionalStroopDefaults?.word_lists) && emotionalStroopDefaults.word_lists.some(list => hasWords(Array.isArray(list) ? list : list?.words));
+                if (!hasLists && !hasPool && (hasDefaultLists || hasWords(emotionalStroopDefaults?.word_options))) {
+                    values.word_lists = emotionalStroopDefaults?.word_lists;
+                    values.word = emotionalStroopDefaults?.word_options;
+                }
+                if (Array.isArray(values.word_lists)) {
+                    out.emostroop_word_list_count = values.word_lists.length >= 3 ? 3 : 2;
+                    for (let index = 0; index < Math.min(3, values.word_lists.length); index += 1) {
+                        const list = values.word_lists[index];
+                        const words = Array.isArray(list) ? list : list?.words;
+                        if (!Array.isArray(list) && (list?.label ?? list?.name) !== undefined) out[`emostroop_word_list_${index + 1}_label`] = list.label ?? list.name;
+                        if (Array.isArray(words)) out[`emostroop_word_list_${index + 1}_words`] = csv(words);
+                    }
+                }
+                if (values.word !== undefined) {
+                    out.emostroop_word_options = Array.isArray(values.word) ? csv(values.word) : String(values.word);
+                    const hasWordLists = Array.isArray(values.word_lists) && values.word_lists.some(list => {
+                        const words = Array.isArray(list) ? list : list?.words;
+                        return Array.isArray(words) && words.length > 0;
+                    });
+                    if (!hasWordLists) {
+                        out.emostroop_word_list_count = 2;
+                        out.emostroop_word_list_1_label = 'Words';
+                        out.emostroop_word_list_1_words = out.emostroop_word_options;
+                        out.emostroop_word_list_2_words = '';
+                        out.emostroop_word_list_3_words = '';
+                    }
+                }
                 if (Array.isArray(values.ink_color_name)) out.emostroop_ink_color_options = csv(values.ink_color_name);
                 if (values.response_device !== undefined) out.emostroop_response_device = values.response_device;
                 if (Array.isArray(values.choice_keys)) out.emostroop_choice_keys = csv(values.choice_keys);
@@ -2700,6 +2731,9 @@ class JsonBuilder {
                 if (values.button_html !== undefined) out.button_html = values.button_html;
                 if (values.consent_mode !== undefined) out.consent_mode = !!values.consent_mode;
                 if (values.consent_decline_message !== undefined) out.consent_decline_message = values.consent_decline_message;
+                for (const key of ['consent_different_language', 'consent_agree_label', 'consent_decline_label']) {
+                    if (values[key] !== undefined) out[key] = values[key];
+                }
             } else if (innerType === 'image-keyboard-response') {
                 if (values.stimulus_image !== undefined && out.stimulus === undefined) out.stimulus = values.stimulus_image;
                 if (values.stimulus_images !== undefined) out.stimulus_images = values.stimulus_images;
@@ -3225,18 +3259,20 @@ class JsonBuilder {
                 setFrom(`stroopStimulusColor_${i + 1}`, st.color);
             }
 
-            const wordLists = Array.isArray(s.word_lists) ? s.word_lists : [];
+            const wordLists = Array.isArray(s.word_lists) && s.word_lists.length > 0
+                ? s.word_lists.map(list => Array.isArray(list) ? { words: list } : { ...list, label: list?.label ?? list?.name })
+                : (Array.isArray(s.word_options) && s.word_options.length > 0 ? [{ label: 'Words', words: s.word_options }] : []);
             const requestedCount = Number.parseInt(s.word_list_count, 10);
             const listCount = Number.isFinite(requestedCount)
                 ? (requestedCount === 3 ? 3 : 2)
                 : (wordLists.length >= 3 ? 3 : 2);
             setFrom('emotionalStroopWordListCount', listCount);
-            setFrom('emotionalStroopWordList1Label', wordLists[0]?.label);
-            setFrom('emotionalStroopWordList1Words', csv(wordLists[0]?.words));
-            setFrom('emotionalStroopWordList2Label', wordLists[1]?.label);
-            setFrom('emotionalStroopWordList2Words', csv(wordLists[1]?.words));
-            setFrom('emotionalStroopWordList3Label', wordLists[2]?.label);
-            setFrom('emotionalStroopWordList3Words', csv(wordLists[2]?.words));
+            setFrom('emotionalStroopWordList1Label', wordLists[0]?.label ?? 'Neutral');
+            setFrom('emotionalStroopWordList1Words', csv(wordLists[0]?.words ?? []));
+            setFrom('emotionalStroopWordList2Label', wordLists[1]?.label ?? 'Negative');
+            setFrom('emotionalStroopWordList2Words', csv(wordLists[1]?.words ?? []));
+            setFrom('emotionalStroopWordList3Label', wordLists[2]?.label ?? 'Positive');
+            setFrom('emotionalStroopWordList3Words', csv(wordLists[2]?.words ?? []));
 
             setFrom('stroopDefaultResponseDevice', s.response_device);
             setFrom('stroopChoiceKeys', csv(s.choice_keys));
@@ -8358,7 +8394,10 @@ class JsonBuilder {
                         stimulus: { type: 'string', default: '<p>Click a button</p>' },
                         choices: { type: 'array', default: ['Option 1', 'Option 2'] },
                         trial_duration: { type: 'number', default: null },
-                        consent_mode: { type: 'boolean', default: false, description: 'Informed consent form: show fixed Agree / Don\'t agree buttons and end the study if the participant declines.' },
+                        consent_mode: { type: 'boolean', default: false, description: 'Informed consent form: show agree/decline buttons and end the study if the participant declines.' },
+                        consent_different_language: { type: 'boolean', default: false, description: 'Different language' },
+                        consent_agree_label: { type: 'string', default: 'Agree', description: 'Agree button text' },
+                        consent_decline_label: { type: 'string', default: "Don't agree", description: 'Decline button text' },
                         consent_decline_message: { type: 'string', default: '<p>You have chosen not to take part. You may now close this window.</p>', description: 'Message shown after the participant declines consent.' }
                     }
                 }
@@ -8953,7 +8992,10 @@ class JsonBuilder {
                     stimulus: { type: 'string', default: '<p>Click a button</p>' },
                     choices: { type: 'array', default: ['Option 1', 'Option 2'] },
                     trial_duration: { type: 'number', default: null },
-                    consent_mode: { type: 'boolean', default: false, description: 'Informed consent form: show fixed Agree / Don\'t agree buttons and end the study if the participant declines.' },
+                    consent_mode: { type: 'boolean', default: false, description: 'Informed consent form: show agree/decline buttons and end the study if the participant declines.' },
+                    consent_different_language: { type: 'boolean', default: false, description: 'Different language' },
+                    consent_agree_label: { type: 'string', default: 'Agree', description: 'Agree button text' },
+                    consent_decline_label: { type: 'string', default: "Don't agree", description: 'Decline button text' },
                     consent_decline_message: { type: 'string', default: '<p>You have chosen not to take part. You may now close this window.</p>', description: 'Message shown after the participant declines consent.' }
                 }
             }
@@ -12013,6 +12055,9 @@ class JsonBuilder {
             } else {
                 delete baseComponent.consent_mode;
                 delete baseComponent.consent_decline_message;
+                delete baseComponent.consent_different_language;
+                delete baseComponent.consent_agree_label;
+                delete baseComponent.consent_decline_label;
             }
         }
 
@@ -13139,6 +13184,9 @@ class JsonBuilder {
             }
             if (blockComponent.consent_mode === true || blockComponent.consent_mode === 'true') {
                 values.consent_mode = true;
+                for (const key of ['consent_different_language', 'consent_agree_label', 'consent_decline_label']) {
+                    if (blockComponent[key] !== undefined) values[key] = blockComponent[key];
+                }
                 const declineMsg = (blockComponent.consent_decline_message ?? '').toString();
                 if (declineMsg.trim() !== '') {
                     values.consent_decline_message = declineMsg;

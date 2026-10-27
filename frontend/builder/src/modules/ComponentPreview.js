@@ -1930,20 +1930,16 @@ class ComponentPreview {
                     .map(s => s.trim())
                     .filter(Boolean);
 
-                const swatches = names.map(n => {
-                    const hex = resolveHexForName(n);
+                const buttons = names.map(name => {
                     return `
-                        <div class="d-inline-flex align-items-center me-2 mb-2" style="gap:6px;">
-                            <span style="display:inline-block; width:14px; height:14px; border-radius:4px; background:${escape(hex)}; border:1px solid rgba(255,255,255,0.22);"></span>
-                            <span>${escape(n)}</span>
-                        </div>
+                        <button type="button" class="btn btn-outline-light" disabled>${escape(name)}</button>
                     `;
                 }).join('');
 
                 return `
                     <div class="small text-muted">
                         <div class="mb-1"><b>Mouse mapping:</b> click the correct ink color</div>
-                        <div>${swatches || '<div class="text-warning">No stimulus library available.</div>'}</div>
+                        <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center; padding-top:16px;">${buttons || '<div class="text-warning">No stimulus library available.</div>'}</div>
                     </div>
                 `;
             }
@@ -3346,9 +3342,12 @@ class ComponentPreview {
         // Consent mode owns the labels at runtime; mirror that here so the preview
         // matches what participants actually see.
         const consentMode = (componentData?.consent_mode === true || componentData?.consent_mode === 'true');
+        const differentLanguage = componentData?.consent_different_language === true || componentData?.consent_different_language === 'true';
 
         const labels = consentMode
-            ? ['Agree', "Don't agree"]
+            ? (differentLanguage
+                ? [String(componentData.consent_agree_label ?? '').trim() || 'Agree', String(componentData.consent_decline_label ?? '').trim() || "Don't agree"]
+                : ['Agree', "Don't agree"])
             : (Array.isArray(rawChoices)
                 ? rawChoices.map(x => (x ?? '').toString()).filter(s => s.trim() !== '')
                 : rawChoices
@@ -3358,11 +3357,12 @@ class ComponentPreview {
                     .filter(Boolean));
 
         const btns = (labels.length > 0 ? labels : ['Continue']).slice(0, 8).map((label) => {
-            return `<button type="button" class="btn btn-outline-light" disabled>${label}</button>`;
+            const text = label.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+            return `<button type="button" class="btn btn-outline-light" disabled>${text}</button>`;
         }).join(' ');
 
         const consentNote = consentMode
-            ? '<div style="margin-top:12px; font-size:0.85rem; opacity:0.75;">Informed consent form: choosing "Don\'t agree" skips to the Debriefing component, or ends the study if there isn\'t one.</div>'
+            ? '<div style="margin-top:12px; font-size:0.85rem; opacity:0.75;">Declining skips to the Debriefing component, or ends the study if there is not one.</div>'
             : '';
 
         const body = `
@@ -4352,6 +4352,9 @@ class ComponentPreview {
             sampled.choices = (src?.button_choices ?? src?.choices ?? 'Continue');
             if (src?.button_html !== undefined) sampled.button_html = src.button_html;
             if (src?.consent_mode !== undefined) sampled.consent_mode = src.consent_mode;
+            for (const key of ['consent_different_language', 'consent_agree_label', 'consent_decline_label']) {
+                if (src?.[key] !== undefined) sampled[key] = src[key];
+            }
         } else if (componentType === 'image-keyboard-response') {
             const listRaw = (src?.stimulus_images ?? '').toString();
             const list = listRaw

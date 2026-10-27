@@ -61,6 +61,7 @@ assert(consentTrial.response_ends_trial === true, 'Consent trial must end on res
 assert(typeof consentTrial.on_finish === 'function', 'Consent trial must attach an on_finish hook');
 assert(consentTrial.data?.consent_mode === true, 'Consent trial data must flag consent_mode');
 assert(consentTrial.button_html === undefined, 'Blank custom button HTML must not suppress jsPsych default buttons');
+assert(consentTrial.stimulus.includes('psy-wrap--consent'), 'Consent must opt into top-aligned scrolling');
 assert(interpreterHtml.includes('#jspsych-content:has(.psy-wrap--buttons)'), 'Consent layout override must target the button trial content');
 assert(interpreterHtml.includes('overflow-y: auto;'), 'Consent layout must remain scrollable on short viewports');
 assert(interpreterHtml.includes('flex-wrap: wrap;'), 'Consent buttons must wrap inside narrow viewports');
@@ -96,6 +97,54 @@ consentTrial.on_finish(agreeData);
 assert(agreeData.consent_declined === false, 'Agree must be recorded as consent_declined=false');
 assert(abortedWith === null, 'Agreeing must not end the study');
 
+const translatedFields = {
+  consent_different_language: true,
+  consent_agree_label: 'Acepto',
+  consent_decline_label: 'No acepto',
+};
+const translatedTrial = compileOne({
+  type: 'html-button-response', stimulus: '<p>Consent</p>', consent_mode: true,
+  ...translatedFields, consent_decline_message: '<p>Gracias.</p>',
+});
+assert(JSON.stringify(translatedTrial.choices) === JSON.stringify(['Acepto', 'No acepto']), 'Translated labels must reach the runtime');
+abortedWith = null;
+translatedTrial.on_finish({ response: 0 });
+assert(abortedWith === null, 'Translated agree must continue');
+translatedTrial.on_finish({ response: 1 });
+assert(abortedWith === '<p>Gracias.</p>', 'Translated decline must still end the study');
+const englishTrial = compileOne({
+  type: 'html-button-response', consent_mode: true, ...translatedFields, consent_different_language: false,
+});
+assert(JSON.stringify(englishTrial.choices) === JSON.stringify(['Agree', "Don't agree"]), 'Translation must be opt-in');
+const blankLabels = compileOne({
+  type: 'html-button-response', consent_mode: true, consent_different_language: true,
+  consent_agree_label: ' ', consent_decline_label: '',
+});
+assert(JSON.stringify(blankLabels.choices) === JSON.stringify(['Agree', "Don't agree"]), 'Empty labels must not hide consent buttons');
+const unicodeLabels = compileOne({
+  type: 'html-button-response', consent_mode: true, consent_different_language: true,
+  consent_agree_label: '\u0414\u0430', consent_decline_label: '\u041d\u0435\u0442',
+});
+assert(unicodeLabels.choices[0] === '\u0414\u0430' && unicodeLabels.choices[1] === '\u041d\u0435\u0442', 'Non-Latin labels must be preserved');
+
+global.document = { getElementById: () => null, querySelectorAll: () => [] };
+const JsonBuilder = require('../frontend/builder/src/JsonBuilder.js');
+const Schema = require('../frontend/builder/src/schemas/JSPsychSchemas.js');
+const builder = new JsonBuilder();
+builder.schemaValidator = new Schema();
+builder.getComponentDefinitions = () => [];
+builder.getExperimentWideLengthCapForBlocks = () => null;
+const translatedBlock = builder.transformBlock({
+  type: 'block', block_component_type: 'html-button-response', block_length: 1,
+  stimulus: '<p>Consent</p>', consent_mode: true, ...translatedFields,
+});
+const [importedConsent] = builder.convertImportedTimelineToBuilderComponents([translatedBlock], 'custom');
+for (const [key, value] of Object.entries(translatedFields)) {
+  assert(translatedBlock.parameter_values[key] === value, `Export must retain ${key}`);
+  assert(importedConsent.parameters[key] === value, `Import must retain ${key}`);
+  assert(builder.schemaValidator.getPluginSchema('html-button-response').parameters[key], `Editor needs ${key}`);
+}
+
 // Consent mode falls back to a default decline message.
 const defaultMsgTrial = compileOne({
   type: 'html-button-response',
@@ -123,10 +172,11 @@ assert(
 assert(plainTrial.on_finish === undefined, 'Non-consent trials must not attach a consent hook');
 assert(plainTrial.trial_duration === 5000, 'Non-consent trials must keep their trial_duration');
 assert(plainTrial.data?.consent_mode === undefined, 'Non-consent trials must not flag consent_mode');
+assert(!plainTrial.stimulus.includes('psy-wrap--consent'), 'Ordinary button trials must keep their existing alignment');
 
 // Regression: html-button-response previously compiled only in the continuous-RDM
 // path and fell through to the "unsupported component" screen everywhere else.
-for (const taskType of ['custom', 'rdm', 'sart']) {
+for (const taskType of ['custom', 'rdm', 'sart', 'emotional-stroop']) {
   for (const experimentType of ['trial-based', 'continuous']) {
     const compiled = window.TimelineCompiler.compileToJsPsychTimeline({
       task_type: taskType,
@@ -259,3 +309,56 @@ for (const taskType of ['custom', 'rdm', 'sart']) {
 }
 
 console.log('HTML+Button consent mode smoke test passed');
+
+if (process.argv.includes('--browser')) {
+  verifyConsentScrolling().catch(error => { console.error(error); process.exitCode = 1; });
+}
+
+async function verifyConsentScrolling() {
+  const { chromium } = require('./benchmarks/node_modules/playwright');
+  const browser = await chromium.launch({ headless: true });
+  const styles = interpreterHtml.match(/<style>([\s\S]*?)<\/style>/)[1];
+  const longConsent = compileOne({
+    type: 'html-button-response', consent_mode: true,
+    stimulus: `<h1 id="consent-heading">Informed Consent</h1>${'<p>Study information and participant rights.</p>'.repeat(60)}`,
+  });
+  try {
+    for (const viewport of [{ width: 1280, height: 800 }, { width: 900, height: 450 }, { width: 390, height: 844 }]) {
+      const page = await browser.newPage({ viewport });
+      await page.setContent(`<style>${styles}</style><div id="experiment"></div>`);
+      await page.addScriptTag({ url: 'https://unpkg.com/jspsych@8.2.3/dist/index.browser.min.js' });
+      await page.addScriptTag({ url: 'https://unpkg.com/@jspsych/plugin-html-button-response@2/dist/index.browser.min.js' });
+      await page.evaluate(({ stimulus, choices }) => {
+        const experiment = initJsPsych({ display_element: 'experiment' });
+        experiment.run([{ type: jsPsychHtmlButtonResponse, stimulus, choices }]);
+      }, { stimulus: longConsent.stimulus, choices: longConsent.choices });
+      await page.locator('#consent-heading').waitFor();
+      const initial = await page.evaluate(() => {
+        const content = document.querySelector('#jspsych-content');
+        const wrapper = document.querySelector('.psy-wrap--consent');
+        return {
+          inset: wrapper.getBoundingClientRect().top - content.getBoundingClientRect().top,
+          headingTop: document.querySelector('#consent-heading').getBoundingClientRect().top,
+          scrollTop: content.scrollTop,
+          canScroll: content.scrollHeight > content.clientHeight,
+          overflow: document.documentElement.scrollWidth > innerWidth,
+        };
+      });
+      assert(initial.inset >= 20, `Consent must start at least 20px inside the container: ${JSON.stringify(initial)}`);
+      assert(initial.headingTop >= 20 && initial.headingTop < viewport.height, 'Consent heading must be visible initially');
+      assert(initial.scrollTop === 0 && initial.canScroll, 'Long consent must start at the beginning and remain scrollable');
+      assert(!initial.overflow, 'Consent must not overflow horizontally');
+      await page.screenshot({ path: `/tmp/cogflow-consent-top-${viewport.width}.png` });
+      const agree = page.getByRole('button', { name: 'Agree', exact: true });
+      await agree.scrollIntoViewIfNeeded();
+      const button = await agree.boundingBox();
+      assert(button && button.y >= 0 && button.y + button.height <= viewport.height, 'Consent buttons must remain reachable');
+      await page.evaluate(() => { document.querySelector('#jspsych-content').scrollTop = 0; });
+      assert(await page.locator('#consent-heading').evaluate(element => element.getBoundingClientRect().top >= 20), 'Scrolling back must recover the top');
+      await page.close();
+    }
+    console.log('Long consent scroll layout passed desktop, short-preview and mobile browser checks');
+  } finally {
+    await browser.close();
+  }
+}
